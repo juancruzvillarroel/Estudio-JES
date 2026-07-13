@@ -108,6 +108,7 @@ model Pedido {
   fecha       DateTime     @default(now())
   estado      EstadoPedido @default(PENDIENTE)
   notas       String?
+  archivoUrl  String?
   creadoPorId String?
   creadoPor   User?        @relation("PedidoCreadoPor", fields: [creadoPorId], references: [id])
   createdAt   DateTime     @default(now())

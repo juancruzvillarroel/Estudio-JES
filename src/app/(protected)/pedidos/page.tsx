@@ -28,6 +28,7 @@ export default async function PedidosPage() {
     fechaISO: p.fecha.toISOString(),
     estado: p.estado,
     notas: p.notas,
+    archivoUrl: p.archivoUrl,
   }));
 
   const entregaRows: EntregaRow[] = entregas.map((e) => ({

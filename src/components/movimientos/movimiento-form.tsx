@@ -20,6 +20,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { createPedido } from "@/actions/pedidos";
 import { registrarEntrega } from "@/actions/entregas";
 import { AcopioDialog } from "@/components/acopios/acopio-dialog";
+import { NuevoProveedorDialog } from "@/components/proveedores/nuevo-proveedor-dialog";
 import type { AcopioOpcion } from "@/actions/acopios";
 import { cn, formatMonto, formatNumeroPedido } from "@/lib/utils";
 
@@ -81,8 +82,9 @@ export function MovimientoForm({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [formError, setFormError] = useState<string | null>(null);
-  const [remitoArchivo, setRemitoArchivo] = useState<File | null>(null);
+  const [archivoAdjunto, setArchivoAdjunto] = useState<File | null>(null);
   const [acopiosCreados, setAcopiosCreados] = useState<AcopioOpcion[]>([]);
+  const [proveedoresCreados, setProveedoresCreados] = useState<(Opcion & { rubroId: string })[]>([]);
   const inputArchivoRef = useRef<HTMLInputElement>(null);
   const inputCamaraRef = useRef<HTMLInputElement>(null);
 
@@ -124,7 +126,10 @@ export function MovimientoForm({
 
   const proyectoItems = Object.fromEntries(proyectos.map((p) => [p.id, p.nombre]));
   const rubroItems = Object.fromEntries(rubros.map((r) => [r.id, r.nombre]));
-  const proveedoresDisponibles = rubros.find((r) => r.id === rubroId)?.proveedores ?? [];
+  const proveedoresDisponibles = [
+    ...(rubros.find((r) => r.id === rubroId)?.proveedores ?? []),
+    ...proveedoresCreados.filter((p) => p.rubroId === rubroId),
+  ];
   const proveedorComboItems = proveedoresDisponibles.map((p) => ({ value: p.id, label: p.nombre }));
   const materialesDisponibles = materiales.filter((m) => m.rubroId === rubroId);
   const acopiosDisponibles = [...acopios, ...acopiosCreados].filter(
@@ -177,13 +182,23 @@ export function MovimientoForm({
     if (tipo !== "ENTREGA") return;
     const items = pedidoSeleccionado?.items ?? [];
     replaceEntregaItems(items.map((i) => ({ pedidoItemId: i.pedidoItemId, cantidad: 0 })));
-    setRemitoArchivo(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pedidoId, tipo]);
+
+  useEffect(() => {
+    setArchivoAdjunto(null);
+    if (inputArchivoRef.current) inputArchivoRef.current.value = "";
+    if (inputCamaraRef.current) inputCamaraRef.current.value = "";
+  }, [tipo]);
 
   const handleAcopioCreado = (acopio: AcopioOpcion) => {
     setAcopiosCreados((prev) => [...prev, acopio]);
     setValue("acopioId", acopio.id);
+  };
+
+  const handleProveedorCreado = (proveedor: { id: string; nombre: string }) => {
+    setProveedoresCreados((prev) => [...prev, { ...proveedor, rubroId }]);
+    setValue("proveedorId", proveedor.id);
   };
 
   const onSubmit = (data: FormValues) => {
@@ -209,14 +224,17 @@ export function MovimientoForm({
         return;
       }
       startTransition(async () => {
-        const result = await createPedido({
-          proyectoId: data.proyectoId,
-          proveedorId: data.proveedorId,
-          acopioId: data.acopioId !== "ninguno" ? data.acopioId : undefined,
-          fecha: new Date(data.fecha),
-          notas: data.notas || undefined,
-          items,
-        });
+        const result = await createPedido(
+          {
+            proyectoId: data.proyectoId,
+            proveedorId: data.proveedorId,
+            acopioId: data.acopioId !== "ninguno" ? data.acopioId : undefined,
+            fecha: new Date(data.fecha),
+            notas: data.notas || undefined,
+            items,
+          },
+          archivoAdjunto ?? undefined
+        );
         if (!result.success) {
           setFormError(result.error);
           return;
@@ -242,7 +260,7 @@ export function MovimientoForm({
             sumarAInventario: data.sumarAInventario,
             items: data.itemsEntrega,
           },
-          remitoArchivo ?? undefined
+          archivoAdjunto ?? undefined
         );
         if (!result.success) {
           setFormError(result.error);
@@ -252,6 +270,65 @@ export function MovimientoForm({
       });
     }
   };
+
+  const archivoAdjuntoUI = (
+    <div className="flex flex-col gap-2">
+      <Label>Archivo adjunto (opcional)</Label>
+      <div className="flex gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          aria-label="Adjuntar archivo"
+          onClick={() => inputArchivoRef.current?.click()}
+        >
+          <Paperclip className="h-4 w-4" />
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="icon"
+          aria-label="Sacar foto"
+          onClick={() => inputCamaraRef.current?.click()}
+        >
+          <Camera className="h-4 w-4" />
+        </Button>
+        <input
+          ref={inputArchivoRef}
+          type="file"
+          accept="application/pdf,image/*"
+          className="hidden"
+          onChange={(e) => setArchivoAdjunto(e.target.files?.[0] ?? null)}
+        />
+        <input
+          ref={inputCamaraRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={(e) => setArchivoAdjunto(e.target.files?.[0] ?? null)}
+        />
+      </div>
+      {archivoAdjunto && (
+        <div className="flex items-center justify-between rounded-md border p-2 text-sm">
+          <span className="truncate">{archivoAdjunto.name}</span>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label="Quitar archivo"
+            onClick={() => {
+              setArchivoAdjunto(null);
+              if (inputArchivoRef.current) inputArchivoRef.current.value = "";
+              if (inputCamaraRef.current) inputCamaraRef.current.value = "";
+            }}
+          >
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6">
@@ -309,20 +386,39 @@ export function MovimientoForm({
 
         <div className="flex flex-col gap-2">
           <Label htmlFor="proveedorId">Proveedor</Label>
-          <Controller
-            control={control}
-            name="proveedorId"
-            render={({ field }) => (
-              <Combobox
-                id="proveedorId"
-                value={field.value}
-                onValueChange={field.onChange}
-                items={proveedorComboItems}
-                disabled={!rubroId}
-                placeholder={rubroId ? "Buscá un proveedor" : "Elegí un rubro primero"}
+          <div className="flex gap-2">
+            <div className="min-w-0 flex-1">
+              <Controller
+                control={control}
+                name="proveedorId"
+                render={({ field }) => (
+                  <Combobox
+                    id="proveedorId"
+                    value={field.value}
+                    onValueChange={field.onChange}
+                    items={proveedorComboItems}
+                    disabled={!rubroId}
+                    placeholder={rubroId ? "Buscá un proveedor" : "Elegí un rubro primero"}
+                  />
+                )}
               />
-            )}
-          />
+            </div>
+            <NuevoProveedorDialog
+              rubroId={rubroId}
+              onCreated={handleProveedorCreado}
+              trigger={
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  aria-label="Nuevo proveedor"
+                  disabled={!rubroId}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              }
+            />
+          </div>
         </div>
       </div>
 
@@ -473,6 +569,7 @@ export function MovimientoForm({
             <Plus className="h-4 w-4" />
             Agregar material
           </Button>
+          {archivoAdjuntoUI}
         </div>
       ) : (
         pedidoId && (
@@ -505,61 +602,10 @@ export function MovimientoForm({
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="numeroRemito">Número de remito (opcional)</Label>
-              <div className="flex gap-2">
-                <Input id="numeroRemito" className="flex-1" {...register("numeroRemito")} />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  aria-label="Adjuntar archivo"
-                  onClick={() => inputArchivoRef.current?.click()}
-                >
-                  <Paperclip className="h-4 w-4" />
-                </Button>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="icon"
-                  aria-label="Sacar foto"
-                  onClick={() => inputCamaraRef.current?.click()}
-                >
-                  <Camera className="h-4 w-4" />
-                </Button>
-                <input
-                  ref={inputArchivoRef}
-                  type="file"
-                  accept="application/pdf,image/*"
-                  className="hidden"
-                  onChange={(e) => setRemitoArchivo(e.target.files?.[0] ?? null)}
-                />
-                <input
-                  ref={inputCamaraRef}
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  className="hidden"
-                  onChange={(e) => setRemitoArchivo(e.target.files?.[0] ?? null)}
-                />
-              </div>
-              {remitoArchivo && (
-                <div className="flex items-center justify-between rounded-md border p-2 text-sm">
-                  <span className="truncate">{remitoArchivo.name}</span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Quitar archivo"
-                    onClick={() => {
-                      setRemitoArchivo(null);
-                      if (inputArchivoRef.current) inputArchivoRef.current.value = "";
-                      if (inputCamaraRef.current) inputCamaraRef.current.value = "";
-                    }}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              )}
+              <Input id="numeroRemito" {...register("numeroRemito")} />
             </div>
+
+            {archivoAdjuntoUI}
 
             <Controller
               control={control}

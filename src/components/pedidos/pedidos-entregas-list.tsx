@@ -42,6 +42,7 @@ export type PedidoRow = {
   fechaISO: string;
   estado: Estado;
   notas: string | null;
+  archivoUrl: string | null;
 };
 
 export type EntregaRow = {
@@ -73,6 +74,7 @@ type FilaUnificada = {
   estado: Estado;
   numeroRemito: string | null;
   remitoUrl: string | null;
+  archivoUrl: string | null;
   notas: string | null;
 };
 
@@ -135,6 +137,7 @@ export function PedidosEntregasList({
       estado: p.estado,
       numeroRemito: null,
       remitoUrl: null,
+      archivoUrl: p.archivoUrl,
       notas: p.notas,
     }));
     const entregaFilas: FilaUnificada[] = entregas.map((e) => ({
@@ -151,6 +154,7 @@ export function PedidosEntregasList({
       estado: e.estadoPedido,
       numeroRemito: e.numeroRemito,
       remitoUrl: e.remitoUrl,
+      archivoUrl: null,
       notas: e.notas,
     }));
     return [...pedidoFilas, ...entregaFilas].sort((a, b) => b.fechaISO.localeCompare(a.fechaISO));
@@ -284,7 +288,22 @@ export function PedidosEntregasList({
                 </TableCell>
                 <TableCell className={cn(COL_ULTIMA, "truncate")}>
                   {f.tipo === "PEDIDO" ? (
-                    <EstadoPedidoBadge estado={f.estado} />
+                    <>
+                      <EstadoPedidoBadge estado={f.estado} />
+                      {f.archivoUrl && (
+                        <>
+                          {" · "}
+                          <a
+                            href={f.archivoUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="underline"
+                          >
+                            Ver
+                          </a>
+                        </>
+                      )}
+                    </>
                   ) : (
                     <>
                       {f.numeroRemito ?? "—"}

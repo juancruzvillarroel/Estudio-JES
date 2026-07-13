@@ -49,6 +49,30 @@ export async function updateProveedor(id: string, _prevState: ActionState, formD
   return { success: true };
 }
 
+export type CreateProveedorRapidoResult =
+  | { success: true; proveedor: { id: string; nombre: string } }
+  | { success: false; error: string };
+
+export async function createProveedorRapido(input: {
+  nombre: string;
+  rubroId: string;
+}): Promise<CreateProveedorRapidoResult> {
+  const nombre = input.nombre.trim();
+  if (!nombre) {
+    return { success: false, error: "Ingresá un nombre." };
+  }
+  if (!input.rubroId) {
+    return { success: false, error: "Elegí un rubro primero." };
+  }
+
+  const proveedor = await prisma.proveedor.create({
+    data: { nombre, rubros: { connect: [{ id: input.rubroId }] } },
+  });
+
+  revalidatePath("/proveedores");
+  return { success: true, proveedor: { id: proveedor.id, nombre: proveedor.nombre } };
+}
+
 export async function deleteProveedor(id: string): Promise<ActionState> {
   const pedidosCount = await prisma.pedido.count({ where: { proveedorId: id } });
   if (pedidosCount > 0) {

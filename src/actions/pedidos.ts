@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { put } from "@vercel/blob";
 import { prisma } from "@/lib/db";
 import { verifySession } from "@/lib/dal";
 import { PedidoSchema, type PedidoInput } from "@/lib/validations/pedido";
@@ -9,7 +10,10 @@ export type CreatePedidoResult =
   | { success: true; pedidoId: string }
   | { success: false; error: string };
 
-export async function createPedido(input: PedidoInput): Promise<CreatePedidoResult> {
+export async function createPedido(
+  input: PedidoInput,
+  archivo?: File
+): Promise<CreatePedidoResult> {
   const session = await verifySession();
   const validated = PedidoSchema.safeParse(input);
 
@@ -18,6 +22,14 @@ export async function createPedido(input: PedidoInput): Promise<CreatePedidoResu
   }
 
   const { proyectoId, proveedorId, acopioId, fecha, notas, items } = validated.data;
+
+  let archivoUrl: string | undefined;
+  if (archivo && archivo.size > 0) {
+    const blob = await put(`pedidos/${crypto.randomUUID()}-${archivo.name}`, archivo, {
+      access: "public",
+    });
+    archivoUrl = blob.url;
+  }
 
   const materiales = await prisma.material.findMany({
     where: { id: { in: items.map((i) => i.materialId) } },
@@ -69,6 +81,7 @@ export async function createPedido(input: PedidoInput): Promise<CreatePedidoResu
         acopioId,
         fecha,
         notas,
+        archivoUrl,
         creadoPorId: session.userId,
         items: {
           create: items.map((item) => ({

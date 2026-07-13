@@ -63,6 +63,19 @@ export default async function PedidoDetallePage({
             </Link>
             {" · "}
             {pedido.fecha.toLocaleDateString("es-AR")}
+            {pedido.archivoUrl && (
+              <>
+                {" · "}
+                <a
+                  href={pedido.archivoUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline"
+                >
+                  Ver archivo adjunto
+                </a>
+              </>
+            )}
           </p>
         </div>
         <div className="flex items-center gap-2">
