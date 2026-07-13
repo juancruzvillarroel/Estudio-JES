@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
-import { ProveedorSchema } from "@/lib/validations/proveedor";
+import { ProveedorSchema, type ProveedorInput } from "@/lib/validations/proveedor";
 
 export type ActionState = { error?: string; success?: boolean } | undefined;
 
@@ -53,20 +53,19 @@ export type CreateProveedorRapidoResult =
   | { success: true; proveedor: { id: string; nombre: string } }
   | { success: false; error: string };
 
-export async function createProveedorRapido(input: {
-  nombre: string;
-  rubroId: string;
-}): Promise<CreateProveedorRapidoResult> {
-  const nombre = input.nombre.trim();
-  if (!nombre) {
-    return { success: false, error: "Ingresá un nombre." };
+export async function createProveedorRapido(
+  input: ProveedorInput & { rubroId: string }
+): Promise<CreateProveedorRapidoResult> {
+  const validated = ProveedorSchema.safeParse(input);
+  if (!validated.success) {
+    return { success: false, error: validated.error.issues[0]?.message ?? "Datos inválidos." };
   }
   if (!input.rubroId) {
     return { success: false, error: "Elegí un rubro primero." };
   }
 
   const proveedor = await prisma.proveedor.create({
-    data: { nombre, rubros: { connect: [{ id: input.rubroId }] } },
+    data: { ...validated.data, rubros: { connect: [{ id: input.rubroId }] } },
   });
 
   revalidatePath("/proveedores");

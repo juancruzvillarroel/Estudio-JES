@@ -271,65 +271,6 @@ export function MovimientoForm({
     }
   };
 
-  const archivoAdjuntoUI = (
-    <div className="flex flex-col gap-2">
-      <Label>Archivo adjunto (opcional)</Label>
-      <div className="flex gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          aria-label="Adjuntar archivo"
-          onClick={() => inputArchivoRef.current?.click()}
-        >
-          <Paperclip className="h-4 w-4" />
-        </Button>
-        <Button
-          type="button"
-          variant="outline"
-          size="icon"
-          aria-label="Sacar foto"
-          onClick={() => inputCamaraRef.current?.click()}
-        >
-          <Camera className="h-4 w-4" />
-        </Button>
-        <input
-          ref={inputArchivoRef}
-          type="file"
-          accept="application/pdf,image/*"
-          className="hidden"
-          onChange={(e) => setArchivoAdjunto(e.target.files?.[0] ?? null)}
-        />
-        <input
-          ref={inputCamaraRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          className="hidden"
-          onChange={(e) => setArchivoAdjunto(e.target.files?.[0] ?? null)}
-        />
-      </div>
-      {archivoAdjunto && (
-        <div className="flex items-center justify-between rounded-md border p-2 text-sm">
-          <span className="truncate">{archivoAdjunto.name}</span>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label="Quitar archivo"
-            onClick={() => {
-              setArchivoAdjunto(null);
-              if (inputArchivoRef.current) inputArchivoRef.current.value = "";
-              if (inputCamaraRef.current) inputCamaraRef.current.value = "";
-            }}
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
-      )}
-    </div>
-  );
-
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-6">
       <div className="grid gap-4 sm:grid-cols-2">
@@ -569,7 +510,6 @@ export function MovimientoForm({
             <Plus className="h-4 w-4" />
             Agregar material
           </Button>
-          {archivoAdjuntoUI}
         </div>
       ) : (
         pedidoId && (
@@ -605,8 +545,6 @@ export function MovimientoForm({
               <Input id="numeroRemito" {...register("numeroRemito")} />
             </div>
 
-            {archivoAdjuntoUI}
-
             <Controller
               control={control}
               name="sumarAInventario"
@@ -632,8 +570,63 @@ export function MovimientoForm({
       )}
 
       <div className="flex flex-col gap-2">
-        <Label htmlFor="notas">Notas</Label>
-        <Textarea id="notas" {...register("notas")} />
+        <Label htmlFor="notas">Notas / Documento</Label>
+        <div className="flex gap-2">
+          <Textarea id="notas" className="flex-1" {...register("notas")} />
+          <div className="flex flex-col gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              aria-label="Adjuntar archivo"
+              onClick={() => inputArchivoRef.current?.click()}
+            >
+              <Paperclip className="h-4 w-4" />
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              aria-label="Sacar foto"
+              onClick={() => inputCamaraRef.current?.click()}
+            >
+              <Camera className="h-4 w-4" />
+            </Button>
+          </div>
+          <input
+            ref={inputArchivoRef}
+            type="file"
+            accept="application/pdf,image/*"
+            className="hidden"
+            onChange={(e) => setArchivoAdjunto(e.target.files?.[0] ?? null)}
+          />
+          <input
+            ref={inputCamaraRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={(e) => setArchivoAdjunto(e.target.files?.[0] ?? null)}
+          />
+        </div>
+        {archivoAdjunto && (
+          <div className="flex items-center justify-between rounded-md border p-2 text-sm">
+            <span className="truncate">{archivoAdjunto.name}</span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              aria-label="Quitar archivo"
+              onClick={() => {
+                setArchivoAdjunto(null);
+                if (inputArchivoRef.current) inputArchivoRef.current.value = "";
+                if (inputCamaraRef.current) inputCamaraRef.current.value = "";
+              }}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
       </div>
 
       {formError && <p className="text-sm text-error">{formError}</p>}
