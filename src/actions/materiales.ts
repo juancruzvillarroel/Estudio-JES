@@ -3,17 +3,25 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { MaterialSchema } from "@/lib/validations/material";
+import { generarCodigoMaterial } from "@/lib/codigos";
 
 export type ActionState =
   | {
       error?: string;
       success?: boolean;
-      material?: { id: string; nombre: string; unidad: string; pesoPorBarra: number | null };
+      material?: {
+        id: string;
+        nombre: string;
+        unidad: string;
+        codigo: string;
+        pesoPorBarra: number | null;
+      };
     }
   | undefined;
 
 function parseForm(formData: FormData) {
   const pesoPorBarraRaw = formData.get("pesoPorBarra");
+  const codigoRaw = formData.get("codigo");
   return MaterialSchema.safeParse({
     nombre: formData.get("nombre"),
     unidad: formData.get("unidad"),
@@ -21,6 +29,7 @@ function parseForm(formData: FormData) {
       pesoPorBarraRaw && String(pesoPorBarraRaw).trim() !== ""
         ? Number(pesoPorBarraRaw)
         : undefined,
+    codigo: codigoRaw && String(codigoRaw).trim() !== "" ? codigoRaw : undefined,
   });
 }
 
@@ -35,11 +44,15 @@ export async function createMaterial(_prevState: ActionState, formData: FormData
     return { error: validated.error.issues[0]?.message ?? "Datos inválidos." };
   }
 
+  const rubroId = parseRubroId(formData);
+  const codigo = await generarCodigoMaterial(rubroId);
+
   const material = await prisma.material.create({
     data: {
       ...validated.data,
+      codigo,
       pesoPorBarra: validated.data.pesoPorBarra ?? null,
-      rubroId: parseRubroId(formData),
+      rubroId,
     },
   });
   revalidatePath("/proveedores");
@@ -50,6 +63,7 @@ export async function createMaterial(_prevState: ActionState, formData: FormData
       id: material.id,
       nombre: material.nombre,
       unidad: material.unidad,
+      codigo: material.codigo,
       pesoPorBarra: material.pesoPorBarra ? Number(material.pesoPorBarra) : null,
     },
   };
@@ -60,15 +74,27 @@ export async function updateMaterial(id: string, _prevState: ActionState, formDa
   if (!validated.success) {
     return { error: validated.error.issues[0]?.message ?? "Datos inválidos." };
   }
+  if (!validated.data.codigo) {
+    return { error: "El código no puede estar vacío." };
+  }
 
-  await prisma.material.update({
-    where: { id },
-    data: {
-      ...validated.data,
-      pesoPorBarra: validated.data.pesoPorBarra ?? null,
-      rubroId: parseRubroId(formData),
-    },
-  });
+  try {
+    await prisma.material.update({
+      where: { id },
+      data: {
+        ...validated.data,
+        codigo: validated.data.codigo,
+        pesoPorBarra: validated.data.pesoPorBarra ?? null,
+        rubroId: parseRubroId(formData),
+      },
+    });
+  } catch (e) {
+    const target = (e as { meta?: { target?: string[] } })?.meta?.target;
+    if (target?.includes("codigo")) {
+      return { error: "Ya existe un material con ese código." };
+    }
+    throw e;
+  }
   revalidatePath("/proveedores");
   return { success: true };
 }

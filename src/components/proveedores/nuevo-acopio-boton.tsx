@@ -4,7 +4,7 @@ import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AcopioDialog } from "@/components/acopios/acopio-dialog";
 
-type MaterialOpcion = { id: string; nombre: string; unidad: string };
+type MaterialOpcion = { id: string; nombre: string; codigo?: string; unidad: string };
 type ProyectoOpcion = { id: string; nombre: string };
 
 export function NuevoAcopioBoton({

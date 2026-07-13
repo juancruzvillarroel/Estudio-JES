@@ -26,9 +26,15 @@ type Opcion = { id: string; nombre: string };
 type RubroConProveedores = {
   id: string;
   nombre: string;
-  proveedores: { id: string; nombre: string }[];
+  proveedores: { id: string; nombre: string; codigo?: string }[];
 };
-type MaterialOpcion = { id: string; nombre: string; unidad: string; rubroId: string | null };
+type MaterialOpcion = {
+  id: string;
+  nombre: string;
+  codigo?: string;
+  unidad: string;
+  rubroId: string | null;
+};
 type ItemInicial = {
   id: string;
   materialId: string;
@@ -88,7 +94,9 @@ export function EditarPedidoForm({
   const [archivoNuevo, setArchivoNuevo] = useState<File | null>(null);
   const [quitarArchivo, setQuitarArchivo] = useState(false);
   const [acopiosCreados, setAcopiosCreados] = useState<AcopioOpcion[]>([]);
-  const [proveedoresCreados, setProveedoresCreados] = useState<(Opcion & { rubroId: string })[]>([]);
+  const [proveedoresCreados, setProveedoresCreados] = useState<
+    (Opcion & { codigo: string; rubroId: string })[]
+  >([]);
   const inputArchivoRef = useRef<HTMLInputElement>(null);
   const inputCamaraRef = useRef<HTMLInputElement>(null);
 
@@ -121,7 +129,10 @@ export function EditarPedidoForm({
     ...(rubros.find((r) => r.id === rubroId)?.proveedores ?? []),
     ...proveedoresCreados.filter((p) => p.rubroId === rubroId),
   ];
-  const proveedorComboItems = proveedoresDisponibles.map((p) => ({ value: p.id, label: p.nombre }));
+  const proveedorComboItems = proveedoresDisponibles.map((p) => ({
+    value: p.id,
+    label: p.codigo ? `${p.codigo} · ${p.nombre}` : p.nombre,
+  }));
   const materialesDisponibles = materiales.filter((m) => m.rubroId === rubroId);
   const acopiosDisponibles = [...acopios, ...acopiosCreados].filter(
     (a) => a.proyectoId === proyectoId && a.proveedorId === proveedorId
@@ -136,7 +147,7 @@ export function EditarPedidoForm({
         );
   const materialComboItems = materialesParaItems.map((m) => ({
     value: m.id,
-    label: `${m.nombre} (${m.unidad})`,
+    label: m.codigo ? `${m.codigo} · ${m.nombre} (${m.unidad})` : `${m.nombre} (${m.unidad})`,
   }));
 
   useEffect(() => {
@@ -151,7 +162,7 @@ export function EditarPedidoForm({
     setValue("acopioId", acopio.id);
   };
 
-  const handleProveedorCreado = (proveedor: { id: string; nombre: string }) => {
+  const handleProveedorCreado = (proveedor: { id: string; nombre: string; codigo: string }) => {
     setProveedoresCreados((prev) => [...prev, { ...proveedor, rubroId }]);
     setValue("proveedorId", proveedor.id);
   };

@@ -26,6 +26,7 @@ type Rubro = { id: string; nombre: string };
 type Material = {
   id: string;
   nombre: string;
+  codigo: string;
   unidad: string;
   activo: boolean;
   rubroId: string | null;
@@ -46,7 +47,10 @@ export function MaterialesLista({
   const materialesFiltrados = useMemo(() => {
     const texto = busqueda.trim().toLowerCase();
     return materiales.filter((m) => {
-      const coincideTexto = !texto || m.nombre.toLowerCase().includes(texto);
+      const coincideTexto =
+        !texto ||
+        m.nombre.toLowerCase().includes(texto) ||
+        m.codigo.toLowerCase().includes(texto);
       const coincideRubro = rubroId === "todos" || m.rubroId === rubroId;
       return coincideTexto && coincideRubro;
     });
@@ -56,7 +60,7 @@ export function MaterialesLista({
     <div>
       <div className="flex flex-wrap items-end gap-3">
         <Input
-          placeholder="Buscar material..."
+          placeholder="Buscar material o código..."
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
           className="w-56"
@@ -84,6 +88,7 @@ export function MaterialesLista({
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead>Código</TableHead>
               <TableHead>Nombre</TableHead>
               <TableHead>Unidad</TableHead>
               <TableHead>Rubro</TableHead>
@@ -94,13 +99,14 @@ export function MaterialesLista({
           <TableBody>
             {materialesFiltrados.length === 0 && (
               <TableRow>
-                <TableCell colSpan={5} className="text-center text-sm text-muted-foreground">
+                <TableCell colSpan={6} className="text-center text-sm text-muted-foreground">
                   No hay materiales que coincidan con el filtro.
                 </TableCell>
               </TableRow>
             )}
             {materialesFiltrados.map((m) => (
               <TableRow key={m.id}>
+                <TableCell className="font-mono text-xs text-muted-foreground">{m.codigo}</TableCell>
                 <TableCell className="font-medium">{m.nombre}</TableCell>
                 <TableCell>{m.unidad}</TableCell>
                 <TableCell>{m.rubro?.nombre ?? "—"}</TableCell>

@@ -9,6 +9,28 @@ neonConfig.webSocketConstructor = ws;
 const adapter = new PrismaNeon({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
 
+const PREFIJO_SIN_RUBRO = "GEN";
+const DIGITOS_MATERIAL = 3;
+
+async function generarCodigoMaterial(rubroId: string | null): Promise<string> {
+  let prefijo = PREFIJO_SIN_RUBRO;
+  if (rubroId) {
+    const rubro = await prisma.rubro.findUnique({ where: { id: rubroId } });
+    if (rubro?.codigoPrefijo) prefijo = rubro.codigoPrefijo;
+  }
+  const ultimo = await prisma.material.findFirst({
+    where: { codigo: { startsWith: `${prefijo}-` } },
+    orderBy: { codigo: "desc" },
+    select: { codigo: true },
+  });
+  let siguiente = 1;
+  if (ultimo) {
+    const match = ultimo.codigo.match(/-(\d+)$/);
+    if (match) siguiente = parseInt(match[1], 10) + 1;
+  }
+  return `${prefijo}-${String(siguiente).padStart(DIGITOS_MATERIAL, "0")}`;
+}
+
 const RUBRO_ELECTRICIDAD = "cmralcfj90007w0mcjdch48xr"; // 8_INSTALACIÓN_ELÉCTRICA
 const RUBRO_PUERTAS = "cmralch9f000fw0mcqewd6qai"; // 16_PUERTAS_Y_ABERTURAS
 const RUBRO_GAS_SANITARIA = "cmralcfbu0006w0mcxpm90xd9"; // 7_INSTALACIÓN_GAS_Y_SANITARIA
@@ -127,8 +149,10 @@ async function main() {
       continue;
     }
 
+    const codigo = await generarCodigoMaterial(rubroId);
     const material = await prisma.material.create({
       data: {
+        codigo,
         nombre: item.nombre,
         unidad: item.unidad ?? "unidad",
         rubroId,

@@ -58,6 +58,9 @@ model Proyecto {
 
 model Proveedor {
   id        String   @id @default(cuid())
+  // Código corto para identificar al proveedor (ej. PROV-0001).
+  // Se genera automáticamente al crearlo y se puede editar después.
+  codigo    String   @unique
   nombre    String
   contacto  String?
   telefono  String?
@@ -72,10 +75,13 @@ model Proveedor {
 }
 
 model Rubro {
-  id        String   @id @default(cuid())
-  nombre    String   @unique
-  orden     Int      @default(0)
-  createdAt DateTime @default(now())
+  id            String   @id @default(cuid())
+  nombre        String   @unique
+  // Prefijo (2-4 letras) usado para armar el código de los materiales de
+  // este rubro (ej. HIE de "Hierros" -> HIE-001, HIE-002, ...).
+  codigoPrefijo String?  @unique
+  orden         Int      @default(0)
+  createdAt     DateTime @default(now())
 
   proveedores Proveedor[]
   materiales  Material[]
@@ -83,6 +89,9 @@ model Rubro {
 
 model Material {
   id           String   @id @default(cuid())
+  // Código corto para identificar el material (ej. HIE-001).
+  // Se genera automáticamente al crearlo y se puede editar después.
+  codigo       String   @unique
   nombre       String
   unidad       String
   // Peso (en la unidad del material, ej. kg) de una barra/unidad física.

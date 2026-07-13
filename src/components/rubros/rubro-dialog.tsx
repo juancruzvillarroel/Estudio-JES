@@ -14,7 +14,7 @@ import {
 import { DeleteButton } from "@/components/ui/delete-button";
 import { createRubro, deleteRubro, updateRubro } from "@/actions/rubros";
 
-type Rubro = { id: string; nombre: string };
+type Rubro = { id: string; nombre: string; codigoPrefijo?: string | null };
 
 export function RubroDialog({
   rubro,
@@ -52,6 +52,20 @@ export function RubroDialog({
             <Label htmlFor="nombre">Nombre</Label>
             <Input id="nombre" name="nombre" defaultValue={rubro?.nombre} required />
           </div>
+          {rubro && (
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="codigoPrefijo">Prefijo de código</Label>
+              <Input
+                id="codigoPrefijo"
+                name="codigoPrefijo"
+                defaultValue={rubro.codigoPrefijo ?? ""}
+                required
+              />
+              <p className="text-xs text-muted-foreground">
+                Se usa para armar el código de los materiales de este rubro (ej. HIE-001).
+              </p>
+            </div>
+          )}
           {error && <p className="text-sm text-error">{error}</p>}
           <div className="flex items-center justify-between gap-2">
             {rubro ? (

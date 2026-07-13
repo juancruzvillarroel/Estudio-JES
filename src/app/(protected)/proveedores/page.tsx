@@ -84,6 +84,7 @@ export default async function ProveedoresPage() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead>Prefijo</TableHead>
                   <TableHead>Nombre</TableHead>
                   <TableHead>Proveedores</TableHead>
                   <TableHead className="text-right">Acciones</TableHead>
@@ -92,13 +93,16 @@ export default async function ProveedoresPage() {
               <TableBody>
                 {rubros.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={3} className="text-center text-sm text-muted-foreground">
+                    <TableCell colSpan={4} className="text-center text-sm text-muted-foreground">
                       Todavía no hay rubros cargados.
                     </TableCell>
                   </TableRow>
                 )}
                 {rubros.map((r) => (
                   <TableRow key={r.id}>
+                    <TableCell className="font-mono text-xs text-muted-foreground">
+                      {r.codigoPrefijo ?? "—"}
+                    </TableCell>
                     <TableCell className="font-medium">{r.nombre}</TableCell>
                     <TableCell>{r._count.proveedores}</TableCell>
                     <TableCell className="text-right">

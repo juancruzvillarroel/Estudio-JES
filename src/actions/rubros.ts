@@ -3,17 +3,28 @@
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { RubroSchema } from "@/lib/validations/rubro";
+import { generarPrefijoRubro } from "@/lib/codigos";
 
 export type ActionState = { error?: string; success?: boolean } | undefined;
 
+function parseForm(formData: FormData) {
+  const codigoPrefijoRaw = formData.get("codigoPrefijo");
+  return RubroSchema.safeParse({
+    nombre: formData.get("nombre"),
+    codigoPrefijo:
+      codigoPrefijoRaw && String(codigoPrefijoRaw).trim() !== "" ? codigoPrefijoRaw : undefined,
+  });
+}
+
 export async function createRubro(_prevState: ActionState, formData: FormData): Promise<ActionState> {
-  const validated = RubroSchema.safeParse({ nombre: formData.get("nombre") });
+  const validated = parseForm(formData);
   if (!validated.success) {
     return { error: validated.error.issues[0]?.message ?? "Datos inválidos." };
   }
 
   try {
-    await prisma.rubro.create({ data: validated.data });
+    const codigoPrefijo = await generarPrefijoRubro(validated.data.nombre);
+    await prisma.rubro.create({ data: { ...validated.data, codigoPrefijo } });
   } catch {
     return { error: "Ya existe un rubro con ese nombre." };
   }
@@ -23,14 +34,18 @@ export async function createRubro(_prevState: ActionState, formData: FormData): 
 }
 
 export async function updateRubro(id: string, _prevState: ActionState, formData: FormData): Promise<ActionState> {
-  const validated = RubroSchema.safeParse({ nombre: formData.get("nombre") });
+  const validated = parseForm(formData);
   if (!validated.success) {
     return { error: validated.error.issues[0]?.message ?? "Datos inválidos." };
   }
 
   try {
     await prisma.rubro.update({ where: { id }, data: validated.data });
-  } catch {
+  } catch (e) {
+    const target = (e as { meta?: { target?: string[] } })?.meta?.target;
+    if (target?.includes("codigoPrefijo")) {
+      return { error: "Ya existe un rubro con ese prefijo." };
+    }
     return { error: "Ya existe un rubro con ese nombre." };
   }
 

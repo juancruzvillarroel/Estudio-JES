@@ -25,6 +25,7 @@ type Rubro = { id: string; nombre: string };
 type Proveedor = {
   id: string;
   nombre: string;
+  codigo: string;
   contacto: string | null;
   telefono: string | null;
   email: string | null;
@@ -46,7 +47,10 @@ export function ProveedoresLista({
   const proveedoresFiltrados = useMemo(() => {
     const texto = busqueda.trim().toLowerCase();
     return proveedores.filter((p) => {
-      const coincideTexto = !texto || p.nombre.toLowerCase().includes(texto);
+      const coincideTexto =
+        !texto ||
+        p.nombre.toLowerCase().includes(texto) ||
+        p.codigo.toLowerCase().includes(texto);
       const coincideRubro = rubroId === "todos" || p.rubros.some((r) => r.id === rubroId);
       return coincideTexto && coincideRubro;
     });
@@ -58,7 +62,7 @@ export function ProveedoresLista({
         <div className="flex flex-wrap items-end gap-3">
           <div className="flex flex-col gap-1.5">
             <Input
-              placeholder="Buscar proveedor..."
+              placeholder="Buscar proveedor o código..."
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
               className="w-56"
@@ -90,23 +94,27 @@ export function ProveedoresLista({
         <Table className="table-fixed">
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[18%]">Nombre</TableHead>
-              <TableHead className="w-[14%]">Contacto</TableHead>
-              <TableHead className="w-[18%]">Teléfono</TableHead>
-              <TableHead className="w-[34%]">Email</TableHead>
+              <TableHead className="w-[10%]">Código</TableHead>
+              <TableHead className="w-[16%]">Nombre</TableHead>
+              <TableHead className="w-[12%]">Contacto</TableHead>
+              <TableHead className="w-[16%]">Teléfono</TableHead>
+              <TableHead className="w-[30%]">Email</TableHead>
               <TableHead className="w-[16%] text-right">Acciones</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {proveedoresFiltrados.length === 0 && (
               <TableRow>
-                <TableCell colSpan={5} className="text-center text-sm text-muted-foreground">
+                <TableCell colSpan={6} className="text-center text-sm text-muted-foreground">
                   No hay proveedores que coincidan con el filtro.
                 </TableCell>
               </TableRow>
             )}
             {proveedoresFiltrados.map((p) => (
               <TableRow key={p.id}>
+                <TableCell className="whitespace-normal break-words font-mono text-xs text-muted-foreground">
+                  {p.codigo}
+                </TableCell>
                 <TableCell className="whitespace-normal break-words font-medium">
                   <Link href={`/proveedores/${p.id}`} className="hover:underline">
                     {p.nombre}

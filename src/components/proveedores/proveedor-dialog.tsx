@@ -19,6 +19,7 @@ import { createProveedor, deleteProveedor, updateProveedor } from "@/actions/pro
 type Proveedor = {
   id: string;
   nombre: string;
+  codigo?: string | null;
   contacto: string | null;
   telefono: string | null;
   email: string | null;
@@ -65,6 +66,12 @@ export function ProveedorDialog({
             <Label htmlFor="nombre">Nombre</Label>
             <Input id="nombre" name="nombre" defaultValue={proveedor?.nombre} required />
           </div>
+          {proveedor && (
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="codigo">Código</Label>
+              <Input id="codigo" name="codigo" defaultValue={proveedor.codigo ?? ""} required />
+            </div>
+          )}
           <div className="grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-2">
               <Label htmlFor="contacto">Contacto</Label>

@@ -30,7 +30,7 @@ export function NuevoProveedorDialog({
 }: {
   rubroId: string;
   trigger: React.ReactNode;
-  onCreated: (proveedor: { id: string; nombre: string }) => void;
+  onCreated: (proveedor: { id: string; nombre: string; codigo: string }) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [valores, setValores] = useState(VALORES_INICIALES);

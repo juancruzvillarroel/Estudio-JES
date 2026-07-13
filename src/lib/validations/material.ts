@@ -11,6 +11,12 @@ export const MaterialSchema = z.object({
     .number({ error: "Ingresá un peso válido" })
     .positive("El peso debe ser mayor a 0")
     .optional(),
+  codigo: z
+    .string()
+    .trim()
+    .min(1, "El código no puede estar vacío")
+    .transform((v) => v.toUpperCase())
+    .optional(),
 });
 
 export type MaterialInput = z.infer<typeof MaterialSchema>;

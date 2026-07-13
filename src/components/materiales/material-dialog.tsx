@@ -27,6 +27,7 @@ type Material = {
   nombre: string;
   unidad: string;
   rubroId: string | null;
+  codigo?: string | null;
   pesoPorBarra?: number | null;
 };
 
@@ -43,6 +44,7 @@ export function MaterialDialog({
     id: string;
     nombre: string;
     unidad: string;
+    codigo: string;
     pesoPorBarra: number | null;
   }) => void;
 }) {
@@ -100,6 +102,12 @@ export function MaterialDialog({
             <Label htmlFor="nombre">Nombre</Label>
             <Input id="nombre" name="nombre" defaultValue={material?.nombre} required />
           </div>
+          {material && (
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="codigo">Código</Label>
+              <Input id="codigo" name="codigo" defaultValue={material.codigo ?? ""} required />
+            </div>
+          )}
           <div className="flex flex-col gap-2">
             <Label htmlFor="unidad">Unidad</Label>
             <Select name="unidad" defaultValue={material?.unidad ?? "unidad"} items={unidadItems}>

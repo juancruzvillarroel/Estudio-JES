@@ -24,7 +24,7 @@ import {
 import { Combobox } from "@/components/ui/combobox";
 import { createAcopio, type AcopioOpcion } from "@/actions/acopios";
 
-type MaterialOpcion = { id: string; nombre: string; unidad: string };
+type MaterialOpcion = { id: string; nombre: string; codigo?: string; unidad: string };
 type ProyectoOpcion = { id: string; nombre: string };
 
 type FormValues = {
@@ -75,7 +75,10 @@ export function AcopioDialog({
   const tipo = watch("tipo");
   const { fields, append, remove } = useFieldArray({ control, name: "precios" });
 
-  const materialComboItems = materiales.map((m) => ({ value: m.id, label: `${m.nombre} (${m.unidad})` }));
+  const materialComboItems = materiales.map((m) => ({
+    value: m.id,
+    label: m.codigo ? `${m.codigo} · ${m.nombre} (${m.unidad})` : `${m.nombre} (${m.unidad})`,
+  }));
   const proyectoItems = Object.fromEntries((proyectos ?? []).map((p) => [p.id, p.nombre]));
 
   const onSubmit = (data: FormValues) => {
