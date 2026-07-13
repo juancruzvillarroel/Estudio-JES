@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { Pencil } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -127,8 +128,8 @@ export function MaterialesLista({
                     material={m}
                     rubros={rubros}
                     trigger={
-                      <Button variant="ghost" size="sm">
-                        Editar
+                      <Button type="button" variant="ghost" size="icon-sm" aria-label="Editar material">
+                        <Pencil className="h-4 w-4" />
                       </Button>
                     }
                   />

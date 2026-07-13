@@ -23,7 +23,7 @@ export async function createRubro(_prevState: ActionState, formData: FormData): 
   }
 
   try {
-    const codigoPrefijo = await generarPrefijoRubro(validated.data.nombre);
+    const codigoPrefijo = await generarPrefijoRubro();
     await prisma.rubro.create({ data: { ...validated.data, codigoPrefijo } });
   } catch {
     return { error: "Ya existe un rubro con ese nombre." };

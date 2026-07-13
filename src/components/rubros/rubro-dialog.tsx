@@ -62,7 +62,7 @@ export function RubroDialog({
                 required
               />
               <p className="text-xs text-muted-foreground">
-                Se usa para armar el código de los materiales de este rubro (ej. HIE-001).
+                Se usa para armar el código de los materiales de este rubro (ej. 05-01).
               </p>
             </div>
           )}
