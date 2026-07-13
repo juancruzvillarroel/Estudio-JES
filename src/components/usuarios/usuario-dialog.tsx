@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -66,10 +67,9 @@ export function UsuarioDialog({
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="password">{usuario ? "Nueva contraseña" : "Contraseña"}</Label>
-            <Input
+            <PasswordInput
               id="password"
               name="password"
-              type="password"
               placeholder={usuario ? "Dejar en blanco para no cambiarla" : undefined}
               required={!usuario}
             />
