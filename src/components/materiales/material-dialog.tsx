@@ -27,6 +27,7 @@ type Material = {
   nombre: string;
   unidad: string;
   rubroId: string | null;
+  pesoPorBarra?: number | null;
 };
 
 export function MaterialDialog({
@@ -38,7 +39,12 @@ export function MaterialDialog({
   material?: Material;
   rubros: { id: string; nombre: string }[];
   trigger: React.ReactNode;
-  onCreated?: (material: { id: string; nombre: string; unidad: string }) => void;
+  onCreated?: (material: {
+    id: string;
+    nombre: string;
+    unidad: string;
+    pesoPorBarra: number | null;
+  }) => void;
 }) {
   const [open, setOpen] = useState(false);
   const action = material ? updateMaterial.bind(null, material.id) : createMaterial;
@@ -108,6 +114,22 @@ export function MaterialDialog({
                 ))}
               </SelectContent>
             </Select>
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="pesoPorBarra">Peso por barra (opcional)</Label>
+            <Input
+              id="pesoPorBarra"
+              name="pesoPorBarra"
+              type="number"
+              step="0.001"
+              min="0"
+              defaultValue={material?.pesoPorBarra ?? ""}
+            />
+            <p className="text-xs text-muted-foreground">
+              Si este material se pide por peso (ej. kg) pero se entrega contado en barras,
+              cargá acá cuánto pesa cada barra para convertir automáticamente al registrar la
+              entrega.
+            </p>
           </div>
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between">

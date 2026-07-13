@@ -29,6 +29,7 @@ export default async function NuevaEntregaPage({
       materialNombre: item.material.nombre,
       unidad: item.unidad,
       restante: Number(item.cantidadPedida) - Number(item.cantidadEntregada),
+      pesoPorBarra: item.material.pesoPorBarra ? Number(item.material.pesoPorBarra) : null,
     }))
     .filter((item) => item.restante > 0);
 

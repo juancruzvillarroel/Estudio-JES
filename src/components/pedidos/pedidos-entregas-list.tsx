@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Pencil } from "lucide-react";
+import { ExternalLink, Pencil } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -93,7 +93,7 @@ const COL_PEDIDO = "w-24";
 const COL_TIPO = "w-28";
 const COL_FECHA = "w-28";
 const COL_ULTIMA = "w-40";
-const COL_ACCIONES = "w-20";
+const COL_ACCIONES = "w-28";
 
 export function PedidosEntregasList({
   pedidos,
@@ -287,43 +287,31 @@ export function PedidosEntregasList({
                 </TableCell>
                 <TableCell className={cn(COL_ULTIMA, "truncate")}>
                   {f.tipo === "PEDIDO" ? (
-                    <>
-                      <EstadoPedidoBadge estado={f.estado} />
-                      {f.archivoUrl && (
-                        <>
-                          {" · "}
-                          <a
-                            href={f.archivoUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="underline"
-                          >
-                            Ver
-                          </a>
-                        </>
-                      )}
-                    </>
+                    <EstadoPedidoBadge estado={f.estado} />
                   ) : (
-                    <>
-                      {f.numeroRemito ?? "—"}
-                      {f.remitoUrl && (
-                        <>
-                          {" · "}
-                          <a
-                            href={f.remitoUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="underline"
-                          >
-                            Ver
-                          </a>
-                        </>
-                      )}
-                    </>
+                    f.numeroRemito ?? "—"
                   )}
                 </TableCell>
                 <TableCell className={cn(COL_ACCIONES, "text-right")}>
                   <div className="flex justify-end gap-1">
+                    {(f.tipo === "PEDIDO" ? f.archivoUrl : f.remitoUrl) && (
+                      <Button
+                        render={
+                          <a
+                            href={f.tipo === "PEDIDO" ? f.archivoUrl! : f.remitoUrl!}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          />
+                        }
+                        nativeButton={false}
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label="Ver archivo adjunto"
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                      </Button>
+                    )}
                     {f.tipo === "PEDIDO" ? (
                       <>
                         <Button

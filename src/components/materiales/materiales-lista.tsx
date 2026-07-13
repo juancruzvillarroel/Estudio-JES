@@ -30,6 +30,7 @@ type Material = {
   activo: boolean;
   rubroId: string | null;
   rubro: Rubro | null;
+  pesoPorBarra: number | null;
 };
 
 export function MaterialesLista({

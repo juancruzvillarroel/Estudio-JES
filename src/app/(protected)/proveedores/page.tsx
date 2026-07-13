@@ -29,6 +29,11 @@ export default async function ProveedoresPage() {
     prisma.material.findMany({ orderBy: { nombre: "asc" }, include: { rubro: true } }),
   ]);
 
+  const materialesPlanos = materiales.map((m) => ({
+    ...m,
+    pesoPorBarra: m.pesoPorBarra ? Number(m.pesoPorBarra) : null,
+  }));
+
   return (
     <div>
       <div className="flex items-center justify-between">
@@ -126,7 +131,7 @@ export default async function ProveedoresPage() {
             />
           </div>
           <div className="mt-4">
-            <MaterialesLista materiales={materiales} rubros={rubros} />
+            <MaterialesLista materiales={materialesPlanos} rubros={rubros} />
           </div>
         </TabsContent>
       </Tabs>

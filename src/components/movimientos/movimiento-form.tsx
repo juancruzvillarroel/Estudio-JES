@@ -36,7 +36,13 @@ type PedidoAbierto = {
   numero: number;
   proyectoId: string;
   proveedorId: string;
-  items: { pedidoItemId: string; materialNombre: string; unidad: string; restante: number }[];
+  items: {
+    pedidoItemId: string;
+    materialNombre: string;
+    unidad: string;
+    restante: number;
+    pesoPorBarra: number | null;
+  }[];
 };
 
 type FormValues = {
@@ -89,6 +95,7 @@ export function MovimientoForm({
   const [pending, startTransition] = useTransition();
   const [formError, setFormError] = useState<string | null>(null);
   const [archivoAdjunto, setArchivoAdjunto] = useState<File | null>(null);
+  const [barras, setBarras] = useState<Record<number, string>>({});
   const [acopiosCreados, setAcopiosCreados] = useState<AcopioOpcion[]>([]);
   const [proveedoresCreados, setProveedoresCreados] = useState<(Opcion & { rubroId: string })[]>([]);
   const inputArchivoRef = useRef<HTMLInputElement>(null);
@@ -188,6 +195,7 @@ export function MovimientoForm({
     if (tipo !== "ENTREGA") return;
     const items = pedidoSeleccionado?.items ?? [];
     replaceEntregaItems(items.map((i) => ({ pedidoItemId: i.pedidoItemId, cantidad: 0 })));
+    setBarras({});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pedidoId, tipo]);
 
@@ -526,14 +534,43 @@ export function MovimientoForm({
                 const info = pedidoSeleccionado?.items[index];
                 if (!info) return null;
                 return (
-                  <div key={field.id} className="flex items-center gap-3 rounded-md border p-3">
+                  <div key={field.id} className="flex items-start gap-3 rounded-md border p-3">
                     <div className="flex-1">
                       <p className="text-sm font-medium">{info.materialNombre}</p>
                       <p className="text-xs text-muted-foreground">
                         Pendiente: {info.restante} {info.unidad}
                       </p>
                     </div>
+                    {info.pesoPorBarra && (
+                      <div className="w-28">
+                        <Label className="text-xs font-normal text-muted-foreground">
+                          Cant. de barras
+                        </Label>
+                        <Input
+                          type="number"
+                          step="1"
+                          min="0"
+                          placeholder="Barras"
+                          value={barras[index] ?? ""}
+                          onChange={(e) => {
+                            const raw = e.target.value;
+                            setBarras((prev) => ({ ...prev, [index]: raw }));
+                            const cantidadBarras = Number(raw);
+                            if (raw && !Number.isNaN(cantidadBarras)) {
+                              const kg = Math.round(cantidadBarras * info.pesoPorBarra! * 100) / 100;
+                              setValue(`itemsEntrega.${index}.cantidad`, kg, { shouldValidate: true });
+                            }
+                          }}
+                        />
+                        <p className="mt-1 text-[0.7rem] text-muted-foreground">
+                          1 barra = {info.pesoPorBarra} {info.unidad}
+                        </p>
+                      </div>
+                    )}
                     <div className="w-28">
+                      <Label className="text-xs font-normal text-muted-foreground">
+                        Cantidad ({info.unidad})
+                      </Label>
                       <Input
                         type="number"
                         step="1"

@@ -18,6 +18,7 @@ type PedidoItemPendiente = {
   materialNombre: string;
   unidad: string;
   restante: number;
+  pesoPorBarra: number | null;
 };
 
 export function EntregaForm({
@@ -31,6 +32,7 @@ export function EntregaForm({
   const [pending, startTransition] = useTransition();
   const [formError, setFormError] = useState<string | null>(null);
   const [remitoArchivo, setRemitoArchivo] = useState<File | null>(null);
+  const [barras, setBarras] = useState<Record<number, string>>({});
   const inputArchivoRef = useRef<HTMLInputElement>(null);
   const inputCamaraRef = useRef<HTMLInputElement>(null);
 
@@ -38,6 +40,7 @@ export function EntregaForm({
     control,
     register,
     handleSubmit,
+    setValue,
     formState: { errors },
   } = useForm<EntregaInput>({
     resolver: zodResolver(EntregaSchema),
@@ -72,14 +75,43 @@ export function EntregaForm({
         {fields.map((field, index) => {
           const info = itemsPendientes[index];
           return (
-            <div key={field.id} className="flex items-center gap-3 rounded-md border p-3">
+            <div key={field.id} className="flex items-start gap-3 rounded-md border p-3">
               <div className="flex-1">
                 <p className="text-sm font-medium">{info.materialNombre}</p>
                 <p className="text-xs text-muted-foreground">
                   Pendiente: {info.restante} {info.unidad}
                 </p>
               </div>
+              {info.pesoPorBarra && (
+                <div className="w-28">
+                  <Label className="text-xs font-normal text-muted-foreground">
+                    Cant. de barras
+                  </Label>
+                  <Input
+                    type="number"
+                    step="1"
+                    min="0"
+                    placeholder="Barras"
+                    value={barras[index] ?? ""}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      setBarras((prev) => ({ ...prev, [index]: raw }));
+                      const cantidadBarras = Number(raw);
+                      if (raw && !Number.isNaN(cantidadBarras)) {
+                        const kg = Math.round(cantidadBarras * info.pesoPorBarra! * 100) / 100;
+                        setValue(`items.${index}.cantidad`, kg, { shouldValidate: true });
+                      }
+                    }}
+                  />
+                  <p className="mt-1 text-[0.7rem] text-muted-foreground">
+                    1 barra = {info.pesoPorBarra} {info.unidad}
+                  </p>
+                </div>
+              )}
               <div className="w-28">
+                <Label className="text-xs font-normal text-muted-foreground">
+                  Cantidad ({info.unidad})
+                </Label>
                 <Input
                   type="number"
                   step="1"

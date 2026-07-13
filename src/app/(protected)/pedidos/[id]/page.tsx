@@ -62,20 +62,19 @@ export default async function PedidoDetallePage({
             </Link>
             {" · "}
             {formatFecha(pedido.fecha)}
-            {pedido.archivoUrl && (
-              <>
-                {" · "}
-                <a
-                  href={pedido.archivoUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline"
-                >
-                  Ver archivo adjunto
-                </a>
-              </>
-            )}
           </p>
+          {pedido.archivoUrl && (
+            <p className="text-sm text-muted-foreground">
+              <a
+                href={pedido.archivoUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="underline"
+              >
+                Ver archivo adjunto
+              </a>
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <Button

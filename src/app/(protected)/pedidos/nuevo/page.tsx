@@ -40,8 +40,14 @@ export default async function NuevoMovimientoPage({
         materialNombre: i.material.nombre,
         unidad: i.unidad,
         restante: Number(i.cantidadPedida) - Number(i.cantidadEntregada),
+        pesoPorBarra: i.material.pesoPorBarra ? Number(i.material.pesoPorBarra) : null,
       }))
       .filter((i) => i.restante > 0),
+  }));
+
+  const materialesPlanos = materiales.map((m) => ({
+    ...m,
+    pesoPorBarra: m.pesoPorBarra ? Number(m.pesoPorBarra) : null,
   }));
 
   const acopiosOpciones: AcopioOpcion[] = acopios.map((a) => {
@@ -88,7 +94,7 @@ export default async function NuevoMovimientoPage({
         <MovimientoForm
           proyectos={proyectos}
           rubros={rubros}
-          materiales={materiales}
+          materiales={materialesPlanos}
           pedidosAbiertos={pedidosAbiertosPlanos}
           acopios={acopiosOpciones}
           tipoInicial={tipoInicial}

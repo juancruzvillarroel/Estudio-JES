@@ -82,13 +82,17 @@ model Rubro {
 }
 
 model Material {
-  id        String   @id @default(cuid())
-  nombre    String
-  unidad    String
-  rubroId   String?
-  rubro     Rubro?   @relation(fields: [rubroId], references: [id])
-  activo    Boolean  @default(true)
-  createdAt DateTime @default(now())
+  id           String   @id @default(cuid())
+  nombre       String
+  unidad       String
+  // Peso (en la unidad del material, ej. kg) de una barra/unidad física.
+  // Permite convertir automáticamente al registrar una entrega que llega
+  // contada en barras aunque el pedido esté cotizado por peso.
+  pesoPorBarra Decimal? @db.Decimal(10, 3)
+  rubroId      String?
+  rubro        Rubro?   @relation(fields: [rubroId], references: [id])
+  activo       Boolean  @default(true)
+  createdAt    DateTime @default(now())
 
   pedidoItems           PedidoItem[]
   acopios               Acopio[]

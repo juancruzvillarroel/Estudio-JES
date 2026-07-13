@@ -5,13 +5,22 @@ import { prisma } from "@/lib/db";
 import { MaterialSchema } from "@/lib/validations/material";
 
 export type ActionState =
-  | { error?: string; success?: boolean; material?: { id: string; nombre: string; unidad: string } }
+  | {
+      error?: string;
+      success?: boolean;
+      material?: { id: string; nombre: string; unidad: string; pesoPorBarra: number | null };
+    }
   | undefined;
 
 function parseForm(formData: FormData) {
+  const pesoPorBarraRaw = formData.get("pesoPorBarra");
   return MaterialSchema.safeParse({
     nombre: formData.get("nombre"),
     unidad: formData.get("unidad"),
+    pesoPorBarra:
+      pesoPorBarraRaw && String(pesoPorBarraRaw).trim() !== ""
+        ? Number(pesoPorBarraRaw)
+        : undefined,
   });
 }
 
@@ -27,13 +36,22 @@ export async function createMaterial(_prevState: ActionState, formData: FormData
   }
 
   const material = await prisma.material.create({
-    data: { ...validated.data, rubroId: parseRubroId(formData) },
+    data: {
+      ...validated.data,
+      pesoPorBarra: validated.data.pesoPorBarra ?? null,
+      rubroId: parseRubroId(formData),
+    },
   });
   revalidatePath("/proveedores");
   revalidatePath("/inventario");
   return {
     success: true,
-    material: { id: material.id, nombre: material.nombre, unidad: material.unidad },
+    material: {
+      id: material.id,
+      nombre: material.nombre,
+      unidad: material.unidad,
+      pesoPorBarra: material.pesoPorBarra ? Number(material.pesoPorBarra) : null,
+    },
   };
 }
 
@@ -45,7 +63,11 @@ export async function updateMaterial(id: string, _prevState: ActionState, formDa
 
   await prisma.material.update({
     where: { id },
-    data: { ...validated.data, rubroId: parseRubroId(formData) },
+    data: {
+      ...validated.data,
+      pesoPorBarra: validated.data.pesoPorBarra ?? null,
+      rubroId: parseRubroId(formData),
+    },
   });
   revalidatePath("/proveedores");
   return { success: true };
