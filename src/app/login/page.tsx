@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useActionState } from "react";
 import { login } from "@/actions/auth";
 import { Button } from "@/components/ui/button";
@@ -14,8 +15,9 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted/30 px-4">
       <Card className="w-full max-w-sm">
-        <CardHeader>
-          <CardTitle className="text-xl">Sistema de gestión - Estudio JES</CardTitle>
+        <CardHeader className="flex flex-col items-center gap-3">
+          <Image src="/logo-jes.png" alt="JES & arqs" width={100} height={88} />
+          <CardTitle className="text-xl">Sistema Estudio JES</CardTitle>
         </CardHeader>
         <CardContent>
           <form action={formAction} className="flex flex-col gap-4">
