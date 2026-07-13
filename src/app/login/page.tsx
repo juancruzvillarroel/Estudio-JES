@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 
 export default function LoginPage() {
   const [state, formAction, pending] = useActionState(login, undefined);
@@ -15,9 +15,8 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted/30 px-4">
       <Card className="w-full max-w-sm">
-        <CardHeader className="flex flex-col items-center gap-3">
-          <Image src="/logo-jes.png" alt="JES & arqs" width={100} height={88} />
-          <CardTitle className="text-xl">Sistema Estudio JES</CardTitle>
+        <CardHeader className="flex items-center justify-center p-6">
+          <Image src="/logo-jes.png" alt="JES & arqs" width={140} height={123} />
         </CardHeader>
         <CardContent>
           <form action={formAction} className="flex flex-col gap-4">
