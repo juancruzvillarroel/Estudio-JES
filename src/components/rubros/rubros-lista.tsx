@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { Pencil } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -81,8 +82,8 @@ export function RubrosLista({
                   <RubroDialog
                     rubro={r}
                     trigger={
-                      <Button variant="ghost" size="sm">
-                        Editar
+                      <Button type="button" variant="ghost" size="icon-sm" aria-label="Editar rubro">
+                        <Pencil className="h-4 w-4" />
                       </Button>
                     }
                   />

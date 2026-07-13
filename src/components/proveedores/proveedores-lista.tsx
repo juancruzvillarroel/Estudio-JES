@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { Pencil } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -139,8 +140,8 @@ export function ProveedoresLista({
                     proveedor={p}
                     rubros={rubros}
                     trigger={
-                      <Button variant="ghost" size="sm">
-                        Editar
+                      <Button type="button" variant="ghost" size="icon-sm" aria-label="Editar proveedor">
+                        <Pencil className="h-4 w-4" />
                       </Button>
                     }
                   />
