@@ -37,9 +37,11 @@ type Material = {
 export function MaterialesLista({
   materiales,
   rubros,
+  nuevoMaterial,
 }: {
   materiales: Material[];
   rubros: Rubro[];
+  nuevoMaterial?: React.ReactNode;
 }) {
   const [busqueda, setBusqueda] = useState("");
   const [rubroId, setRubroId] = useState("todos");
@@ -58,30 +60,33 @@ export function MaterialesLista({
 
   return (
     <div>
-      <div className="flex flex-wrap items-end gap-3">
-        <Input
-          placeholder="Buscar material o código..."
-          value={busqueda}
-          onChange={(e) => setBusqueda(e.target.value)}
-          className="w-56"
-        />
-        <Select
-          value={rubroId}
-          onValueChange={(value) => setRubroId(value as string)}
-          items={{ todos: "Todos los rubros", ...Object.fromEntries(rubros.map((r) => [r.id, r.nombre])) }}
-        >
-          <SelectTrigger className="w-48">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="todos">Todos los rubros</SelectItem>
-            {rubros.map((r) => (
-              <SelectItem key={r.id} value={r.id}>
-                {r.nombre}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-wrap items-end gap-3">
+          <Input
+            placeholder="Buscar material o código..."
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            className="w-56"
+          />
+          <Select
+            value={rubroId}
+            onValueChange={(value) => setRubroId(value as string)}
+            items={{ todos: "Todos los rubros", ...Object.fromEntries(rubros.map((r) => [r.id, r.nombre])) }}
+          >
+            <SelectTrigger className="w-48">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="todos">Todos los rubros</SelectItem>
+              {rubros.map((r) => (
+                <SelectItem key={r.id} value={r.id}>
+                  {r.nombre}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        {nuevoMaterial}
       </div>
 
       <div className="mt-4 rounded-md border">

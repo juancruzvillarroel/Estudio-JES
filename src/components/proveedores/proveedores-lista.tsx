@@ -37,9 +37,11 @@ type Proveedor = {
 export function ProveedoresLista({
   proveedores,
   rubros,
+  nuevoProveedor,
 }: {
   proveedores: Proveedor[];
   rubros: Rubro[];
+  nuevoProveedor?: React.ReactNode;
 }) {
   const [busqueda, setBusqueda] = useState("");
   const [rubroId, setRubroId] = useState("todos");
@@ -88,6 +90,7 @@ export function ProveedoresLista({
             </Select>
           </div>
         </div>
+        {nuevoProveedor}
       </div>
 
       <div className="mt-4 rounded-md border">
