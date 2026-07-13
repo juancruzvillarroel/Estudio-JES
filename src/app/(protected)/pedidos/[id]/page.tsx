@@ -12,7 +12,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { EstadoPedidoBadge } from "@/components/pedidos/estado-badge";
-import { EditarPedidoDialog } from "@/components/pedidos/editar-pedido-dialog";
 import { EliminarPedidoButton } from "@/components/pedidos/eliminar-pedido-button";
 import { EntregaCardAcciones } from "@/components/pedidos/entrega-card-acciones";
 import { cn, formatFecha, formatNumeroPedido } from "@/lib/utils";
@@ -79,16 +78,16 @@ export default async function PedidoDetallePage({
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <EditarPedidoDialog
-            pedidoId={pedido.id}
-            fechaISO={pedido.fecha.toISOString()}
-            notas={pedido.notas}
-            trigger={
-              <Button type="button" variant="outline" size="icon" aria-label="Editar pedido">
-                <Pencil className="h-4 w-4" />
-              </Button>
-            }
-          />
+          <Button
+            render={<Link href={`/pedidos/${pedido.id}/editar`} />}
+            nativeButton={false}
+            type="button"
+            variant="outline"
+            size="icon"
+            aria-label="Editar pedido"
+          >
+            <Pencil className="h-4 w-4" />
+          </Button>
           <EliminarPedidoButton pedidoId={pedido.id} numero={formatNumeroPedido(pedido.numero)} />
           {puedeRegistrarEntrega && (
             <Button render={<Link href={`/pedidos/${pedido.id}/entregas/nueva`} />} nativeButton={false}>

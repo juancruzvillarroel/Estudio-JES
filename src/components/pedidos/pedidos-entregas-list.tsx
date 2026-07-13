@@ -23,7 +23,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DeleteButton } from "@/components/ui/delete-button";
 import { EstadoPedidoBadge } from "@/components/pedidos/estado-badge";
-import { EditarPedidoDialog } from "@/components/pedidos/editar-pedido-dialog";
 import { EditarEntregaDialog } from "@/components/pedidos/editar-entrega-dialog";
 import { deletePedido } from "@/actions/pedidos";
 import { deleteEntrega } from "@/actions/entregas";
@@ -327,16 +326,16 @@ export function PedidosEntregasList({
                   <div className="flex justify-end gap-1">
                     {f.tipo === "PEDIDO" ? (
                       <>
-                        <EditarPedidoDialog
-                          pedidoId={f.id}
-                          fechaISO={f.fechaISO}
-                          notas={f.notas}
-                          trigger={
-                            <Button type="button" variant="ghost" size="icon-sm" aria-label="Editar pedido">
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                          }
-                        />
+                        <Button
+                          render={<Link href={`/pedidos/${f.id}/editar`} />}
+                          nativeButton={false}
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label="Editar pedido"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </Button>
                         <DeleteButton
                           iconOnly
                           action={() => deletePedido(f.id)}
