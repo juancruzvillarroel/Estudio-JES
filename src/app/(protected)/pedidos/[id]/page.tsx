@@ -15,7 +15,7 @@ import { EstadoPedidoBadge } from "@/components/pedidos/estado-badge";
 import { EditarPedidoDialog } from "@/components/pedidos/editar-pedido-dialog";
 import { EliminarPedidoButton } from "@/components/pedidos/eliminar-pedido-button";
 import { EntregaCardAcciones } from "@/components/pedidos/entrega-card-acciones";
-import { cn, formatNumeroPedido } from "@/lib/utils";
+import { cn, formatFecha, formatNumeroPedido } from "@/lib/utils";
 
 export default async function PedidoDetallePage({
   params,
@@ -62,7 +62,7 @@ export default async function PedidoDetallePage({
               {pedido.proveedor.nombre}
             </Link>
             {" · "}
-            {pedido.fecha.toLocaleDateString("es-AR")}
+            {formatFecha(pedido.fecha)}
             {pedido.archivoUrl && (
               <>
                 {" · "}
@@ -143,7 +143,7 @@ export default async function PedidoDetallePage({
             <div key={entrega.id} className="rounded-md border p-3">
               <div className="flex items-start justify-between gap-2">
                 <p className="text-sm text-muted-foreground">
-                  {entrega.fecha.toLocaleDateString("es-AR")}
+                  {formatFecha(entrega.fecha)}
                   {entrega.numeroRemito && ` · Remito ${entrega.numeroRemito}`}
                   {entrega.remitoUrl && (
                     <>

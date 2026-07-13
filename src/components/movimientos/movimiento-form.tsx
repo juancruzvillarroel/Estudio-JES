@@ -61,7 +61,13 @@ function labelAcopio(a: AcopioOpcion) {
 }
 
 function hoyISO() {
-  return new Date().toISOString().slice(0, 10);
+  // Se arma a partir de los componentes de fecha locales (no con
+  // toISOString, que convierte a UTC y puede adelantar un día de noche).
+  const hoy = new Date();
+  const year = hoy.getFullYear();
+  const month = String(hoy.getMonth() + 1).padStart(2, "0");
+  const day = String(hoy.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 export function MovimientoForm({

@@ -17,7 +17,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { EstadoPedidoBadge } from "@/components/pedidos/estado-badge";
-import { cn, formatNumeroPedido } from "@/lib/utils";
+import { cn, formatFecha, formatNumeroPedido } from "@/lib/utils";
 import type { EstadoPedido } from "@/generated/prisma/client";
 
 export type MovimientoItem = {
@@ -74,7 +74,7 @@ export function CuentaCorrienteLista({ movimientos }: { movimientos: Movimiento[
                   mov.tipo === "ENTREGA" && "font-bold"
                 )}
               >
-                <span>{new Date(mov.fecha).toLocaleDateString("es-AR")}</span>
+                <span>{formatFecha(mov.fecha)}</span>
                 <Link
                   href={`/proyectos/${mov.proyectoId}`}
                   onClick={(e) => e.stopPropagation()}

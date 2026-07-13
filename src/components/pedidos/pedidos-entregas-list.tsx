@@ -27,7 +27,7 @@ import { EditarPedidoDialog } from "@/components/pedidos/editar-pedido-dialog";
 import { EditarEntregaDialog } from "@/components/pedidos/editar-entrega-dialog";
 import { deletePedido } from "@/actions/pedidos";
 import { deleteEntrega } from "@/actions/entregas";
-import { cn, formatNumeroPedido } from "@/lib/utils";
+import { cn, formatFecha, formatNumeroPedido } from "@/lib/utils";
 
 type Estado = "PENDIENTE" | "PARCIAL" | "COMPLETO" | "CANCELADO";
 type Tipo = "PEDIDO" | "ENTREGA";
@@ -284,7 +284,7 @@ export function PedidosEntregasList({
                 <TableCell className="truncate">{f.proyectoNombre}</TableCell>
                 <TableCell className="truncate">{f.proveedorNombre}</TableCell>
                 <TableCell className={COL_FECHA}>
-                  {new Date(f.fechaISO).toLocaleDateString("es-AR")}
+                  {formatFecha(f.fechaISO)}
                 </TableCell>
                 <TableCell className={cn(COL_ULTIMA, "truncate")}>
                   {f.tipo === "PEDIDO" ? (

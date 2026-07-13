@@ -4,7 +4,7 @@ import { Download } from "lucide-react";
 import * as XLSX from "xlsx";
 import { Button } from "@/components/ui/button";
 import { ESTADO_CONFIG } from "@/components/pedidos/estado-badge";
-import { formatNumeroPedido } from "@/lib/utils";
+import { formatFecha, formatNumeroPedido } from "@/lib/utils";
 import type { Movimiento } from "@/components/proveedores/cuenta-corriente-lista";
 
 export function ExportarCuentaCorrienteBoton({
@@ -17,7 +17,7 @@ export function ExportarCuentaCorrienteBoton({
   const exportarExcel = () => {
     const rows = movimientos.flatMap((mov) =>
       mov.items.map((item) => ({
-        Fecha: new Date(mov.fecha).toLocaleDateString("es-AR"),
+        Fecha: formatFecha(mov.fecha),
         Proyecto: mov.proyectoNombre,
         Tipo: mov.tipo === "PEDIDO" ? "Pedido" : "Entrega",
         Número:

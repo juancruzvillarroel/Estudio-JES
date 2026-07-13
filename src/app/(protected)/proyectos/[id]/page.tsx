@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ProyectoDialog } from "@/components/proyectos/proyecto-dialog";
 import { TipoMovimientoBadge } from "@/components/movimientos/tipo-movimiento-badge";
+import { formatFecha } from "@/lib/utils";
 
 const ESTADO_LABELS = {
   ACTIVO: "Activo",
@@ -125,7 +126,7 @@ export default async function ProyectoDetallePage({
                 <p className="mt-1 truncate text-xs text-muted-foreground">{m.itemsResumen}</p>
               </div>
               <p className="shrink-0 text-xs text-muted-foreground">
-                {m.fecha.toLocaleDateString("es-AR")}
+                {formatFecha(m.fecha)}
               </p>
             </Link>
           ))}

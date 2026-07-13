@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/table";
 import { DeleteButton } from "@/components/ui/delete-button";
 import { deleteMovimientoInventario } from "@/actions/inventario";
-import { cn } from "@/lib/utils";
+import { cn, formatFecha } from "@/lib/utils";
 
 export type MovimientoInventarioRow = {
   id: string;
@@ -57,7 +57,7 @@ export function InventarioMovimientosLista({
           {movimientos.map((mov) => (
             <TableRow key={mov.id}>
               <TableCell className={COL_FECHA}>
-                {new Date(mov.fecha).toLocaleDateString("es-AR")}
+                {formatFecha(mov.fecha)}
               </TableCell>
               <TableCell className="truncate font-medium">{mov.materialNombre}</TableCell>
               <TableCell className={COL_TIPO}>
