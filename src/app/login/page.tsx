@@ -15,7 +15,7 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-muted/30 px-4">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle className="text-xl">Abastecimiento de obra</CardTitle>
+          <CardTitle className="text-xl">Sistema de gestión - Estudio JES</CardTitle>
         </CardHeader>
         <CardContent>
           <form action={formAction} className="flex flex-col gap-4">

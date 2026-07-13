@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Abastecimiento de obra",
+  title: "Sistema de gestión - Estudio JES",
   description: "Gestión de materiales, proveedores y pedidos del estudio",
 };
 
