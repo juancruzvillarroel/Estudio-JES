@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { requireSeccion } from "@/lib/dal";
 import { EditarPedidoForm } from "@/components/pedidos/editar-pedido-form";
 import type { AcopioOpcion } from "@/actions/acopios";
 
@@ -8,6 +9,8 @@ export default async function EditarPedidoPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await requireSeccion("pedidos");
+
   const { id } = await params;
 
   const [pedido, proyectos, rubros, materiales, acopios] = await Promise.all([

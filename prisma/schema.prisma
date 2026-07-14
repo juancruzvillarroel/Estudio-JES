@@ -36,6 +36,10 @@ model User {
   passwordHash String
   nombre       String
   esAdmin      Boolean  @default(false)
+  // Claves de las secciones (ver src/lib/paginas.ts) a las que este usuario
+  // tiene acceso. Los administradores (esAdmin) siempre tienen acceso a todo,
+  // sin importar este campo.
+  paginasPermitidas String[] @default([])
   createdAt    DateTime @default(now())
 
   pedidosCreados   Pedido[]  @relation("PedidoCreadoPor")

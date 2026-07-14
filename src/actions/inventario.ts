@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
+import { requireSeccion } from "@/lib/dal";
 import {
   MovimientoInventarioSchema,
   type MovimientoInventarioInput,
@@ -25,6 +26,8 @@ export type CreateMovimientoResult =
 export async function createMovimientoInventario(
   input: MovimientoInventarioInput
 ): Promise<CreateMovimientoResult> {
+  await requireSeccion("inventario");
+
   const validated = MovimientoInventarioSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: validated.error.issues[0]?.message ?? "Datos inválidos." };
@@ -93,6 +96,8 @@ export async function createMovimientoInventario(
 type DeleteActionState = { error?: string; success?: boolean } | undefined;
 
 export async function deleteMovimientoInventario(id: string): Promise<DeleteActionState> {
+  await requireSeccion("inventario");
+
   try {
     await prisma.inventarioMovimiento.delete({ where: { id } });
     revalidatePath("/inventario");

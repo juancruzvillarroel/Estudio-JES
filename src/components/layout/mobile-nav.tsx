@@ -5,9 +5,17 @@ import { usePathname } from "next/navigation";
 import { NAV_ITEMS } from "./nav-items";
 import { cn } from "@/lib/utils";
 
-export function MobileNav({ esAdmin }: { esAdmin: boolean }) {
+export function MobileNav({
+  esAdmin,
+  paginasPermitidas,
+}: {
+  esAdmin: boolean;
+  paginasPermitidas: string[];
+}) {
   const pathname = usePathname();
-  const items = NAV_ITEMS.filter((item) => !item.adminOnly || esAdmin);
+  const items = NAV_ITEMS.filter(
+    (item) => !item.adminOnly || esAdmin
+  ).filter((item) => esAdmin || !item.key || paginasPermitidas.includes(item.key));
 
   return (
     <nav className="fixed inset-x-0 bottom-0 z-10 flex border-t bg-background md:hidden">

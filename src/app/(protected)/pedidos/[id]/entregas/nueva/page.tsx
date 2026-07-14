@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { requireSeccion } from "@/lib/dal";
 import { EntregaForm } from "@/components/pedidos/entrega-form";
 import { formatNumeroPedido } from "@/lib/utils";
 
@@ -8,6 +9,8 @@ export default async function NuevaEntregaPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await requireSeccion("pedidos");
+
   const { id } = await params;
 
   const pedido = await prisma.pedido.findUnique({

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
+import { requireSeccion } from "@/lib/dal";
 import { MaterialSchema } from "@/lib/validations/material";
 import { generarCodigoMaterial } from "@/lib/codigos";
 
@@ -39,6 +40,8 @@ function parseRubroId(formData: FormData): string | null {
 }
 
 export async function createMaterial(_prevState: ActionState, formData: FormData): Promise<ActionState> {
+  await requireSeccion("proveedores");
+
   const validated = parseForm(formData);
   if (!validated.success) {
     return { error: validated.error.issues[0]?.message ?? "Datos inválidos." };
@@ -70,6 +73,8 @@ export async function createMaterial(_prevState: ActionState, formData: FormData
 }
 
 export async function updateMaterial(id: string, _prevState: ActionState, formData: FormData): Promise<ActionState> {
+  await requireSeccion("proveedores");
+
   const validated = parseForm(formData);
   if (!validated.success) {
     return { error: validated.error.issues[0]?.message ?? "Datos inválidos." };
@@ -100,11 +105,15 @@ export async function updateMaterial(id: string, _prevState: ActionState, formDa
 }
 
 export async function toggleMaterialActivo(id: string, activo: boolean) {
+  await requireSeccion("proveedores");
+
   await prisma.material.update({ where: { id }, data: { activo } });
   revalidatePath("/proveedores");
 }
 
 export async function deleteMaterial(id: string): Promise<ActionState> {
+  await requireSeccion("proveedores");
+
   const pedidoItemsCount = await prisma.pedidoItem.count({ where: { materialId: id } });
   if (pedidoItemsCount > 0) {
     return {

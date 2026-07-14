@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import { prisma } from "@/lib/db";
+import { requireSeccion } from "@/lib/dal";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,6 +14,8 @@ const ESTADO_LABELS = {
 };
 
 export default async function ProyectosPage() {
+  await requireSeccion("proyectos");
+
   const proyectos = await prisma.proyecto.findMany({
     orderBy: { createdAt: "desc" },
   });

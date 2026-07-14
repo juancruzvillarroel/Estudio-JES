@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { requireSeccion } from "@/lib/dal";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ProyectoDialog } from "@/components/proyectos/proyecto-dialog";
@@ -33,6 +34,8 @@ export default async function ProyectoDetallePage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await requireSeccion("proyectos");
+
   const { id } = await params;
   const [proyecto, pedidos, entregas] = await Promise.all([
     prisma.proyecto.findUnique({ where: { id } }),

@@ -1,5 +1,6 @@
 import { Plus } from "lucide-react";
 import { prisma } from "@/lib/db";
+import { requireSeccion } from "@/lib/dal";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ProveedorDialog } from "@/components/proveedores/proveedor-dialog";
@@ -10,6 +11,8 @@ import { MaterialDialog } from "@/components/materiales/material-dialog";
 import { MaterialesLista } from "@/components/materiales/materiales-lista";
 
 export default async function ProveedoresPage() {
+  await requireSeccion("proveedores");
+
   const [proveedores, rubros, materiales] = await Promise.all([
     prisma.proveedor.findMany({
       orderBy: { nombre: "asc" },

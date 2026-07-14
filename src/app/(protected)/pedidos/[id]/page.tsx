@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Pencil } from "lucide-react";
 import { prisma } from "@/lib/db";
+import { requireSeccion } from "@/lib/dal";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -21,6 +22,8 @@ export default async function PedidoDetallePage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  await requireSeccion("pedidos");
+
   const { id } = await params;
 
   const pedido = await prisma.pedido.findUnique({

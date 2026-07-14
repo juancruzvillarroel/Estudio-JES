@@ -37,7 +37,7 @@ export async function login(_prevState: LoginState, formData: FormData): Promise
     return { error: "Email o contraseña incorrectos." };
   }
 
-  await createSession(user.id, user.nombre, user.esAdmin);
+  await createSession(user.id, user.nombre, user.esAdmin, user.paginasPermitidas);
   redirect("/dashboard");
 }
 

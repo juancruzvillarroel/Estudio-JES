@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { put } from "@vercel/blob";
 import { prisma } from "@/lib/db";
+import { requireSeccion } from "@/lib/dal";
 import { ProyectoSchema } from "@/lib/validations/proyecto";
 
 export type ActionState = { error?: string; success?: boolean } | undefined;
@@ -26,6 +27,8 @@ async function subirImagen(formData: FormData): Promise<string | undefined> {
 }
 
 export async function createProyecto(_prevState: ActionState, formData: FormData): Promise<ActionState> {
+  await requireSeccion("proyectos");
+
   const validated = parseForm(formData);
   if (!validated.success) {
     return { error: validated.error.issues[0]?.message ?? "Datos inválidos." };
@@ -39,6 +42,8 @@ export async function createProyecto(_prevState: ActionState, formData: FormData
 }
 
 export async function updateProyecto(id: string, _prevState: ActionState, formData: FormData): Promise<ActionState> {
+  await requireSeccion("proyectos");
+
   const validated = parseForm(formData);
   if (!validated.success) {
     return { error: validated.error.issues[0]?.message ?? "Datos inválidos." };

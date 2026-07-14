@@ -11,11 +11,15 @@ export default async function ProtectedLayout({
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar nombre={session.nombre} esAdmin={session.esAdmin} />
+      <Sidebar
+        nombre={session.nombre}
+        esAdmin={session.esAdmin}
+        paginasPermitidas={session.paginasPermitidas}
+      />
       <main className="min-w-0 flex-1 pb-16 md:pb-0">
         <div className="mx-auto max-w-5xl p-4 md:p-8">{children}</div>
       </main>
-      <MobileNav esAdmin={session.esAdmin} />
+      <MobileNav esAdmin={session.esAdmin} paginasPermitidas={session.paginasPermitidas} />
     </div>
   );
 }

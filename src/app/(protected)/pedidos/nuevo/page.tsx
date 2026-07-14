@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { requireSeccion } from "@/lib/dal";
 import { MovimientoForm } from "@/components/movimientos/movimiento-form";
 import type { AcopioOpcion } from "@/actions/acopios";
 
@@ -7,6 +8,8 @@ export default async function NuevoMovimientoPage({
 }: {
   searchParams: Promise<{ tipo?: string }>;
 }) {
+  await requireSeccion("pedidos");
+
   const { tipo } = await searchParams;
   const tipoInicial = tipo === "ENTREGA" ? "ENTREGA" : "PEDIDO";
 

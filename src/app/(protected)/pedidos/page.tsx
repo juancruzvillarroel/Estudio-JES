@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { requireSeccion } from "@/lib/dal";
 import { NuevoMovimientoButton } from "@/components/movimientos/nuevo-movimiento-button";
 import {
   PedidosEntregasList,
@@ -7,6 +8,8 @@ import {
 } from "@/components/pedidos/pedidos-entregas-list";
 
 export default async function PedidosPage() {
+  await requireSeccion("pedidos");
+
   const [pedidos, entregas] = await Promise.all([
     prisma.pedido.findMany({
       orderBy: { fecha: "desc" },

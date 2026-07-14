@@ -1,5 +1,6 @@
 import { Plus } from "lucide-react";
 import { prisma } from "@/lib/db";
+import { requireSeccion } from "@/lib/dal";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { MovimientoInventarioDialog } from "@/components/inventario/movimiento-dialog";
@@ -7,6 +8,8 @@ import { InventarioStockTabla } from "@/components/inventario/inventario-stock-t
 import { InventarioMovimientosLista } from "@/components/inventario/inventario-movimientos-lista";
 
 export default async function InventarioPage() {
+  await requireSeccion("inventario");
+
   const [materiales, rubros, movimientos] = await Promise.all([
     prisma.material.findMany({
       where: { activo: true },

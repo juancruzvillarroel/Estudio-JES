@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
+import { requireSeccion } from "@/lib/dal";
 import { ProveedorSchema, type ProveedorInput } from "@/lib/validations/proveedor";
 import { generarCodigoProveedor } from "@/lib/codigos";
 
@@ -21,6 +22,8 @@ function parseForm(formData: FormData) {
 }
 
 export async function createProveedor(_prevState: ActionState, formData: FormData): Promise<ActionState> {
+  await requireSeccion("proveedores");
+
   const validated = parseForm(formData);
   if (!validated.success) {
     return { error: validated.error.issues[0]?.message ?? "Datos inválidos." };
@@ -37,6 +40,8 @@ export async function createProveedor(_prevState: ActionState, formData: FormDat
 }
 
 export async function updateProveedor(id: string, _prevState: ActionState, formData: FormData): Promise<ActionState> {
+  await requireSeccion("proveedores");
+
   const validated = parseForm(formData);
   if (!validated.success) {
     return { error: validated.error.issues[0]?.message ?? "Datos inválidos." };
@@ -75,6 +80,8 @@ export type CreateProveedorRapidoResult =
 export async function createProveedorRapido(
   input: ProveedorInput & { rubroId: string }
 ): Promise<CreateProveedorRapidoResult> {
+  await requireSeccion("proveedores");
+
   const validated = ProveedorSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: validated.error.issues[0]?.message ?? "Datos inválidos." };
@@ -97,6 +104,8 @@ export async function createProveedorRapido(
 }
 
 export async function deleteProveedor(id: string): Promise<ActionState> {
+  await requireSeccion("proveedores");
+
   const pedidosCount = await prisma.pedido.count({ where: { proveedorId: id } });
   if (pedidosCount > 0) {
     return { error: "No se puede eliminar: el proveedor tiene pedidos registrados." };

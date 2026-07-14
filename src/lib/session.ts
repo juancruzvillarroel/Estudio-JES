@@ -11,6 +11,7 @@ export type SessionPayload = {
   userId: string;
   nombre: string;
   esAdmin: boolean;
+  paginasPermitidas: string[];
 };
 
 export async function encrypt(payload: SessionPayload) {
@@ -32,9 +33,14 @@ export async function decrypt(session: string | undefined = "") {
   }
 }
 
-export async function createSession(userId: string, nombre: string, esAdmin: boolean) {
+export async function createSession(
+  userId: string,
+  nombre: string,
+  esAdmin: boolean,
+  paginasPermitidas: string[]
+) {
   const expiresAt = new Date(Date.now() + SESSION_DURATION_MS);
-  const session = await encrypt({ userId, nombre, esAdmin });
+  const session = await encrypt({ userId, nombre, esAdmin, paginasPermitidas });
   const cookieStore = await cookies();
 
   cookieStore.set(COOKIE_NAME, session, {

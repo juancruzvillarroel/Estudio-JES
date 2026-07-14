@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
+import { requireSeccion } from "@/lib/dal";
 import { AcopioSchema, type AcopioInput } from "@/lib/validations/acopio";
 
 export type AcopioOpcion = {
@@ -24,6 +25,8 @@ export type CreateAcopioResult =
   | { success: false; error: string };
 
 export async function createAcopio(input: AcopioInput): Promise<CreateAcopioResult> {
+  await requireSeccion("pedidos");
+
   const validated = AcopioSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: validated.error.issues[0]?.message ?? "Datos inválidos." };

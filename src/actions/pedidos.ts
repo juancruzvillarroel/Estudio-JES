@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { put } from "@vercel/blob";
 import { prisma } from "@/lib/db";
-import { verifySession } from "@/lib/dal";
+import { requireSeccion } from "@/lib/dal";
 import {
   PedidoSchema,
   type PedidoInput,
@@ -19,7 +19,7 @@ export async function createPedido(
   input: PedidoInput,
   archivo?: File
 ): Promise<CreatePedidoResult> {
-  const session = await verifySession();
+  const session = await requireSeccion("pedidos");
   const validated = PedidoSchema.safeParse(input);
 
   if (!validated.success) {
@@ -116,7 +116,7 @@ export async function updatePedido(
   archivo?: File,
   quitarArchivo?: boolean
 ): Promise<EditarPedidoResult> {
-  await verifySession();
+  await requireSeccion("pedidos");
 
   const validated = EditarPedidoSchema.safeParse(input);
   if (!validated.success) {
@@ -293,7 +293,7 @@ export async function updatePedido(
 type DeleteActionState = { error?: string; success?: boolean } | undefined;
 
 export async function deletePedido(id: string): Promise<DeleteActionState> {
-  await verifySession();
+  await requireSeccion("pedidos");
 
   const pedido = await prisma.pedido.findUnique({
     where: { id },

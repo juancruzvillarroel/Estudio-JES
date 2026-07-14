@@ -28,6 +28,7 @@ export async function createUsuario(_prevState: ActionState, formData: FormData)
     email: formData.get("email"),
     password: formData.get("password"),
     esAdmin: formData.get("esAdmin") === "on",
+    paginasPermitidas: formData.getAll("paginasPermitidas"),
   });
   if (!validated.success) {
     return { error: validated.error.issues[0]?.message ?? "Datos inválidos." };
@@ -45,6 +46,7 @@ export async function createUsuario(_prevState: ActionState, formData: FormData)
       email: validated.data.email,
       passwordHash,
       esAdmin: validated.data.esAdmin,
+      paginasPermitidas: validated.data.paginasPermitidas,
     },
   });
 
@@ -64,6 +66,7 @@ export async function updateUsuario(id: string, _prevState: ActionState, formDat
     email: formData.get("email"),
     password: formData.get("password") || undefined,
     esAdmin: formData.get("esAdmin") === "on",
+    paginasPermitidas: formData.getAll("paginasPermitidas"),
   });
   if (!validated.success) {
     return { error: validated.error.issues[0]?.message ?? "Datos inválidos." };
@@ -94,6 +97,7 @@ export async function updateUsuario(id: string, _prevState: ActionState, formDat
       nombre: validated.data.nombre,
       email: validated.data.email,
       esAdmin: validated.data.esAdmin,
+      paginasPermitidas: validated.data.paginasPermitidas,
       ...(validated.data.password ? { passwordHash: await bcrypt.hash(validated.data.password, 10) } : {}),
     },
   });

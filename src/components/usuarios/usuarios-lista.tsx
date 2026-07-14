@@ -18,6 +18,7 @@ export type UsuarioRow = {
   nombre: string;
   email: string;
   esAdmin: boolean;
+  paginasPermitidas: string[];
 };
 
 const COL_ROL = "w-28";

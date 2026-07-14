@@ -1,9 +1,12 @@
 import Link from "next/link";
 import { prisma } from "@/lib/db";
+import { requireSeccion } from "@/lib/dal";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export default async function DashboardPage() {
+  await requireSeccion("dashboard");
+
   const proyectos = await prisma.proyecto.findMany({
     where: { estado: "ACTIVO" },
     include: {

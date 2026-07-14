@@ -8,9 +8,19 @@ import { NAV_ITEMS } from "./nav-items";
 import { logout } from "@/actions/auth";
 import { cn } from "@/lib/utils";
 
-export function Sidebar({ nombre, esAdmin }: { nombre: string; esAdmin: boolean }) {
+export function Sidebar({
+  nombre,
+  esAdmin,
+  paginasPermitidas,
+}: {
+  nombre: string;
+  esAdmin: boolean;
+  paginasPermitidas: string[];
+}) {
   const pathname = usePathname();
-  const items = NAV_ITEMS.filter((item) => !item.adminOnly || esAdmin);
+  const items = NAV_ITEMS.filter(
+    (item) => !item.adminOnly || esAdmin
+  ).filter((item) => esAdmin || !item.key || paginasPermitidas.includes(item.key));
 
   return (
     <aside className="hidden md:flex md:w-56 md:flex-col md:border-r md:border-neutral-800 md:bg-black">

@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/db";
+import { requireSeccion } from "@/lib/dal";
 import { Button } from "@/components/ui/button";
 import { formatMonto } from "@/lib/utils";
 import { ProveedorDialog } from "@/components/proveedores/proveedor-dialog";
@@ -30,6 +31,8 @@ export default async function ProveedorDetallePage({
     hasta?: string;
   }>;
 }) {
+  await requireSeccion("proveedores");
+
   const { id } = await params;
   const { proyectoId, acopioId, desde, hasta } = await searchParams;
 

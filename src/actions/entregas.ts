@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { put } from "@vercel/blob";
 import { prisma } from "@/lib/db";
-import { verifySession } from "@/lib/dal";
+import { requireSeccion } from "@/lib/dal";
 import { EntregaSchema, type EntregaInput } from "@/lib/validations/entrega";
 
 export type RegistrarEntregaResult =
@@ -14,7 +14,7 @@ export async function registrarEntrega(
   input: EntregaInput,
   remitoArchivo?: File
 ): Promise<RegistrarEntregaResult> {
-  const session = await verifySession();
+  const session = await requireSeccion("pedidos");
   const validated = EntregaSchema.safeParse(input);
 
   if (!validated.success) {
@@ -146,7 +146,7 @@ export async function updateEntrega(
   id: string,
   input: EditarEntregaInput
 ): Promise<EditarEntregaResult> {
-  await verifySession();
+  await requireSeccion("pedidos");
 
   const entrega = await prisma.entrega.findUnique({ where: { id } });
   if (!entrega) {
@@ -171,7 +171,7 @@ export async function updateEntrega(
 type DeleteActionState = { error?: string; success?: boolean } | undefined;
 
 export async function deleteEntrega(id: string): Promise<DeleteActionState> {
-  await verifySession();
+  await requireSeccion("pedidos");
 
   try {
     const { pedidoId, proyectoId, proveedorId, tuvoInventario } = await prisma.$transaction(async (tx) => {

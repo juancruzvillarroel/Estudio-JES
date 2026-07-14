@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
+import { requireSeccion } from "@/lib/dal";
 import { RubroSchema } from "@/lib/validations/rubro";
 import { generarPrefijoRubro } from "@/lib/codigos";
 
@@ -17,6 +18,8 @@ function parseForm(formData: FormData) {
 }
 
 export async function createRubro(_prevState: ActionState, formData: FormData): Promise<ActionState> {
+  await requireSeccion("proveedores");
+
   const validated = parseForm(formData);
   if (!validated.success) {
     return { error: validated.error.issues[0]?.message ?? "Datos inválidos." };
@@ -34,6 +37,8 @@ export async function createRubro(_prevState: ActionState, formData: FormData): 
 }
 
 export async function updateRubro(id: string, _prevState: ActionState, formData: FormData): Promise<ActionState> {
+  await requireSeccion("proveedores");
+
   const validated = parseForm(formData);
   if (!validated.success) {
     return { error: validated.error.issues[0]?.message ?? "Datos inválidos." };
@@ -54,6 +59,8 @@ export async function updateRubro(id: string, _prevState: ActionState, formData:
 }
 
 export async function deleteRubro(id: string): Promise<ActionState> {
+  await requireSeccion("proveedores");
+
   const materialesCount = await prisma.material.count({ where: { rubroId: id } });
   if (materialesCount > 0) {
     return { error: "No se puede eliminar: el rubro tiene materiales asociados." };

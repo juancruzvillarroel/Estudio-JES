@@ -15,12 +15,14 @@ import {
 } from "@/components/ui/dialog";
 import { DeleteButton } from "@/components/ui/delete-button";
 import { createUsuario, deleteUsuario, updateUsuario } from "@/actions/usuarios";
+import { PAGINAS } from "@/lib/paginas";
 
 type Usuario = {
   id: string;
   nombre: string;
   email: string;
   esAdmin: boolean;
+  paginasPermitidas?: string[];
 };
 
 export function UsuarioDialog({
@@ -36,6 +38,7 @@ export function UsuarioDialog({
   const action = usuario ? updateUsuario.bind(null, usuario.id) : createUsuario;
   const [error, setError] = useState<string | undefined>();
   const [pending, startTransition] = useTransition();
+  const [esAdmin, setEsAdmin] = useState(usuario?.esAdmin ?? false);
 
   const formAction = (formData: FormData) => {
     setError(undefined);
@@ -75,9 +78,34 @@ export function UsuarioDialog({
             />
           </div>
           <label className="flex items-center gap-2 text-sm">
-            <Checkbox name="esAdmin" defaultChecked={usuario?.esAdmin} />
+            <Checkbox
+              name="esAdmin"
+              checked={esAdmin}
+              onCheckedChange={(checked) => setEsAdmin(checked === true)}
+            />
             Administrador (puede crear, editar y eliminar usuarios)
           </label>
+          <div className="flex flex-col gap-2">
+            <Label>Páginas habilitadas</Label>
+            {esAdmin ? (
+              <p className="text-sm text-muted-foreground">
+                Los administradores tienen acceso a todas las secciones.
+              </p>
+            ) : (
+              <div className="flex flex-col gap-2 rounded-md border p-2">
+                {PAGINAS.map((p) => (
+                  <label key={p.key} className="flex items-center gap-2 text-sm">
+                    <Checkbox
+                      name="paginasPermitidas"
+                      value={p.key}
+                      defaultChecked={usuario?.paginasPermitidas?.includes(p.key)}
+                    />
+                    {p.label}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
           {error && <p className="text-sm text-error">{error}</p>}
           <div className="flex items-center justify-between gap-2">
             {usuario && puedeEliminar ? (
