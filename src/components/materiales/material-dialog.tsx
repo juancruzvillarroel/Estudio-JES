@@ -52,6 +52,12 @@ export function MaterialDialog({
   const action = material ? updateMaterial.bind(null, material.id) : createMaterial;
   const [error, setError] = useState<string | undefined>();
   const [pending, startTransition] = useTransition();
+  const [unidad, setUnidad] = useState(material?.unidad ?? "unidad");
+  const [rubroId, setRubroId] = useState(material?.rubroId ?? "ninguno");
+
+  const rubroSeleccionado = rubros.find((r) => r.id === rubroId);
+  const permitePesoPorBarra =
+    unidad === "kg" && (rubroSeleccionado?.nombre.toUpperCase().includes("ESTRUCTURA") ?? false);
 
   const formAction = (formData: FormData) => {
     setError(undefined);
@@ -110,7 +116,12 @@ export function MaterialDialog({
           )}
           <div className="flex flex-col gap-2">
             <Label htmlFor="unidad">Unidad</Label>
-            <Select name="unidad" defaultValue={material?.unidad ?? "unidad"} items={unidadItems}>
+            <Select
+              name="unidad"
+              value={unidad}
+              onValueChange={(value) => setUnidad(value as string)}
+              items={unidadItems}
+            >
               <SelectTrigger id="unidad" className="w-full">
                 <SelectValue />
               </SelectTrigger>
@@ -123,22 +134,24 @@ export function MaterialDialog({
               </SelectContent>
             </Select>
           </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="pesoPorBarra">Peso por barra (opcional)</Label>
-            <Input
-              id="pesoPorBarra"
-              name="pesoPorBarra"
-              type="number"
-              step="0.001"
-              min="0"
-              defaultValue={material?.pesoPorBarra ?? ""}
-            />
-            <p className="text-xs text-muted-foreground">
-              Si este material se pide por peso (ej. kg) pero se entrega contado en barras,
-              cargá acá cuánto pesa cada barra para convertir automáticamente al registrar la
-              entrega.
-            </p>
-          </div>
+          {permitePesoPorBarra && (
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="pesoPorBarra">Peso por barra (opcional)</Label>
+              <Input
+                id="pesoPorBarra"
+                name="pesoPorBarra"
+                type="number"
+                step="0.001"
+                min="0"
+                defaultValue={material?.pesoPorBarra ?? ""}
+              />
+              <p className="text-xs text-muted-foreground">
+                Este material se pide por peso (kg) pero se entrega contado en barras. Cargá
+                acá cuánto pesa cada barra para convertir automáticamente al registrar la
+                entrega.
+              </p>
+            </div>
+          )}
           <div className="flex flex-col gap-2">
             <div className="flex items-center justify-between">
               <Label htmlFor="rubroId">Rubro</Label>
@@ -150,7 +163,12 @@ export function MaterialDialog({
                 }
               />
             </div>
-            <Select name="rubroId" defaultValue={material?.rubroId ?? "ninguno"} items={rubroItems}>
+            <Select
+              name="rubroId"
+              value={rubroId}
+              onValueChange={(value) => setRubroId(value as string)}
+              items={rubroItems}
+            >
               <SelectTrigger id="rubroId" className="w-full">
                 <SelectValue />
               </SelectTrigger>
