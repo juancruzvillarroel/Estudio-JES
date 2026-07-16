@@ -25,6 +25,7 @@ import { createProyecto, updateProyecto } from "@/actions/proyectos";
 type Proyecto = {
   id: string;
   nombre: string;
+  barrio: string | null;
   direccion: string | null;
   estado: "ACTIVO" | "PAUSADO" | "FINALIZADO";
   descripcion: string | null;
@@ -72,6 +73,10 @@ export function ProyectoDialog({
           <div className="flex flex-col gap-2">
             <Label htmlFor="nombre">Nombre</Label>
             <Input id="nombre" name="nombre" defaultValue={proyecto?.nombre} required />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="barrio">Barrio</Label>
+            <Input id="barrio" name="barrio" defaultValue={proyecto?.barrio ?? ""} />
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="direccion">Dirección</Label>

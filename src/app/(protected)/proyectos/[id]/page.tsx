@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ProyectoDialog } from "@/components/proyectos/proyecto-dialog";
 import { TipoMovimientoBadge } from "@/components/movimientos/tipo-movimiento-badge";
-import { formatFecha } from "@/lib/utils";
+import { capitalizarOracion, formatFecha } from "@/lib/utils";
 
 const ESTADO_LABELS = {
   ACTIVO: "Activo",
@@ -77,29 +77,58 @@ export default async function ProyectoDetallePage({
 
   return (
     <div>
-      {proyecto.imagenUrl && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={proyecto.imagenUrl}
-          alt={proyecto.nombre}
-          className="mb-6 h-48 w-full rounded-xl object-cover"
-        />
-      )}
-      <div className="flex items-start justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-3xl font-semibold tracking-tight">{proyecto.nombre}</h1>
-            <Badge variant={proyecto.estado === "ACTIVO" ? "secondary" : "outline"}>
-              {ESTADO_LABELS[proyecto.estado]}
-            </Badge>
+      {proyecto.imagenUrl ? (
+        <div className="relative mb-6 h-64 w-full overflow-hidden rounded-xl sm:h-72">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={proyecto.imagenUrl}
+            alt={proyecto.nombre}
+            className="absolute inset-0 h-full w-full object-cover"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/15 to-transparent" />
+          <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 p-4 sm:p-6">
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-3xl font-semibold tracking-tight text-white">{proyecto.nombre}</h1>
+                <Badge variant={proyecto.estado === "ACTIVO" ? "secondary" : "outline"}>
+                  {ESTADO_LABELS[proyecto.estado]}
+                </Badge>
+              </div>
+              {proyecto.barrio && (
+                <p className="text-sm text-white/80">{capitalizarOracion(proyecto.barrio)}</p>
+              )}
+              <p className="text-sm text-white/80">
+                {proyecto.direccion ? capitalizarOracion(proyecto.direccion) : "Sin dirección"}
+              </p>
+            </div>
+            <ProyectoDialog
+              proyecto={proyecto}
+              trigger={<Button variant="outline">Editar datos</Button>}
+            />
           </div>
-          <p className="text-sm text-muted-foreground">{proyecto.direccion ?? "Sin dirección"}</p>
         </div>
-        <ProyectoDialog
-          proyecto={proyecto}
-          trigger={<Button variant="outline">Editar datos</Button>}
-        />
-      </div>
+      ) : (
+        <div className="mb-6 flex items-start justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-3xl font-semibold tracking-tight">{proyecto.nombre}</h1>
+              <Badge variant={proyecto.estado === "ACTIVO" ? "secondary" : "outline"}>
+                {ESTADO_LABELS[proyecto.estado]}
+              </Badge>
+            </div>
+            {proyecto.barrio && (
+              <p className="text-sm text-muted-foreground">{capitalizarOracion(proyecto.barrio)}</p>
+            )}
+            <p className="text-sm text-muted-foreground">
+              {proyecto.direccion ? capitalizarOracion(proyecto.direccion) : "Sin dirección"}
+            </p>
+          </div>
+          <ProyectoDialog
+            proyecto={proyecto}
+            trigger={<Button variant="outline">Editar datos</Button>}
+          />
+        </div>
+      )}
 
       {proyecto.descripcion && (
         <p className="mt-4 text-sm text-muted-foreground">{proyecto.descripcion}</p>

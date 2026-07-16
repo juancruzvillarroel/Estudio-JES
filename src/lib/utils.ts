@@ -9,6 +9,12 @@ export function formatNumeroPedido(numero: number) {
   return numero.toString().padStart(3, "0")
 }
 
+/** Pone en mayúscula solo la primera letra de un texto (formato oración). */
+export function capitalizarOracion(texto: string) {
+  const t = texto.trim().toLowerCase()
+  return t.charAt(0).toUpperCase() + t.slice(1)
+}
+
 export function formatMonto(monto: number) {
   return monto.toLocaleString("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 })
 }

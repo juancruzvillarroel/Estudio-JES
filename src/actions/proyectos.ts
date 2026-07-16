@@ -11,6 +11,7 @@ export type ActionState = { error?: string; success?: boolean } | undefined;
 function parseForm(formData: FormData) {
   return ProyectoSchema.safeParse({
     nombre: formData.get("nombre"),
+    barrio: formData.get("barrio") || undefined,
     direccion: formData.get("direccion") || undefined,
     estado: formData.get("estado") || undefined,
     descripcion: formData.get("descripcion") || undefined,
