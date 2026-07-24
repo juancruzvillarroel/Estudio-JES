@@ -30,6 +30,7 @@ type Proyecto = {
   estado: "ACTIVO" | "PAUSADO" | "FINALIZADO";
   descripcion: string | null;
   imagenUrl: string | null;
+  cantidadPisos: number;
 };
 
 const ESTADO_LABELS: Record<Proyecto["estado"], string> = {
@@ -96,6 +97,21 @@ export function ProyectoDialog({
                 ))}
               </SelectContent>
             </Select>
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="cantidadPisos">Cantidad de pisos (además de planta baja)</Label>
+            <Input
+              id="cantidadPisos"
+              name="cantidadPisos"
+              type="number"
+              min={0}
+              step={1}
+              defaultValue={proyecto?.cantidadPisos ?? 0}
+            />
+            <p className="text-xs text-muted-foreground">
+              Se usa para generar automáticamente los planos por piso en Documentación
+              (Planta baja, Piso 1, Piso 2, ..., Azotea).
+            </p>
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="descripcion">Descripción</Label>

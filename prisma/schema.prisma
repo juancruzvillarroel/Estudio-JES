@@ -30,6 +30,17 @@ enum TipoMovimientoInventario {
   SALIDA
 }
 
+enum TramiteCategoria {
+  ADMINISTRACION
+  DEMOLICION
+  OBRA
+}
+
+enum EstadoTramiteMunicipal {
+  PENDIENTE
+  PRESENTADO
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -54,11 +65,156 @@ model Proyecto {
   estado      EstadoProyecto @default(ACTIVO)
   descripcion String?
   imagenUrl   String?
+  // Pisos por encima de planta baja. Se usa para generar automáticamente un
+  // documento (plano) por piso en las categorías de Documentación marcadas
+  // como "por piso" (ver DocumentoCategoria.porPiso).
+  cantidadPisos Int          @default(0)
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
 
   pedidos Pedido[]
   acopios Acopio[]
+  tramitesMunicipales TramiteMunicipal[]
+  documentos          Documento[]
+  // Tipos de documento generados automáticamente para este proyecto (planos
+  // por piso). Ver DocumentoTipo.proyectoId.
+  documentoTiposPorPiso DocumentoTipo[] @relation("DocumentoTipoProyecto")
+}
+
+// Catálogo de documentos/trámites requeridos por categoría (y, dentro de
+// "Obra", por etapa). Se carga con un script (prisma/seed-tramites o
+// scripts/seed-tramites-municipales.ts) y se puede ampliar más adelante
+// agregando filas nuevas, sin tocar código.
+model TramiteMunicipalTipo {
+  id          String           @id @default(cuid())
+  categoria   TramiteCategoria
+  // Agrupa varios tipos dentro de una categoría (ej. "Inicio" en Obra).
+  // Vacío ("") si la categoría no se subdivide en etapas.
+  etapa       String           @default("")
+  nombre      String
+  // Texto de ayuda/instrucciones para quien carga el trámite.
+  descripcion String?
+  orden       Int              @default(0)
+  activo      Boolean          @default(true)
+  createdAt   DateTime         @default(now())
+
+  tramites TramiteMunicipal[]
+
+  @@unique([categoria, etapa, nombre])
+  @@index([categoria])
+}
+
+// Instancia por proyecto de cada tipo de trámite del catálogo: se crea la
+// primera vez que alguien marca el estado, adjunta un archivo o escribe una
+// nota para ese trámite en ese proyecto.
+model TramiteMunicipal {
+  id         String                 @id @default(cuid())
+  proyectoId String
+  proyecto   Proyecto               @relation(fields: [proyectoId], references: [id])
+  tipoId     String
+  tipo       TramiteMunicipalTipo   @relation(fields: [tipoId], references: [id])
+  // Se actualiza automáticamente: PRESENTADO al adjuntar el archivo,
+  // PENDIENTE si se lo quita. No se edita a mano.
+  estado     EstadoTramiteMunicipal @default(PENDIENTE)
+  notas      String?
+  // Un solo archivo por trámite (subir uno nuevo reemplaza al anterior).
+  archivoNombre String?
+  archivoUrl    String?
+  createdAt  DateTime               @default(now())
+  updatedAt  DateTime               @updatedAt
+
+  @@unique([proyectoId, tipoId])
+  @@index([proyectoId])
+}
+
+enum EstadoDocumento {
+  PENDIENTE
+  PRESENTADO
+}
+
+// Catálogo de categorías de la pestaña "Documentación" (a diferencia de
+// Municipal, acá las categorías no son un enum fijo: se crean y eliminan
+// libremente desde la UI, sin tocar código).
+model DocumentoCategoria {
+  id        String   @id @default(cuid())
+  nombre    String   @unique
+  orden     Int      @default(0)
+  activo    Boolean  @default(true)
+  // Si es true, esta categoría no tiene un catálogo de tipos compartido:
+  // en cada proyecto se genera automáticamente un tipo de documento por
+  // piso ("Planta baja", "Piso 1", ...) según Proyecto.cantidadPisos (ver
+  // sincronizarDocumentosPorPiso en src/actions/documentos.ts).
+  porPiso   Boolean  @default(false)
+  // Si tiene valor (ej. "S/"), los planos por piso de esta categoría se
+  // nombran con ese prefijo + el código corto del piso (S/PB, S/1°, ...,
+  // S/Azotea) en vez del nombre largo (Planta baja, Piso 1, ...).
+  prefijoPiso String?
+  // Si tiene elementos (ej. instalaciones: sanitaria, gas, ...), cada
+  // elemento se convierte en una subsección propia (DocumentoTipo.subSeccion)
+  // con un documento por piso adentro, en vez de un solo documento por piso.
+  subTipos    String[] @default([])
+  createdAt DateTime @default(now())
+
+  tipos DocumentoTipo[]
+}
+
+// Catálogo de tipos de documento dentro de una categoría. Los tipos
+// "globales" (proyectoId null) se crean y eliminan libremente desde la UI
+// (ver src/actions/documentos.ts) y son compartidos por todos los
+// proyectos. Los tipos con proyectoId asignado son generados
+// automáticamente para ese proyecto puntual (categorías "por piso").
+model DocumentoTipo {
+  id          String             @id @default(cuid())
+  categoriaId String
+  categoria   DocumentoCategoria @relation(fields: [categoriaId], references: [id])
+  // Null = tipo global (compartido). Con valor = generado para ese
+  // proyecto puntual (planos por piso).
+  proyectoId  String?
+  proyecto    Proyecto?          @relation("DocumentoTipoProyecto", fields: [proyectoId], references: [id])
+  nombre      String
+  descripcion String?
+  // Si tiene valor, agrupa este tipo dentro de una subsección dentro de su
+  // categoría (ej. "Instalación sanitaria" dentro de "Instalaciones"), cada
+  // una con su propio acordeón y barra de progreso. Null si la categoría no
+  // se subdivide.
+  subSeccion  String?
+  orden       Int                @default(0)
+  activo      Boolean            @default(true)
+  // Si es true, el usuario lo eliminó a mano para este proyecto puntual:
+  // sincronizarDocumentosPorPiso no lo vuelve a crear/reactivar aunque siga
+  // en la lista de pisos/sub-tipos esperada (evita "resucitar" algo que se
+  // borró a propósito la próxima vez que se guarda el proyecto).
+  excluido    Boolean            @default(false)
+  createdAt   DateTime           @default(now())
+
+  documentos Documento[]
+
+  @@unique([categoriaId, proyectoId, subSeccion, nombre])
+  @@index([categoriaId])
+  @@index([proyectoId])
+}
+
+// Instancia por proyecto de cada tipo de documento del catálogo: se crea la
+// primera vez que alguien adjunta un archivo o escribe una nota para ese
+// documento en ese proyecto.
+model Documento {
+  id         String          @id @default(cuid())
+  proyectoId String
+  proyecto   Proyecto        @relation(fields: [proyectoId], references: [id])
+  tipoId     String
+  tipo       DocumentoTipo   @relation(fields: [tipoId], references: [id])
+  // Se actualiza automáticamente: PRESENTADO al adjuntar el archivo,
+  // PENDIENTE si se lo quita. No se edita a mano.
+  estado     EstadoDocumento @default(PENDIENTE)
+  notas      String?
+  // Un solo archivo por documento (subir uno nuevo reemplaza al anterior).
+  archivoNombre String?
+  archivoUrl    String?
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+
+  @@unique([proyectoId, tipoId])
+  @@index([proyectoId])
 }
 
 model Proveedor {

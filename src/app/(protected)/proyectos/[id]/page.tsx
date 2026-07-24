@@ -4,9 +4,13 @@ import { prisma } from "@/lib/db";
 import { requireSeccion } from "@/lib/dal";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Accordion, AccordionItem, AccordionTrigger, AccordionPanel } from "@/components/ui/accordion";
 import { ProyectoDialog } from "@/components/proyectos/proyecto-dialog";
 import { TipoMovimientoBadge } from "@/components/movimientos/tipo-movimiento-badge";
-import { capitalizarOracion, formatFecha } from "@/lib/utils";
+import { MunicipalSection } from "@/components/municipal/municipal-section";
+import { DocumentacionSection } from "@/components/documentacion/documentacion-section";
+import { capitalizarOracion, formatFecha, formatNumeroPedido } from "@/lib/utils";
 
 const ESTADO_LABELS = {
   ACTIVO: "Activo",
@@ -14,13 +18,26 @@ const ESTADO_LABELS = {
   FINALIZADO: "Finalizado",
 };
 
+type MovimientoItem = {
+  id: string;
+  nombre: string;
+  cantidad: number;
+  cantidadEntregada?: number;
+  unidad: string;
+};
+
 type MovimientoRow = {
   key: string;
   tipo: "PEDIDO" | "ENTREGA";
   fecha: Date;
   pedidoId: string;
+  numeroPedido: number;
   proveedorNombre: string;
   itemsResumen: string;
+  items: MovimientoItem[];
+  notas: string | null;
+  archivoUrl: string | null;
+  numeroRemito?: string | null;
 };
 
 function resumirItems(nombres: string[]) {
@@ -62,16 +79,36 @@ export default async function ProyectoDetallePage({
       tipo: "PEDIDO" as const,
       fecha: p.fecha,
       pedidoId: p.id,
+      numeroPedido: p.numero,
       proveedorNombre: p.proveedor.nombre,
       itemsResumen: resumirItems(p.items.map((i) => i.material.nombre)),
+      items: p.items.map((i) => ({
+        id: i.id,
+        nombre: i.material.nombre,
+        cantidad: Number(i.cantidadPedida),
+        cantidadEntregada: Number(i.cantidadEntregada),
+        unidad: i.unidad,
+      })),
+      notas: p.notas,
+      archivoUrl: p.archivoUrl,
     })),
     ...entregas.map((e) => ({
       key: `entrega-${e.id}`,
       tipo: "ENTREGA" as const,
       fecha: e.fecha,
       pedidoId: e.pedidoId,
+      numeroPedido: e.pedido.numero,
       proveedorNombre: e.pedido.proveedor.nombre,
       itemsResumen: resumirItems(e.items.map((i) => i.pedidoItem.material.nombre)),
+      items: e.items.map((i) => ({
+        id: i.id,
+        nombre: i.pedidoItem.material.nombre,
+        cantidad: Number(i.cantidad),
+        unidad: i.pedidoItem.unidad,
+      })),
+      notas: e.notas,
+      archivoUrl: e.remitoUrl,
+      numeroRemito: e.numeroRemito,
     })),
   ].sort((a, b) => b.fecha.getTime() - a.fecha.getTime());
 
@@ -134,36 +171,90 @@ export default async function ProyectoDetallePage({
         <p className="mt-4 text-sm text-muted-foreground">{proyecto.descripcion}</p>
       )}
 
-      <div className="mt-8">
-        <h2 className="text-lg font-medium">Movimientos</h2>
-      </div>
+      <Tabs defaultValue="movimientos" className="mt-8">
+        <TabsList>
+          <TabsTrigger value="movimientos">Movimientos</TabsTrigger>
+          <TabsTrigger value="municipal">Municipal</TabsTrigger>
+          <TabsTrigger value="documentacion">Documentación</TabsTrigger>
+        </TabsList>
 
-      {movimientos.length === 0 ? (
-        <div className="mt-4 rounded-md border border-dashed p-6 text-sm text-muted-foreground">
-          Todavía no hay pedidos ni entregas cargados para este proyecto.
-        </div>
-      ) : (
-        <div className="mt-4 flex flex-col gap-2">
-          {movimientos.map((m) => (
-            <Link
-              key={m.key}
-              href={`/pedidos/${m.pedidoId}`}
-              className="flex items-center justify-between gap-3 rounded-md border p-3 hover:bg-muted/50"
-            >
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <TipoMovimientoBadge tipo={m.tipo} />
-                  <p className="font-medium">{m.proveedorNombre}</p>
+        <TabsContent value="movimientos" className="mt-4">
+          {movimientos.length === 0 ? (
+            <div className="rounded-md border border-dashed p-6 text-sm text-muted-foreground">
+              Todavía no hay pedidos ni entregas cargados para este proyecto.
+            </div>
+          ) : (
+            <Accordion multiple className="flex flex-col gap-2">
+              {movimientos.map((m) => (
+                <div key={m.key} className="rounded-md border">
+                  <AccordionItem value={m.key} className="border-0">
+                    <AccordionTrigger className="px-3 py-3">
+                      <div className="flex w-full min-w-0 items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <TipoMovimientoBadge tipo={m.tipo} />
+                            <p className="font-medium">{m.proveedorNombre}</p>
+                          </div>
+                          <p className="mt-1 truncate text-xs text-muted-foreground">
+                            {m.itemsResumen}
+                          </p>
+                        </div>
+                        <p className="shrink-0 text-xs text-muted-foreground">
+                          {formatFecha(m.fecha)}
+                        </p>
+                      </div>
+                    </AccordionTrigger>
+                    <AccordionPanel className="px-3">
+                      <div className="flex flex-col gap-3 border-t pt-3">
+                        <p className="text-xs text-muted-foreground">
+                          Pedido #{formatNumeroPedido(m.numeroPedido)}
+                          {m.tipo === "ENTREGA" && m.numeroRemito && ` · Remito ${m.numeroRemito}`}
+                        </p>
+                        <ul className="flex flex-col gap-1 text-sm">
+                          {m.items.map((item) => (
+                            <li key={item.id} className="flex items-center justify-between gap-3">
+                              <span>{item.nombre}</span>
+                              <span className="shrink-0 text-muted-foreground">
+                                {m.tipo === "PEDIDO"
+                                  ? `${item.cantidadEntregada}/${item.cantidad} ${item.unidad}`
+                                  : `${item.cantidad} ${item.unidad}`}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                        {m.notas && <p className="text-sm text-muted-foreground">{m.notas}</p>}
+                        <div className="flex items-center gap-3 text-xs">
+                          {m.archivoUrl && (
+                            <a
+                              href={m.archivoUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="underline"
+                            >
+                              {m.tipo === "PEDIDO" ? "Ver archivo adjunto" : "Ver remito"}
+                            </a>
+                          )}
+                          <Link href={`/pedidos/${m.pedidoId}`} className="ml-auto underline">
+                            Ver pedido completo
+                          </Link>
+                        </div>
+                      </div>
+                    </AccordionPanel>
+                  </AccordionItem>
                 </div>
-                <p className="mt-1 truncate text-xs text-muted-foreground">{m.itemsResumen}</p>
-              </div>
-              <p className="shrink-0 text-xs text-muted-foreground">
-                {formatFecha(m.fecha)}
-              </p>
-            </Link>
-          ))}
-        </div>
-      )}
+              ))}
+            </Accordion>
+          )}
+        </TabsContent>
+
+        <TabsContent value="municipal" className="mt-4">
+          <MunicipalSection proyectoId={proyecto.id} />
+        </TabsContent>
+
+        <TabsContent value="documentacion" className="mt-4">
+          <DocumentacionSection proyectoId={proyecto.id} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
