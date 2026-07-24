@@ -50,14 +50,23 @@ export async function createMaterial(_prevState: ActionState, formData: FormData
   const rubroId = parseRubroId(formData);
   const codigo = await generarCodigoMaterial(rubroId);
 
-  const material = await prisma.material.create({
-    data: {
-      ...validated.data,
-      codigo,
-      pesoPorBarra: validated.data.pesoPorBarra ?? null,
-      rubroId,
-    },
-  });
+  let material;
+  try {
+    material = await prisma.material.create({
+      data: {
+        ...validated.data,
+        codigo,
+        pesoPorBarra: validated.data.pesoPorBarra ?? null,
+        rubroId,
+      },
+    });
+  } catch (e) {
+    const target = (e as { meta?: { target?: string[] } })?.meta?.target;
+    if (target?.includes("codigo")) {
+      return { error: "Ya existe un material con ese código. Probá guardar de nuevo." };
+    }
+    throw e;
+  }
   revalidatePath("/proveedores");
   revalidatePath("/inventario");
   return {
