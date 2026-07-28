@@ -48,15 +48,15 @@ export default async function PedidoDetallePage({
   return (
     <div>
       <div className="border-b border-neutral-800 pb-4">
-        <div className="flex items-start justify-between">
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-3xl font-semibold tracking-tight">
-                Pedido <span className="font-mono tracking-[0.05em]">#{formatNumeroPedido(pedido.numero)}</span>
-              </h1>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-3xl font-semibold tracking-tight">
+              Pedido <span className="font-mono tracking-[0.05em]">#{formatNumeroPedido(pedido.numero)}</span>
+            </h1>
+            <div className="mt-1">
               <EstadoPedidoBadge estado={pedido.estado} />
             </div>
-            <p className="text-sm text-muted-foreground">
+            <p className="mt-1 text-sm text-muted-foreground">
               <Link href={`/proyectos/${pedido.proyectoId}`} className="hover:underline">
                 {pedido.proyecto.nombre}
               </Link>
@@ -80,7 +80,7 @@ export default async function PedidoDetallePage({
               </p>
             )}
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 flex-col items-end gap-2">
             <Button
               render={<Link href={`/pedidos/${pedido.id}/editar`} />}
               nativeButton={false}
