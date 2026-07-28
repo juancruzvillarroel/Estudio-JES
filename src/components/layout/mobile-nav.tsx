@@ -18,7 +18,7 @@ export function MobileNav({
   ).filter((item) => esAdmin || !item.key || paginasPermitidas.includes(item.key));
 
   return (
-    <nav className="fixed inset-x-0 bottom-0 z-10 flex border-t bg-background md:hidden">
+    <nav className="fixed inset-x-0 bottom-0 z-10 flex bg-neutral-900 md:hidden">
       {items.map((item) => {
         const active = pathname === item.href || pathname.startsWith(item.href + "/");
         const Icon = item.icon;
@@ -26,13 +26,13 @@ export function MobileNav({
           <Link
             key={item.href}
             href={item.href}
+            aria-label={item.label}
             className={cn(
-              "flex flex-1 flex-col items-center gap-1 py-2 text-[11px]",
-              active ? "text-foreground font-medium" : "text-muted-foreground"
+              "flex flex-1 items-center justify-center py-[19px]",
+              active ? "text-white" : "text-white/50"
             )}
           >
-            <Icon className="h-5 w-5" />
-            {item.label}
+            <Icon className="h-6 w-6" />
           </Link>
         );
       })}

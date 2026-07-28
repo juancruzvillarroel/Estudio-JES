@@ -21,13 +21,14 @@ export default async function UsuariosPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-semibold tracking-tight">Usuarios</h1>
-          <p className="text-sm text-muted-foreground">
-            Altas, edición y bajas de los usuarios que pueden acceder al sistema.
-          </p>
-        </div>
+      <div className="border-b border-neutral-800 pb-4">
+        <h1 className="text-3xl font-semibold tracking-tight">Usuarios</h1>
+        <p className="text-sm text-muted-foreground">
+          Altas, edición y bajas de los usuarios que pueden acceder al sistema.
+        </p>
+      </div>
+
+      <div className="mt-4">
         <UsuarioDialog
           trigger={
             <Button>

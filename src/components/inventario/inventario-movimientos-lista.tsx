@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/table";
 import { DeleteButton } from "@/components/ui/delete-button";
 import { deleteMovimientoInventario } from "@/actions/inventario";
-import { cn, formatFecha } from "@/lib/utils";
+import { formatFecha } from "@/lib/utils";
 
 export type MovimientoInventarioRow = {
   id: string;
@@ -22,11 +22,6 @@ export type MovimientoInventarioRow = {
   fecha: string;
   notas: string | null;
 };
-
-const COL_FECHA = "w-24";
-const COL_TIPO = "w-24";
-const COL_CANTIDAD = "w-28";
-const COL_ACCIONES = "w-20";
 
 export function InventarioMovimientosLista({
   movimientos,
@@ -43,38 +38,38 @@ export function InventarioMovimientosLista({
 
   return (
     <div className="rounded-md border">
-      <Table className="table-fixed">
+      <Table>
         <TableHeader>
           <TableRow>
-            <TableHead className={COL_FECHA}>Fecha</TableHead>
+            <TableHead>Fecha</TableHead>
             <TableHead>Material</TableHead>
-            <TableHead className={COL_TIPO}>Tipo</TableHead>
-            <TableHead className={cn(COL_CANTIDAD, "text-right")}>Cantidad</TableHead>
-            <TableHead className={cn(COL_ACCIONES, "text-right")}>Acciones</TableHead>
+            <TableHead>Tipo</TableHead>
+            <TableHead className="text-right">Cantidad</TableHead>
+            <TableHead className="text-right">Acciones</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
           {movimientos.map((mov) => (
             <TableRow key={mov.id}>
-              <TableCell className={COL_FECHA}>
-                {formatFecha(mov.fecha)}
-              </TableCell>
-              <TableCell className="truncate font-medium">{mov.materialNombre}</TableCell>
-              <TableCell className={COL_TIPO}>
+              <TableCell>{formatFecha(mov.fecha)}</TableCell>
+              <TableCell className="font-medium">{mov.materialNombre}</TableCell>
+              <TableCell>
                 <Badge variant={mov.tipo === "ENTRADA" ? "secondary" : "outline"}>
                   {mov.tipo === "ENTRADA" ? "Entrada" : "Salida"}
                 </Badge>
               </TableCell>
-              <TableCell className={cn(COL_CANTIDAD, "text-right")}>
+              <TableCell className="text-right">
                 {mov.tipo === "SALIDA" ? "-" : "+"}
                 {mov.cantidad} {mov.unidad}
               </TableCell>
-              <TableCell className={cn(COL_ACCIONES, "text-right")}>
-                <DeleteButton
-                  iconOnly
-                  action={() => deleteMovimientoInventario(mov.id)}
-                  confirmMessage="¿Eliminar este movimiento de inventario? Esta acción no se puede deshacer."
-                />
+              <TableCell className="text-right">
+                <div className="flex justify-end">
+                  <DeleteButton
+                    iconOnly
+                    action={() => deleteMovimientoInventario(mov.id)}
+                    confirmMessage="¿Eliminar este movimiento de inventario? Esta acción no se puede deshacer."
+                  />
+                </div>
               </TableCell>
             </TableRow>
           ))}

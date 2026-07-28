@@ -89,11 +89,12 @@ const TIPO_ITEMS: Record<Tipo, string> = {
   ENTREGA: "Entrega",
 };
 
-const COL_PEDIDO = "w-24";
-const COL_TIPO = "w-28";
-const COL_FECHA = "w-28";
-const COL_ULTIMA = "w-40";
-const COL_ACCIONES = "w-28";
+const COL_PEDIDO = "w-20 px-1.5 sm:w-24 sm:px-2";
+const COL_TIPO = "hidden sm:table-cell sm:w-28";
+const COL_PROVEEDOR = "hidden sm:table-cell";
+const COL_FECHA = "hidden sm:table-cell sm:w-28";
+const COL_ULTIMA = "w-16 px-1.5 sm:w-28 sm:px-2";
+const COL_ACCIONES = "w-24 px-1 sm:w-28 sm:px-2";
 
 export function PedidosEntregasList({
   pedidos,
@@ -254,9 +255,9 @@ export function PedidosEntregasList({
               <TableHead className={COL_PEDIDO}>Pedido</TableHead>
               <TableHead className={COL_TIPO}>Tipo</TableHead>
               <TableHead>Proyecto</TableHead>
-              <TableHead>Proveedor</TableHead>
+              <TableHead className={COL_PROVEEDOR}>Proveedor</TableHead>
               <TableHead className={COL_FECHA}>Fecha</TableHead>
-              <TableHead className={COL_ULTIMA}>Estado / Remito</TableHead>
+              <TableHead className={COL_ULTIMA}>Estado</TableHead>
               <TableHead className={cn(COL_ACCIONES, "text-right")}>Acciones</TableHead>
             </TableRow>
           </TableHeader>
@@ -280,20 +281,25 @@ export function PedidosEntregasList({
                     {f.tipo === "PEDIDO" ? "Pedido" : "Entrega"}
                   </Badge>
                 </TableCell>
-                <TableCell className="truncate">{f.proyectoNombre}</TableCell>
-                <TableCell className="truncate">{f.proveedorNombre}</TableCell>
+                <TableCell className="max-w-0">
+                  <div className="truncate">{f.proyectoNombre}</div>
+                  <div className="truncate text-xs text-muted-foreground sm:hidden">
+                    {f.proveedorNombre}
+                  </div>
+                </TableCell>
+                <TableCell className={cn(COL_PROVEEDOR, "truncate")}>{f.proveedorNombre}</TableCell>
                 <TableCell className={COL_FECHA}>
                   {formatFecha(f.fechaISO)}
                 </TableCell>
                 <TableCell className={cn(COL_ULTIMA, "truncate")}>
                   {f.tipo === "PEDIDO" ? (
-                    <EstadoPedidoBadge estado={f.estado} />
+                    <EstadoPedidoBadge estado={f.estado} soloIndicador />
                   ) : (
                     f.numeroRemito ?? "—"
                   )}
                 </TableCell>
                 <TableCell className={cn(COL_ACCIONES, "text-right")}>
-                  <div className="flex justify-end gap-1">
+                  <div className="flex w-full justify-end gap-0.5 sm:gap-1">
                     {(f.tipo === "PEDIDO" ? f.archivoUrl : f.remitoUrl) && (
                       <Button
                         render={

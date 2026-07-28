@@ -32,7 +32,7 @@ export default async function ProveedoresPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between border-b border-neutral-800 pb-4">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">Proveedores y materiales</h1>
           <p className="text-sm text-muted-foreground">

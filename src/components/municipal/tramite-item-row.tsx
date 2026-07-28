@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { DeleteButton } from "@/components/ui/delete-button";
+import { cn } from "@/lib/utils";
 import {
   actualizarNotasTramite,
   eliminarArchivoTramite,
@@ -79,16 +80,30 @@ export function TramiteItemRow({
     </Badge>
   );
 
+  const estadoIndicador = (
+    <span
+      role="img"
+      aria-label={estado === "PRESENTADO" ? "Presentado" : "Pendiente"}
+      title={estado === "PRESENTADO" ? "Presentado" : "Pendiente"}
+      className={cn(
+        "inline-block h-2.5 w-2.5 shrink-0 rounded-full",
+        estado === "PRESENTADO" ? "bg-success" : "bg-warning"
+      )}
+    />
+  );
+
   const botonAdjuntar = (
     <label
+      aria-label={archivoUrl ? "Reemplazar archivo" : "Adjuntar archivo"}
+      title={archivoUrl ? "Reemplazar archivo" : "Adjuntar archivo"}
       className={
         vista === "grid"
           ? "inline-flex w-full cursor-pointer items-center justify-center gap-1 rounded-md border border-dashed px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted"
-          : "inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-md border border-dashed px-2 py-1 text-xs text-muted-foreground hover:bg-muted"
+          : "inline-flex shrink-0 cursor-pointer items-center justify-center rounded-md border border-dashed p-1.5 text-muted-foreground hover:bg-muted"
       }
     >
       <Paperclip className="h-3 w-3" />
-      {archivoUrl ? "Reemplazar" : "Adjuntar"}
+      {vista === "grid" && (archivoUrl ? "Reemplazar" : "Adjuntar")}
       <input type="file" className="hidden" onChange={handleArchivo} disabled={pending} />
     </label>
   );
@@ -140,24 +155,20 @@ export function TramiteItemRow({
   if (vista === "lista") {
     return (
       <div className="flex flex-col gap-2 rounded-md border p-2.5">
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium">{nombre}</p>
-            {descripcion && (
-              <p className="truncate text-xs text-muted-foreground">{descripcion}</p>
-            )}
-          </div>
-          {botonAdjuntar}
+        <div className="flex flex-nowrap items-center gap-2">
+          {estadoIndicador}
+          <p className="min-w-0 flex-1 truncate text-sm font-medium">{nombre}</p>
           {archivoUrl && (
             <a
               href={archivoUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="max-w-[10rem] truncate text-xs text-muted-foreground hover:underline"
+              className="hidden min-w-0 max-w-[8rem] truncate text-xs text-muted-foreground hover:underline sm:inline"
             >
               {archivoNombre}
             </a>
           )}
+          {botonAdjuntar}
           {archivoUrl && (
             <button
               type="button"
@@ -170,7 +181,6 @@ export function TramiteItemRow({
             </button>
           )}
           {botonEliminarTipo}
-          <div className="ml-auto shrink-0">{badge}</div>
         </div>
         {notasSection}
       </div>

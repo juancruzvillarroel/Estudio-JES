@@ -85,14 +85,16 @@ export default async function NuevoMovimientoPage({
 
   return (
     <div>
-      <h1 className="text-3xl font-semibold tracking-tight">
-        {tipoInicial === "ENTREGA" ? "Nueva entrega" : "Nuevo pedido"}
-      </h1>
-      <p className="text-sm text-muted-foreground">
-        {tipoInicial === "ENTREGA"
-          ? "Registrá la entrega de un pedido existente."
-          : "Cargá un pedido nuevo para un proveedor."}
-      </p>
+      <div className="border-b border-neutral-800 pb-4">
+        <h1 className="text-3xl font-semibold tracking-tight">
+          {tipoInicial === "ENTREGA" ? "Nueva entrega" : "Nuevo pedido"}
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          {tipoInicial === "ENTREGA"
+            ? "Registrá la entrega de un pedido existente."
+            : "Cargá un pedido nuevo para un proveedor."}
+        </p>
+      </div>
       <div className="mt-6 max-w-2xl">
         <MovimientoForm
           proyectos={proyectos}

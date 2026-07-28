@@ -79,8 +79,10 @@ export default async function EditarPedidoPage({
 
   return (
     <div>
-      <h1 className="text-3xl font-semibold tracking-tight">Editar pedido</h1>
-      <p className="text-sm text-muted-foreground">Modificá los datos del pedido.</p>
+      <div className="border-b border-neutral-800 pb-4">
+        <h1 className="text-3xl font-semibold tracking-tight">Editar pedido</h1>
+        <p className="text-sm text-muted-foreground">Modificá los datos del pedido.</p>
+      </div>
       <div className="mt-6 max-w-2xl">
         <EditarPedidoForm
           pedidoId={pedido.id}

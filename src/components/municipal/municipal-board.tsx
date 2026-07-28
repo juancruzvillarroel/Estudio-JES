@@ -174,7 +174,7 @@ export function MunicipalBoard({
                         const tramitesEtapa = (
                           <div
                             className={cn(
-                              vista === "grid" ? "grid grid-cols-3 gap-3" : "flex flex-col gap-2"
+                              vista === "grid" ? "grid grid-cols-1 gap-3" : "flex flex-col gap-2"
                             )}
                           >
                             {tiposEtapa.map((tipo) => {

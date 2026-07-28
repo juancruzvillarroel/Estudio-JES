@@ -38,12 +38,14 @@ export default async function NuevaEntregaPage({
 
   return (
     <div>
-      <h1 className="text-3xl font-semibold tracking-tight">
-        Registrar entrega — Pedido #{formatNumeroPedido(pedido.numero)}
-      </h1>
-      <p className="text-sm text-muted-foreground">
-        Cargá lo que te entregó el proveedor. Podés registrar entregas parciales.
-      </p>
+      <div className="border-b border-neutral-800 pb-4">
+        <h1 className="text-3xl font-semibold tracking-tight">
+          Registrar entrega — Pedido #{formatNumeroPedido(pedido.numero)}
+        </h1>
+        <p className="text-sm text-muted-foreground">
+          Cargá lo que te entregó el proveedor. Podés registrar entregas parciales.
+        </p>
+      </div>
       <div className="mt-6 max-w-xl">
         <EntregaForm pedidoId={pedido.id} itemsPendientes={itemsPendientes} />
       </div>

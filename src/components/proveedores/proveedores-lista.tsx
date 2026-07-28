@@ -95,15 +95,15 @@ export function ProveedoresLista({
       </div>
 
       <div className="mt-4 rounded-md border">
-        <Table className="table-fixed">
+        <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[10%]">Código</TableHead>
-              <TableHead className="w-[16%]">Nombre</TableHead>
-              <TableHead className="w-[12%]">Contacto</TableHead>
-              <TableHead className="w-[16%]">Teléfono</TableHead>
-              <TableHead className="w-[30%]">Email</TableHead>
-              <TableHead className="w-[16%] text-right">Acciones</TableHead>
+              <TableHead>Código</TableHead>
+              <TableHead>Nombre</TableHead>
+              <TableHead>Contacto</TableHead>
+              <TableHead>Teléfono</TableHead>
+              <TableHead>Email</TableHead>
+              <TableHead className="text-right">Acciones</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -116,35 +116,35 @@ export function ProveedoresLista({
             )}
             {proveedoresFiltrados.map((p) => (
               <TableRow key={p.id}>
-                <TableCell className="whitespace-normal break-words font-mono text-xs text-muted-foreground">
-                  {p.codigo}
-                </TableCell>
-                <TableCell className="whitespace-normal break-words font-medium">
+                <TableCell className="font-mono text-xs text-muted-foreground">{p.codigo}</TableCell>
+                <TableCell className="font-medium">
                   <Link href={`/proveedores/${p.id}`} className="hover:underline">
                     {p.nombre}
                   </Link>
                 </TableCell>
-                <TableCell className="whitespace-normal break-words">{p.contacto ?? "—"}</TableCell>
-                <TableCell className="whitespace-normal break-words">{p.telefono ?? "—"}</TableCell>
-                <TableCell className="whitespace-normal break-words">{p.email ?? "—"}</TableCell>
-                <TableCell className="flex justify-end gap-1">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    render={<Link href={`/proveedores/${p.id}`} />}
-                    nativeButton={false}
-                  >
-                    Ver
-                  </Button>
-                  <ProveedorDialog
-                    proveedor={p}
-                    rubros={rubros}
-                    trigger={
-                      <Button type="button" variant="ghost" size="icon-sm" aria-label="Editar proveedor">
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                    }
-                  />
+                <TableCell>{p.contacto ?? "—"}</TableCell>
+                <TableCell>{p.telefono ?? "—"}</TableCell>
+                <TableCell>{p.email ?? "—"}</TableCell>
+                <TableCell className="text-right">
+                  <div className="flex justify-end gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      render={<Link href={`/proveedores/${p.id}`} />}
+                      nativeButton={false}
+                    >
+                      Ver
+                    </Button>
+                    <ProveedorDialog
+                      proveedor={p}
+                      rubros={rubros}
+                      trigger={
+                        <Button type="button" variant="ghost" size="icon-sm" aria-label="Editar proveedor">
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      }
+                    />
+                  </div>
                 </TableCell>
               </TableRow>
             ))}

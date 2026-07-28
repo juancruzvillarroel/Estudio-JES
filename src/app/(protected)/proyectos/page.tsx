@@ -18,7 +18,7 @@ export default async function ProyectosPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between border-b border-neutral-800 pb-4">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">Proyectos</h1>
           <p className="text-sm text-muted-foreground">Todas las obras del estudio.</p>

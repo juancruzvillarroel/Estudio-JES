@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db";
 import { requireSeccion } from "@/lib/dal";
+import { PageHeader } from "@/components/layout/page-header";
 import { NuevoMovimientoButton } from "@/components/movimientos/nuevo-movimiento-button";
 import {
   PedidosEntregasList,
@@ -51,13 +52,11 @@ export default async function PedidosPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-semibold tracking-tight">Pedidos y entregas</h1>
-          <p className="text-sm text-muted-foreground">
-            Todos los pedidos de materiales y las entregas registradas.
-          </p>
-        </div>
+      <div className="flex items-start justify-between border-b border-neutral-800 pb-4">
+        <PageHeader
+          title="Pedidos y entregas"
+          subtitle="Todos los pedidos de materiales y las entregas registradas."
+        />
         <NuevoMovimientoButton />
       </div>
 

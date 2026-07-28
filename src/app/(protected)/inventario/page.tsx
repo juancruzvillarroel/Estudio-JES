@@ -54,23 +54,11 @@ export default async function InventarioPage() {
 
   return (
     <div>
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-semibold tracking-tight">Inventario</h1>
-          <p className="text-sm text-muted-foreground">
-            Stock de materiales almacenados en el estudio.
-          </p>
-        </div>
-        <MovimientoInventarioDialog
-          materiales={materialesOpciones}
-          rubros={rubros}
-          trigger={
-            <Button>
-              <Plus className="h-4 w-4" />
-              Nuevo movimiento
-            </Button>
-          }
-        />
+      <div className="border-b border-neutral-800 pb-4">
+        <h1 className="text-3xl font-semibold tracking-tight">Inventario</h1>
+        <p className="text-sm text-muted-foreground">
+          Stock de materiales almacenados en el estudio.
+        </p>
       </div>
 
       <Tabs defaultValue="movimientos" className="mt-6">
@@ -78,6 +66,19 @@ export default async function InventarioPage() {
           <TabsTrigger value="movimientos">Movimientos</TabsTrigger>
           <TabsTrigger value="stock">Stock</TabsTrigger>
         </TabsList>
+
+        <div className="mt-4 flex justify-start">
+          <MovimientoInventarioDialog
+            materiales={materialesOpciones}
+            rubros={rubros}
+            trigger={
+              <Button>
+                <Plus className="h-4 w-4" />
+                Nuevo movimiento
+              </Button>
+            }
+          />
+        </div>
 
         <TabsContent value="movimientos" className="mt-4">
           <InventarioMovimientosLista movimientos={movimientosRows} />

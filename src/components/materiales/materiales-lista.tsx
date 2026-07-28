@@ -91,15 +91,15 @@ export function MaterialesLista({
       </div>
 
       <div className="mt-4 rounded-md border">
-        <Table className="table-fixed">
+        <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[12%]">Código</TableHead>
-              <TableHead className="w-[34%]">Nombre</TableHead>
-              <TableHead className="w-[10%]">Unidad</TableHead>
-              <TableHead className="w-[18%]">Rubro</TableHead>
-              <TableHead className="w-[12%]">Estado</TableHead>
-              <TableHead className="w-[14%] text-right">Acciones</TableHead>
+              <TableHead>Código</TableHead>
+              <TableHead>Nombre</TableHead>
+              <TableHead>Unidad</TableHead>
+              <TableHead>Rubro</TableHead>
+              <TableHead>Estado</TableHead>
+              <TableHead className="text-right">Acciones</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -112,28 +112,28 @@ export function MaterialesLista({
             )}
             {materialesFiltrados.map((m) => (
               <TableRow key={m.id}>
-                <TableCell className="whitespace-normal break-words font-mono text-xs text-muted-foreground">
-                  {m.codigo}
-                </TableCell>
-                <TableCell className="whitespace-normal break-words font-medium">{m.nombre}</TableCell>
-                <TableCell className="whitespace-normal break-words">{m.unidad}</TableCell>
-                <TableCell className="whitespace-normal break-words">{m.rubro?.nombre ?? "—"}</TableCell>
+                <TableCell className="font-mono text-xs text-muted-foreground">{m.codigo}</TableCell>
+                <TableCell className="font-medium">{m.nombre}</TableCell>
+                <TableCell>{m.unidad}</TableCell>
+                <TableCell>{m.rubro?.nombre ?? "—"}</TableCell>
                 <TableCell>
                   <Badge variant={m.activo ? "secondary" : "outline"}>
                     {m.activo ? "Activo" : "Inactivo"}
                   </Badge>
                 </TableCell>
-                <TableCell className="flex flex-wrap justify-end gap-1">
-                  <MaterialDialog
-                    material={m}
-                    rubros={rubros}
-                    trigger={
-                      <Button type="button" variant="ghost" size="icon-sm" aria-label="Editar material">
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                    }
-                  />
-                  <ToggleActivoButton id={m.id} activo={m.activo} />
+                <TableCell className="text-right">
+                  <div className="flex justify-end gap-1">
+                    <MaterialDialog
+                      material={m}
+                      rubros={rubros}
+                      trigger={
+                        <Button type="button" variant="ghost" size="icon-sm" aria-label="Editar material">
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                      }
+                    />
+                    <ToggleActivoButton id={m.id} activo={m.activo} />
+                  </div>
                 </TableCell>
               </TableRow>
             ))}

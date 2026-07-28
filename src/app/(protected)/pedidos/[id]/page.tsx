@@ -47,59 +47,61 @@ export default async function PedidoDetallePage({
 
   return (
     <div>
-      <div className="flex items-start justify-between">
-        <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-3xl font-semibold tracking-tight">
-              Pedido <span className="font-mono tracking-[0.05em]">#{formatNumeroPedido(pedido.numero)}</span>
-            </h1>
-            <EstadoPedidoBadge estado={pedido.estado} />
-          </div>
-          <p className="text-sm text-muted-foreground">
-            <Link href={`/proyectos/${pedido.proyectoId}`} className="hover:underline">
-              {pedido.proyecto.nombre}
-            </Link>
-            {" · "}
-            <Link href={`/proveedores/${pedido.proveedorId}`} className="hover:underline">
-              {pedido.proveedor.nombre}
-            </Link>
-            {" · "}
-            {formatFecha(pedido.fecha)}
-          </p>
-          {pedido.archivoUrl && (
+      <div className="border-b border-neutral-800 pb-4">
+        <div className="flex items-start justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-3xl font-semibold tracking-tight">
+                Pedido <span className="font-mono tracking-[0.05em]">#{formatNumeroPedido(pedido.numero)}</span>
+              </h1>
+              <EstadoPedidoBadge estado={pedido.estado} />
+            </div>
             <p className="text-sm text-muted-foreground">
-              <a
-                href={pedido.archivoUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="underline"
-              >
-                Ver archivo adjunto
-              </a>
+              <Link href={`/proyectos/${pedido.proyectoId}`} className="hover:underline">
+                {pedido.proyecto.nombre}
+              </Link>
+              {" · "}
+              <Link href={`/proveedores/${pedido.proveedorId}`} className="hover:underline">
+                {pedido.proveedor.nombre}
+              </Link>
+              {" · "}
+              {formatFecha(pedido.fecha)}
             </p>
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            render={<Link href={`/pedidos/${pedido.id}/editar`} />}
-            nativeButton={false}
-            type="button"
-            variant="outline"
-            size="icon"
-            aria-label="Editar pedido"
-          >
-            <Pencil className="h-4 w-4" />
-          </Button>
-          <EliminarPedidoButton pedidoId={pedido.id} numero={formatNumeroPedido(pedido.numero)} />
-          {puedeRegistrarEntrega && (
-            <Button render={<Link href={`/pedidos/${pedido.id}/entregas/nueva`} />} nativeButton={false}>
-              Registrar entrega
+            {pedido.archivoUrl && (
+              <p className="text-sm text-muted-foreground">
+                <a
+                  href={pedido.archivoUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="underline"
+                >
+                  Ver archivo adjunto
+                </a>
+              </p>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              render={<Link href={`/pedidos/${pedido.id}/editar`} />}
+              nativeButton={false}
+              type="button"
+              variant="outline"
+              size="icon"
+              aria-label="Editar pedido"
+            >
+              <Pencil className="h-4 w-4" />
             </Button>
-          )}
+            <EliminarPedidoButton pedidoId={pedido.id} numero={formatNumeroPedido(pedido.numero)} />
+            {puedeRegistrarEntrega && (
+              <Button render={<Link href={`/pedidos/${pedido.id}/entregas/nueva`} />} nativeButton={false}>
+                Registrar entrega
+              </Button>
+            )}
+          </div>
         </div>
-      </div>
 
-      {pedido.notas && <p className="mt-4 text-sm text-muted-foreground">{pedido.notas}</p>}
+        {pedido.notas && <p className="mt-4 text-sm text-muted-foreground">{pedido.notas}</p>}
+      </div>
 
       <div className="mt-6 rounded-md border">
         <Table>

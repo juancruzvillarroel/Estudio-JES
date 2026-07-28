@@ -57,10 +57,12 @@ export default async function DashboardPage() {
 
   return (
     <div>
-      <h1 className="text-3xl font-semibold tracking-tight">Inicio</h1>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Abastecimiento de todos los proyectos activos, en un mismo lugar.
-      </p>
+      <div className="border-b border-neutral-800 pb-4">
+        <h1 className="text-3xl font-semibold tracking-tight">Inicio</h1>
+        <p className="mt-1 whitespace-nowrap text-xs text-muted-foreground sm:text-sm">
+          Abastecimiento de proyectos activos en un solo lugar.
+        </p>
+      </div>
 
       {conAbastecimientoAbierto.length === 0 ? (
         <p className="mt-8 text-sm text-muted-foreground">
@@ -80,11 +82,13 @@ export default async function DashboardPage() {
                 </CardHeader>
                 <CardContent>
                   <p className="text-xs font-medium text-muted-foreground">Faltan:</p>
-                  <ul className="mt-1 text-sm text-error">
+                  <ul className="mt-1 space-y-1.5 text-sm text-error">
                     {faltantes.slice(0, 4).map((f) => (
-                      <li key={`${f.nombre}-${f.proveedorNombre}`}>
-                        {f.cantidad} {f.unidad} de {f.nombre}{" "}
-                        <span className="font-medium text-foreground">— {f.proveedorNombre}</span>
+                      <li key={`${f.nombre}-${f.proveedorNombre}`} className="flex flex-col">
+                        <span>
+                          {f.cantidad} {f.unidad} de {f.nombre}
+                        </span>
+                        <span className="text-xs font-medium text-foreground">{f.proveedorNombre}</span>
                       </li>
                     ))}
                     {faltantes.length > 4 && (

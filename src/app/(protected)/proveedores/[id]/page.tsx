@@ -160,7 +160,7 @@ export default async function ProveedorDetallePage({
 
   return (
     <div>
-      <div className="flex items-start justify-between">
+      <div className="flex items-start justify-between border-b border-neutral-800 pb-4">
         <div>
           <h1 className="text-3xl font-semibold tracking-tight">{proveedor.nombre}</h1>
           <p className="text-sm text-muted-foreground">
