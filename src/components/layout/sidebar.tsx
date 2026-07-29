@@ -23,7 +23,7 @@ export function Sidebar({
   ).filter((item) => esAdmin || !item.key || paginasPermitidas.includes(item.key));
 
   return (
-    <aside className="hidden md:flex md:w-56 md:flex-col md:border-r md:border-neutral-800 md:bg-black">
+    <aside className="hidden md:fixed md:inset-y-0 md:left-0 md:z-20 md:flex md:w-56 md:flex-col md:overflow-y-auto md:border-r md:border-neutral-800 md:bg-black">
       <div className="px-5 py-6">
         <Image
           src="/logo-jes.png"

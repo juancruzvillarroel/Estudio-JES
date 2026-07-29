@@ -70,3 +70,35 @@ export async function deleteRubro(id: string): Promise<ActionState> {
   revalidatePath("/proveedores");
   return { success: true };
 }
+
+/**
+ * Reordena los rubros según el arreglo de ids recibido (nuevo orden) y
+ * renumera su código correlativo (01, 02, ...) para que refleje esa
+ * posición. Se hace en dos pasadas porque `codigoPrefijo` es único: la
+ * primera libera los valores actuales con un placeholder temporal para
+ * evitar choques al reasignarlos en la segunda pasada.
+ */
+export async function reordenarRubros(idsEnOrden: string[]): Promise<ActionState> {
+  await requireSeccion("proveedores");
+
+  await prisma.$transaction(
+    idsEnOrden.map((id, index) =>
+      prisma.rubro.update({
+        where: { id },
+        data: { codigoPrefijo: `_tmp-${index}` },
+      })
+    )
+  );
+
+  await prisma.$transaction(
+    idsEnOrden.map((id, index) =>
+      prisma.rubro.update({
+        where: { id },
+        data: { orden: index, codigoPrefijo: String(index + 1).padStart(2, "0") },
+      })
+    )
+  );
+
+  revalidatePath("/proveedores");
+  return { success: true };
+}
