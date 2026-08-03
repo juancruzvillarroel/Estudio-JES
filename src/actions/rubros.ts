@@ -8,6 +8,8 @@ import { generarPrefijoRubro } from "@/lib/codigos";
 
 export type ActionState = { error?: string; success?: boolean } | undefined;
 
+const SUBRUBROS_DEFAULT = ["MATERIALES", "MANO DE OBRA"];
+
 function parseForm(formData: FormData) {
   const codigoPrefijoRaw = formData.get("codigoPrefijo");
   return RubroSchema.safeParse({
@@ -27,7 +29,10 @@ export async function createRubro(_prevState: ActionState, formData: FormData): 
 
   try {
     const codigoPrefijo = await generarPrefijoRubro();
-    await prisma.rubro.create({ data: { ...validated.data, codigoPrefijo } });
+    const rubro = await prisma.rubro.create({ data: { ...validated.data, codigoPrefijo } });
+    await prisma.subrubro.createMany({
+      data: SUBRUBROS_DEFAULT.map((nombre, orden) => ({ rubroId: rubro.id, nombre, orden })),
+    });
   } catch {
     return { error: "Ya existe un rubro con ese nombre." };
   }
@@ -73,7 +78,7 @@ export async function deleteRubro(id: string): Promise<ActionState> {
 
 /**
  * Reordena los rubros según el arreglo de ids recibido (nuevo orden) y
- * renumera su código correlativo (01, 02, ...) para que refleje esa
+ * renumera su código correlativo (00, 01, ...) para que refleje esa
  * posición. Se hace en dos pasadas porque `codigoPrefijo` es único: la
  * primera libera los valores actuales con un placeholder temporal para
  * evitar choques al reasignarlos en la segunda pasada.
@@ -94,7 +99,7 @@ export async function reordenarRubros(idsEnOrden: string[]): Promise<ActionState
     idsEnOrden.map((id, index) =>
       prisma.rubro.update({
         where: { id },
-        data: { orden: index, codigoPrefijo: String(index + 1).padStart(2, "0") },
+        data: { orden: index, codigoPrefijo: String(index).padStart(2, "0") },
       })
     )
   );

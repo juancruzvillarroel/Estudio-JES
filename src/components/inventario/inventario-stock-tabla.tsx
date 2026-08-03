@@ -3,13 +3,7 @@
 import { useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { RubroFiltroMultiple, SIN_RUBRO } from "@/components/rubros/rubro-filtro-multiple";
 import {
   Table,
   TableBody,
@@ -30,9 +24,6 @@ type StockMaterial = {
 
 type RubroOpcion = { id: string; nombre: string };
 
-const SIN_RUBRO = "sin-rubro";
-const TODOS_LOS_RUBROS = "todos";
-
 export function InventarioStockTabla({
   stock,
   rubros,
@@ -41,24 +32,17 @@ export function InventarioStockTabla({
   rubros: RubroOpcion[];
 }) {
   const [busqueda, setBusqueda] = useState("");
-  const [rubroFiltro, setRubroFiltro] = useState<string>(TODOS_LOS_RUBROS);
-
-  const rubroSelectItems = useMemo(() => {
-    const items: Record<string, string> = { [TODOS_LOS_RUBROS]: "Todos los rubros" };
-    for (const r of rubros) items[r.id] = r.nombre;
-    items[SIN_RUBRO] = "Sin rubro";
-    return items;
-  }, [rubros]);
+  const [rubroIds, setRubroIds] = useState<string[]>([]);
 
   const stockFiltrado = useMemo(() => {
     const texto = busqueda.trim().toLowerCase();
     return stock.filter((m) => {
       const coincideTexto = !texto || m.nombre.toLowerCase().includes(texto);
       const rubroKey = m.rubroId ?? SIN_RUBRO;
-      const coincideRubro = rubroFiltro === TODOS_LOS_RUBROS || rubroFiltro === rubroKey;
+      const coincideRubro = rubroIds.length === 0 || rubroIds.includes(rubroKey);
       return coincideTexto && coincideRubro;
     });
-  }, [stock, busqueda, rubroFiltro]);
+  }, [stock, busqueda, rubroIds]);
 
   const grupos = useMemo(() => {
     const ordenRubros = new Map(rubros.map((r, index) => [r.id, index]));
@@ -92,22 +76,13 @@ export function InventarioStockTabla({
           onChange={(e) => setBusqueda(e.target.value)}
           className="w-56"
         />
-        <Select
-          value={rubroFiltro}
-          onValueChange={(value) => setRubroFiltro(value ?? TODOS_LOS_RUBROS)}
-          items={rubroSelectItems}
-        >
-          <SelectTrigger className="w-56">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {Object.entries(rubroSelectItems).map(([value, label]) => (
-              <SelectItem key={value} value={value}>
-                {label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <RubroFiltroMultiple
+          id="filtroRubroStock"
+          rubros={rubros}
+          value={rubroIds}
+          onChange={setRubroIds}
+          incluirSinRubro
+        />
       </div>
 
       <div className="mt-4 flex flex-col gap-6">

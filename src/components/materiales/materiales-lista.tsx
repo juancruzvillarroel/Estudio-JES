@@ -4,13 +4,7 @@ import { useMemo, useState } from "react";
 import { Pencil } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { RubroFiltroMultiple } from "@/components/rubros/rubro-filtro-multiple";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -45,7 +39,7 @@ export function MaterialesLista({
   nuevoMaterial?: React.ReactNode;
 }) {
   const [busqueda, setBusqueda] = useState("");
-  const [rubroId, setRubroId] = useState("todos");
+  const [rubroIds, setRubroIds] = useState<string[]>([]);
 
   const materialesFiltrados = useMemo(() => {
     const texto = busqueda.trim().toLowerCase();
@@ -54,10 +48,11 @@ export function MaterialesLista({
         !texto ||
         m.nombre.toLowerCase().includes(texto) ||
         m.codigo.toLowerCase().includes(texto);
-      const coincideRubro = rubroId === "todos" || m.rubroId === rubroId;
+      const coincideRubro =
+        rubroIds.length === 0 || (m.rubroId !== null && rubroIds.includes(m.rubroId));
       return coincideTexto && coincideRubro;
     });
-  }, [materiales, busqueda, rubroId]);
+  }, [materiales, busqueda, rubroIds]);
 
   return (
     <div>
@@ -69,23 +64,12 @@ export function MaterialesLista({
             onChange={(e) => setBusqueda(e.target.value)}
             className="w-56"
           />
-          <Select
-            value={rubroId}
-            onValueChange={(value) => setRubroId(value as string)}
-            items={{ todos: "Todos los rubros", ...Object.fromEntries(rubros.map((r) => [r.id, r.nombre])) }}
-          >
-            <SelectTrigger className="w-48">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="todos">Todos los rubros</SelectItem>
-              {rubros.map((r) => (
-                <SelectItem key={r.id} value={r.id}>
-                  {r.nombre}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <RubroFiltroMultiple
+            id="filtroRubroMateriales"
+            rubros={rubros}
+            value={rubroIds}
+            onChange={setRubroIds}
+          />
         </div>
         {nuevoMaterial}
       </div>

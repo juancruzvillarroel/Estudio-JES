@@ -1,23 +1,32 @@
 "use client";
 
+import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LogOut } from "lucide-react";
+import { LogOut, ChevronDown } from "lucide-react";
 import { NAV_ITEMS } from "./nav-items";
 import { logout } from "@/actions/auth";
 import { cn } from "@/lib/utils";
+
+type ProyectoOpcion = { id: string; nombre: string };
 
 export function Sidebar({
   nombre,
   esAdmin,
   paginasPermitidas,
+  proyectos,
 }: {
   nombre: string;
   esAdmin: boolean;
   paginasPermitidas: string[];
+  proyectos: ProyectoOpcion[];
 }) {
   const pathname = usePathname();
+  const enProyectos = pathname.startsWith("/proyectos");
+  const [manualOpen, setManualOpen] = useState<boolean | null>(null);
+  const proyectosAbierto = manualOpen ?? enProyectos;
+
   const items = NAV_ITEMS.filter(
     (item) => !item.adminOnly || esAdmin
   ).filter((item) => esAdmin || !item.key || paginasPermitidas.includes(item.key));
@@ -37,6 +46,66 @@ export function Sidebar({
         {items.map((item) => {
           const active = pathname === item.href || pathname.startsWith(item.href + "/");
           const Icon = item.icon;
+
+          if (item.key === "proyectos") {
+            return (
+              <div key={item.href}>
+                <button
+                  type="button"
+                  onClick={() => setManualOpen(!proyectosAbierto)}
+                  className={cn(
+                    "flex w-full items-center gap-3 rounded-md px-3 py-2 text-sm text-white transition-colors",
+                    active
+                      ? "bg-neutral-800 font-medium"
+                      : "text-neutral-300 hover:bg-neutral-800 hover:text-white"
+                  )}
+                >
+                  <Icon className="h-4 w-4" />
+                  <span className="flex-1 text-left">{item.label}</span>
+                  <ChevronDown
+                    className={cn(
+                      "h-4 w-4 shrink-0 transition-transform",
+                      proyectosAbierto && "rotate-180"
+                    )}
+                  />
+                </button>
+                {proyectosAbierto && (
+                  <div className="mt-1 mb-1 flex flex-col gap-0.5 border-l border-neutral-800 pl-5">
+                    <Link
+                      href="/proyectos"
+                      className={cn(
+                        "truncate rounded-md px-2 py-1.5 text-xs transition-colors",
+                        pathname === "/proyectos"
+                          ? "font-medium text-white"
+                          : "text-neutral-400 hover:text-white"
+                      )}
+                    >
+                      Ver todas
+                    </Link>
+                    {proyectos.map((p) => {
+                      const proyectoActivo =
+                        pathname === `/proyectos/${p.id}` || pathname.startsWith(`/proyectos/${p.id}/`);
+                      return (
+                        <Link
+                          key={p.id}
+                          href={`/proyectos/${p.id}`}
+                          className={cn(
+                            "truncate rounded-md px-2 py-1.5 text-xs transition-colors",
+                            proyectoActivo
+                              ? "font-medium text-white"
+                              : "text-neutral-400 hover:text-white"
+                          )}
+                        >
+                          {p.nombre}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          }
+
           return (
             <Link
               key={item.href}

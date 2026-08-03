@@ -67,8 +67,16 @@ export async function createMaterial(_prevState: ActionState, formData: FormData
     }
     throw e;
   }
+  // Ojo: no revalidamos "/inventario" acá a propósito. Este create se dispara
+  // muy seguido desde el diálogo "+ Nuevo material" anidado dentro de "Nuevo
+  // movimiento de inventario" (dos diálogos abiertos al mismo tiempo sobre esa
+  // misma ruta). Revalidar la ruta que ya está montada, justo en medio de la
+  // transición que cierra ese diálogo anidado, hacía que la actualización de
+  // cierre se perdiera: el material se guardaba bien en la base pero el
+  // diálogo se quedaba colgado sin avisar ("no pasa nada visible"). La lista
+  // de materiales de esa página ya se actualiza del lado del cliente vía
+  // onCreated, así que esta revalidación no hacía falta.
   revalidatePath("/proveedores");
-  revalidatePath("/inventario");
   return {
     success: true,
     material: {

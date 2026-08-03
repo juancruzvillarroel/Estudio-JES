@@ -19,6 +19,10 @@ export function formatMonto(monto: number) {
   return monto.toLocaleString("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 })
 }
 
+export function formatMontoMoneda(monto: number, moneda: "ARS" | "USD") {
+  return monto.toLocaleString("es-AR", { style: "currency", currency: moneda, maximumFractionDigits: 0 })
+}
+
 /**
  * Formatea una fecha guardada como "día calendario" (medianoche UTC, la
  * forma en que la guarda un <input type="date">) sin dejar que la zona

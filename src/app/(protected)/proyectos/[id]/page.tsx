@@ -10,6 +10,9 @@ import { ProyectoDialog } from "@/components/proyectos/proyecto-dialog";
 import { TipoMovimientoBadge } from "@/components/movimientos/tipo-movimiento-badge";
 import { MunicipalSection } from "@/components/municipal/municipal-section";
 import { DocumentacionSection } from "@/components/documentacion/documentacion-section";
+import { ProyectoInversoresPanel } from "@/components/flujo-fondos/proyecto-inversores-panel";
+import { FlujoFondosSection } from "@/components/flujo-fondos/flujo-fondos-section";
+import { movimientoFondoInclude, mapMovimientoFondo, mapProyectoInversor } from "@/lib/flujo-fondos";
 import { capitalizarOracion, formatFecha, formatNumeroPedido } from "@/lib/utils";
 
 const ESTADO_LABELS = {
@@ -51,27 +54,59 @@ export default async function ProyectoDetallePage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  await requireSeccion("proyectos");
+  const session = await requireSeccion("proyectos");
+  const tieneFlujoFondos = session.esAdmin || session.paginasPermitidas.includes("flujo-fondos");
 
   const { id } = await params;
-  const [proyecto, pedidos, entregas] = await Promise.all([
-    prisma.proyecto.findUnique({ where: { id } }),
-    prisma.pedido.findMany({
-      where: { proyectoId: id },
-      include: { proveedor: true, items: { include: { material: true } } },
-    }),
-    prisma.entrega.findMany({
-      where: { pedido: { proyectoId: id } },
-      include: {
-        pedido: { include: { proveedor: true } },
-        items: { include: { pedidoItem: { include: { material: true } } } },
-      },
-    }),
-  ]);
+  const [proyecto, pedidos, entregas, rubros, proveedoresFondo, asignacionesRaw, movimientosRaw] =
+    await Promise.all([
+      prisma.proyecto.findUnique({ where: { id } }),
+      prisma.pedido.findMany({
+        where: { proyectoId: id },
+        include: { proveedor: true, items: { include: { material: true } } },
+      }),
+      prisma.entrega.findMany({
+        where: { pedido: { proyectoId: id } },
+        include: {
+          pedido: { include: { proveedor: true } },
+          items: { include: { pedidoItem: { include: { material: true } } } },
+        },
+      }),
+      tieneFlujoFondos
+        ? prisma.rubro.findMany({
+            orderBy: { orden: "asc" },
+            include: { subrubros: { orderBy: { orden: "asc" } } },
+          })
+        : Promise.resolve([]),
+      tieneFlujoFondos
+        ? prisma.proveedor.findMany({
+            orderBy: { nombre: "asc" },
+            select: { id: true, nombre: true, rubros: { select: { id: true } } },
+          })
+        : Promise.resolve([]),
+      tieneFlujoFondos
+        ? prisma.proyectoInversor.findMany({ where: { proyectoId: id } })
+        : Promise.resolve([]),
+      tieneFlujoFondos
+        ? prisma.movimientoFondo.findMany({
+            where: { proyectoId: id },
+            include: movimientoFondoInclude,
+            orderBy: { fecha: "desc" },
+          })
+        : Promise.resolve([]),
+    ]);
 
   if (!proyecto) {
     notFound();
   }
+
+  const asignaciones = asignacionesRaw.map(mapProyectoInversor);
+  const movimientosFondo = movimientosRaw.map(mapMovimientoFondo);
+  const proveedoresConRubros = proveedoresFondo.map((p) => ({
+    id: p.id,
+    nombre: p.nombre,
+    rubroIds: p.rubros.map((r) => r.id),
+  }));
 
   const movimientos: MovimientoRow[] = [
     ...pedidos.map((p) => ({
@@ -178,6 +213,7 @@ export default async function ProyectoDetallePage({
           <TabsTrigger value="movimientos">Movimientos</TabsTrigger>
           <TabsTrigger value="municipal">Municipal</TabsTrigger>
           <TabsTrigger value="documentacion">Documentación</TabsTrigger>
+          {tieneFlujoFondos && <TabsTrigger value="flujo-fondos">Flujo de fondos</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="movimientos" className="mt-4">
@@ -256,6 +292,19 @@ export default async function ProyectoDetallePage({
         <TabsContent value="documentacion" className="mt-4">
           <DocumentacionSection proyectoId={proyecto.id} />
         </TabsContent>
+
+        {tieneFlujoFondos && (
+          <TabsContent value="flujo-fondos" className="mt-4 flex flex-col gap-4">
+            <ProyectoInversoresPanel proyectoId={proyecto.id} asignaciones={asignaciones} />
+            <FlujoFondosSection
+              proyectoId={proyecto.id}
+              rubros={rubros}
+              proveedores={proveedoresConRubros}
+              asignaciones={asignaciones}
+              movimientos={movimientosFondo}
+            />
+          </TabsContent>
+        )}
       </Tabs>
     </div>
   );

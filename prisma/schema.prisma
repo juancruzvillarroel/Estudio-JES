@@ -7,6 +7,16 @@ datasource db {
   provider = "postgresql"
 }
 
+enum Moneda {
+  ARS
+  USD
+}
+
+enum TipoMovimientoFondo {
+  GASTO
+  APORTE
+}
+
 enum EstadoProyecto {
   ACTIVO
   PAUSADO
@@ -79,6 +89,10 @@ model Proyecto {
   // Tipos de documento generados automáticamente para este proyecto (planos
   // por piso). Ver DocumentoTipo.proyectoId.
   documentoTiposPorPiso DocumentoTipo[] @relation("DocumentoTipoProyecto")
+
+  // Flujo de fondos: inversores participantes y movimientos de dinero.
+  inversores       ProyectoInversor[]
+  movimientosFondo MovimientoFondo[]
 }
 
 // Catálogo de documentos/trámites requeridos por categoría (y, dentro de
@@ -233,6 +247,8 @@ model Proveedor {
   pedidos Pedido[]
   rubros  Rubro[]
   acopios Acopio[]
+
+  movimientosFondo MovimientoFondo[]
 }
 
 model Rubro {
@@ -246,6 +262,84 @@ model Rubro {
 
   proveedores Proveedor[]
   materiales  Material[]
+  subrubros   Subrubro[]
+
+  movimientosFondo MovimientoFondo[]
+}
+
+// Subcategoría dentro de un Rubro, usada para clasificar con más detalle los
+// gastos de Flujo de fondos (ej. dentro de "Gastos municipales": Áridos,
+// Derechos de construcción, Encomiendas).
+model Subrubro {
+  id        String   @id @default(cuid())
+  rubroId   String
+  rubro     Rubro    @relation(fields: [rubroId], references: [id], onDelete: Cascade)
+  nombre    String
+  orden     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  movimientosFondo MovimientoFondo[]
+
+  @@unique([rubroId, nombre])
+  @@index([rubroId])
+}
+
+// Participación (%) de un inversor en un proyecto puntual. Los inversores se
+// cargan directamente dentro de cada obra (no hay catálogo global), ya que
+// cada proyecto maneja su propia lista de inversores/socios. A partir de acá
+// se calculan sus aportes (movimientos tipo APORTE) y su parte proporcional
+// de ventas y gastos para el resumen de inversión.
+model ProyectoInversor {
+  id         String   @id @default(cuid())
+  proyectoId String
+  proyecto   Proyecto @relation(fields: [proyectoId], references: [id], onDelete: Cascade)
+  nombre     String
+  porcentaje Decimal  @db.Decimal(5, 2)
+  createdAt  DateTime @default(now())
+
+  movimientos MovimientoFondo[]
+
+  @@unique([proyectoId, nombre])
+  @@index([proyectoId])
+}
+
+// Movimiento de dinero de un proyecto: un gasto (asignado a rubro/subrubro)
+// o un aporte de un inversor. Es la base de la línea de tiempo de Flujo de
+// fondos. El tipo de cambio es el vigente en la fecha del movimiento, para
+// poder ver el equivalente en la otra moneda.
+model MovimientoFondo {
+  id          String              @id @default(cuid())
+  proyectoId  String
+  proyecto    Proyecto            @relation(fields: [proyectoId], references: [id], onDelete: Cascade)
+  tipo        TipoMovimientoFondo
+  fecha       DateTime
+  descripcion String
+  monto       Decimal             @db.Decimal(14, 2)
+  moneda      Moneda
+  tipoCambio  Decimal?            @db.Decimal(10, 4)
+  notas       String?
+  medioPago   String?
+  archivoUrl  String?
+  createdAt   DateTime            @default(now())
+
+  // Solo para tipo = GASTO
+  rubroId     String?
+  rubro       Rubro?     @relation(fields: [rubroId], references: [id])
+  subrubroId  String?
+  subrubro    Subrubro?  @relation(fields: [subrubroId], references: [id])
+  proveedorId String?
+  proveedor   Proveedor? @relation(fields: [proveedorId], references: [id])
+
+  // Solo para tipo = APORTE
+  proyectoInversorId String?
+  proyectoInversor   ProyectoInversor? @relation(fields: [proyectoInversorId], references: [id])
+
+  @@index([proyectoId])
+  @@index([rubroId])
+  @@index([subrubroId])
+  @@index([proveedorId])
+  @@index([proyectoInversorId])
+  @@index([fecha])
 }
 
 model Material {

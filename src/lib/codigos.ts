@@ -5,7 +5,9 @@ import { prisma } from "@/lib/db";
  * además de su nombre. Todos son editables después de creados desde su
  * respectivo formulario.
  *
- * - Rubro: correlativo numérico de 2 dígitos (01, 02, ...).
+ * - Rubro: correlativo numérico de 2 dígitos, empezando en 00 (00, 01, ...)
+ *   cuando se reordena a mano (ver reordenarRubros); al crear uno nuevo se
+ *   le asigna el siguiente número libre después del más alto existente.
  * - Material: "<código de rubro>-<número>" (ej. 05-01). El número refleja
  *   el orden alfabético entre los materiales del rubro en el momento de
  *   crearlo; una vez asignado no se recalcula (si se inserta uno que

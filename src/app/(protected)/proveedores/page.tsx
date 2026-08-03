@@ -20,7 +20,10 @@ export default async function ProveedoresPage() {
     }),
     prisma.rubro.findMany({
       orderBy: { orden: "asc" },
-      include: { _count: { select: { proveedores: true } } },
+      include: {
+        _count: { select: { proveedores: true } },
+        subrubros: { orderBy: { orden: "asc" } },
+      },
     }),
     prisma.material.findMany({ orderBy: { nombre: "asc" }, include: { rubro: true } }),
   ]);
