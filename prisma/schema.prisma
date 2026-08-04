@@ -23,6 +23,12 @@ enum EstadoProyecto {
   FINALIZADO
 }
 
+enum EstadoUnidad {
+  DISPONIBLE
+  RESERVADA
+  VENDIDA
+}
+
 enum EstadoPedido {
   PENDIENTE
   PARCIAL
@@ -93,6 +99,10 @@ model Proyecto {
   // Flujo de fondos: inversores participantes y movimientos de dinero.
   inversores       ProyectoInversor[]
   movimientosFondo MovimientoFondo[]
+  // Datos del proyecto (Flujo de fondos): catálogos propios de cada obra,
+  // que después se van a poder vincular con las ventas del proyecto.
+  mediosPago       MedioPago[]
+  unidades         UnidadProyecto[]
 }
 
 // Catálogo de documentos/trámites requeridos por categoría (y, dentro de
@@ -303,6 +313,38 @@ model ProyectoInversor {
   @@index([proyectoId])
 }
 
+// Medio de pago propio de cada proyecto (ej. Efectivo, Transferencia,
+// Cheque), para clasificar los movimientos de Flujo de fondos. Reemplaza a
+// una lista fija global: cada obra carga los medios de pago que usa.
+model MedioPago {
+  id         String   @id @default(cuid())
+  proyectoId String
+  proyecto   Proyecto @relation(fields: [proyectoId], references: [id], onDelete: Cascade)
+  nombre     String
+  createdAt  DateTime @default(now())
+
+  movimientos MovimientoFondo[]
+
+  @@unique([proyectoId, nombre])
+  @@index([proyectoId])
+}
+
+// Unidad del edificio/proyecto (ej. departamento, cochera) cargada por obra,
+// para más adelante poder vincularla con las ventas del proyecto.
+model UnidadProyecto {
+  id         String       @id @default(cuid())
+  proyectoId String
+  proyecto   Proyecto     @relation(fields: [proyectoId], references: [id], onDelete: Cascade)
+  nombre     String
+  tipo       String?
+  m2         Decimal?     @db.Decimal(8, 2)
+  estado     EstadoUnidad @default(DISPONIBLE)
+  createdAt  DateTime     @default(now())
+
+  @@unique([proyectoId, nombre])
+  @@index([proyectoId])
+}
+
 // Movimiento de dinero de un proyecto: un gasto (asignado a rubro/subrubro)
 // o un aporte de un inversor. Es la base de la línea de tiempo de Flujo de
 // fondos. El tipo de cambio es el vigente en la fecha del movimiento, para
@@ -318,7 +360,8 @@ model MovimientoFondo {
   moneda      Moneda
   tipoCambio  Decimal?            @db.Decimal(10, 4)
   notas       String?
-  medioPago   String?
+  medioPagoId String?
+  medioPago   MedioPago?          @relation(fields: [medioPagoId], references: [id])
   archivoUrl  String?
   createdAt   DateTime            @default(now())
 
@@ -339,6 +382,7 @@ model MovimientoFondo {
   @@index([subrubroId])
   @@index([proveedorId])
   @@index([proyectoInversorId])
+  @@index([medioPagoId])
   @@index([fecha])
 }
 

@@ -16,7 +16,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { MovimientoFondoDialog } from "@/components/flujo-fondos/movimiento-fondo-dialog";
 import { RubroFiltroMultiple } from "@/components/rubros/rubro-filtro-multiple";
 import { cn } from "@/lib/utils";
-import { MONEDA_LABELS, MEDIO_PAGO_LABELS, type MovimientoFondoOpcion } from "@/lib/flujo-fondos";
+import { MONEDA_LABELS, type MedioPagoOpcion, type MovimientoFondoOpcion } from "@/lib/flujo-fondos";
 
 type SubrubroOpcion = { id: string; nombre: string };
 type RubroOpcion = { id: string; nombre: string; subrubros: SubrubroOpcion[] };
@@ -48,12 +48,12 @@ function MontoMovimiento({
   monto,
   moneda,
   tipoCambio,
-  medioPago,
+  medioPagoNombre,
 }: {
   monto: number;
   moneda: "ARS" | "USD";
   tipoCambio: number | null;
-  medioPago: string | null;
+  medioPagoNombre: string | null;
 }) {
   const equivalente =
     tipoCambio != null ? (moneda === "ARS" ? monto / tipoCambio : monto * tipoCambio) : null;
@@ -77,9 +77,7 @@ function MontoMovimiento({
           <span className="text-muted-foreground">Sin tipo de cambio</span>
         )}
       </p>
-      <p className="mt-0.5 text-xs text-muted-foreground">
-        {medioPago ? MEDIO_PAGO_LABELS[medioPago as keyof typeof MEDIO_PAGO_LABELS] ?? medioPago : "—"}
-      </p>
+      <p className="mt-0.5 text-xs text-muted-foreground">{medioPagoNombre ?? "—"}</p>
     </div>
   );
 }
@@ -90,6 +88,7 @@ export function MovimientoFondoTabla({
   rubros,
   proveedores,
   proyectoInversores,
+  mediosPago,
   movimientos,
   emptyMessage,
   onSaved,
@@ -100,6 +99,7 @@ export function MovimientoFondoTabla({
   rubros: RubroOpcion[];
   proveedores: ProveedorOpcion[];
   proyectoInversores: ProyectoInversorOpcion[];
+  mediosPago: MedioPagoOpcion[];
   movimientos: MovimientoFondoOpcion[];
   emptyMessage: string;
   onSaved: (movimiento: MovimientoFondoOpcion) => void;
@@ -110,10 +110,10 @@ export function MovimientoFondoTabla({
   const [rubroIds, setRubroIds] = useState<string[]>([]);
   const [proveedorId, setProveedorId] = useState("");
   const [moneda, setMoneda] = useState("");
-  const [medioPago, setMedioPago] = useState("");
+  const [medioPagoId, setMedioPagoId] = useState("");
 
   const hayFiltrosActivos = Boolean(
-    fechaDesde || fechaHasta || rubroIds.length > 0 || proveedorId || moneda || medioPago
+    fechaDesde || fechaHasta || rubroIds.length > 0 || proveedorId || moneda || medioPagoId
   );
 
   const limpiarFiltros = () => {
@@ -122,7 +122,7 @@ export function MovimientoFondoTabla({
     setRubroIds([]);
     setProveedorId("");
     setMoneda("");
-    setMedioPago("");
+    setMedioPagoId("");
   };
 
   const filtrados = movimientos.filter((m) => {
@@ -132,7 +132,7 @@ export function MovimientoFondoTabla({
     if (rubroIds.length > 0 && (!m.rubroId || !rubroIds.includes(m.rubroId))) return false;
     if (proveedorId && m.proveedorId !== proveedorId) return false;
     if (moneda && m.moneda !== moneda) return false;
-    if (medioPago && m.medioPago !== medioPago) return false;
+    if (medioPagoId && m.medioPagoId !== medioPagoId) return false;
     return true;
   });
   const ordenados = [...filtrados].sort((a, b) => b.fecha.localeCompare(a.fecha));
@@ -246,18 +246,22 @@ export function MovimientoFondoTabla({
             </SelectContent>
           </Select>
         </div>
-        {tipo === "GASTO" && (
+        {tipo === "GASTO" && mediosPago.length > 0 && (
           <div className="flex shrink-0 flex-col gap-2">
             <Label htmlFor={`filtroMedioPago-${tipo}`}>Medio de pago</Label>
-            <Select value={medioPago} onValueChange={(v) => setMedioPago(v ?? "")} items={MEDIO_PAGO_LABELS}>
+            <Select
+              value={medioPagoId}
+              onValueChange={(v) => setMedioPagoId(v ?? "")}
+              items={Object.fromEntries(mediosPago.map((mp) => [mp.id, mp.nombre]))}
+            >
               <SelectTrigger id={`filtroMedioPago-${tipo}`} className="w-36">
                 <SelectValue placeholder="Todos" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="">Todos</SelectItem>
-                {Object.entries(MEDIO_PAGO_LABELS).map(([value, label]) => (
-                  <SelectItem key={value} value={value}>
-                    {label}
+                {mediosPago.map((mp) => (
+                  <SelectItem key={mp.id} value={mp.id}>
+                    {mp.nombre}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -274,6 +278,7 @@ export function MovimientoFondoTabla({
           rubros={rubros}
           proveedores={proveedores}
           proyectoInversores={proyectoInversores}
+          mediosPago={mediosPago}
           defaultTipo={tipo}
           onSaved={onSaved}
           trigger={
@@ -331,12 +336,18 @@ export function MovimientoFondoTabla({
                   </>
                 )}
               </div>
-              <MontoMovimiento monto={m.monto} moneda={m.moneda} tipoCambio={m.tipoCambio} medioPago={m.medioPago} />
+              <MontoMovimiento
+                monto={m.monto}
+                moneda={m.moneda}
+                tipoCambio={m.tipoCambio}
+                medioPagoNombre={m.medioPagoNombre}
+              />
               <MovimientoFondoDialog
                 proyectoId={proyectoId}
                 rubros={rubros}
                 proveedores={proveedores}
                 proyectoInversores={proyectoInversores}
+                mediosPago={mediosPago}
                 item={m}
                 onSaved={onSaved}
                 onDeleted={onDeleted}

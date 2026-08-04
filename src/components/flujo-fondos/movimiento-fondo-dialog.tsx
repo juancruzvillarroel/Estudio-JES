@@ -29,7 +29,7 @@ import {
   updateMovimientoFondo,
 } from "@/actions/movimientos-fondo";
 import { obtenerCotizacionDolarBlue } from "@/actions/cotizaciones";
-import { MONEDA_LABELS, MEDIO_PAGO_LABELS, type MovimientoFondoOpcion } from "@/lib/flujo-fondos";
+import { MONEDA_LABELS, type MedioPagoOpcion, type MovimientoFondoOpcion } from "@/lib/flujo-fondos";
 import type { MovimientoFondoInput } from "@/lib/validations/movimiento-fondo";
 
 type SubrubroOpcion = { id: string; nombre: string };
@@ -47,7 +47,7 @@ type FormValues = {
   subrubroId: string;
   proveedorId: string;
   proyectoInversorId: string;
-  medioPago: string;
+  medioPagoId: string;
 };
 
 function hoyISO() {
@@ -93,7 +93,7 @@ function valoresPorDefecto(item?: MovimientoFondoOpcion): FormValues {
     subrubroId: item?.subrubroId ?? "",
     proveedorId: item?.proveedorId ?? "",
     proyectoInversorId: item?.proyectoInversorId ?? "",
-    medioPago: item?.medioPago ?? "",
+    medioPagoId: item?.medioPagoId ?? "",
   };
 }
 
@@ -102,6 +102,7 @@ export function MovimientoFondoDialog({
   rubros,
   proveedores,
   proyectoInversores,
+  mediosPago,
   item,
   defaultTipo,
   trigger,
@@ -112,6 +113,7 @@ export function MovimientoFondoDialog({
   rubros: RubroOpcion[];
   proveedores: ProveedorOpcion[];
   proyectoInversores: ProyectoInversorOpcion[];
+  mediosPago: MedioPagoOpcion[];
   item?: MovimientoFondoOpcion;
   defaultTipo?: "GASTO" | "APORTE";
   trigger: React.ReactNode;
@@ -149,7 +151,7 @@ export function MovimientoFondoDialog({
   ]);
   const medioPagoItems = Object.fromEntries([
     ["", "Sin especificar"],
-    ...Object.entries(MEDIO_PAGO_LABELS),
+    ...mediosPago.map((mp) => [mp.id, mp.nombre]),
   ]);
   // Solo se muestran los proveedores cargados para el rubro elegido (más el
   // que ya estuviera seleccionado, por si el gasto se editó y el rubro
@@ -236,7 +238,7 @@ export function MovimientoFondoDialog({
         rubroId: data.rubroId,
         subrubroId: data.subrubroId || undefined,
         proveedorId: data.proveedorId || undefined,
-        medioPago: data.medioPago || undefined,
+        medioPagoId: data.medioPagoId || undefined,
       };
     } else {
       if (!data.proyectoInversorId) {
@@ -394,26 +396,33 @@ export function MovimientoFondoDialog({
                 )}
               </div>
               <div className="flex flex-col gap-2">
-                <Label htmlFor="medioPago">Medio de pago</Label>
-                <Controller
-                  control={control}
-                  name="medioPago"
-                  render={({ field }) => (
-                    <Select value={field.value} onValueChange={field.onChange} items={medioPagoItems}>
-                      <SelectTrigger id="medioPago" className="w-full">
-                        <SelectValue placeholder="Sin especificar" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="">Sin especificar</SelectItem>
-                        {Object.entries(MEDIO_PAGO_LABELS).map(([value, label]) => (
-                          <SelectItem key={value} value={value}>
-                            {label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
-                />
+                <Label htmlFor="medioPagoId">Medio de pago</Label>
+                {mediosPago.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    Todavía no hay medios de pago cargados en este proyecto. Cargalos en
+                    &quot;Datos del proyecto&quot;.
+                  </p>
+                ) : (
+                  <Controller
+                    control={control}
+                    name="medioPagoId"
+                    render={({ field }) => (
+                      <Select value={field.value} onValueChange={field.onChange} items={medioPagoItems}>
+                        <SelectTrigger id="medioPagoId" className="w-full">
+                          <SelectValue placeholder="Sin especificar" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="">Sin especificar</SelectItem>
+                          {mediosPago.map((mp) => (
+                            <SelectItem key={mp.id} value={mp.id}>
+                              {mp.nombre}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    )}
+                  />
+                )}
               </div>
               <div className="flex flex-col gap-2">
                 <Label>Comprobante</Label>
@@ -504,7 +513,7 @@ export function MovimientoFondoDialog({
               {proyectoInversores.length === 0 ? (
                 <p className="text-xs text-muted-foreground">
                   Todavía no hay inversores asignados a este proyecto. Asigná uno en
-                  &quot;Participación de inversores&quot;, arriba.
+                  &quot;Datos del proyecto&quot;.
                 </p>
               ) : (
                 <Controller

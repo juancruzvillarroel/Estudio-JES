@@ -10,9 +10,14 @@ import { ProyectoDialog } from "@/components/proyectos/proyecto-dialog";
 import { TipoMovimientoBadge } from "@/components/movimientos/tipo-movimiento-badge";
 import { MunicipalSection } from "@/components/municipal/municipal-section";
 import { DocumentacionSection } from "@/components/documentacion/documentacion-section";
-import { ProyectoInversoresPanel } from "@/components/flujo-fondos/proyecto-inversores-panel";
 import { FlujoFondosSection } from "@/components/flujo-fondos/flujo-fondos-section";
-import { movimientoFondoInclude, mapMovimientoFondo, mapProyectoInversor } from "@/lib/flujo-fondos";
+import {
+  movimientoFondoInclude,
+  mapMovimientoFondo,
+  mapProyectoInversor,
+  mapMedioPago,
+  mapUnidadProyecto,
+} from "@/lib/flujo-fondos";
 import { capitalizarOracion, formatFecha, formatNumeroPedido } from "@/lib/utils";
 
 const ESTADO_LABELS = {
@@ -58,8 +63,17 @@ export default async function ProyectoDetallePage({
   const tieneFlujoFondos = session.esAdmin || session.paginasPermitidas.includes("flujo-fondos");
 
   const { id } = await params;
-  const [proyecto, pedidos, entregas, rubros, proveedoresFondo, asignacionesRaw, movimientosRaw] =
-    await Promise.all([
+  const [
+    proyecto,
+    pedidos,
+    entregas,
+    rubros,
+    proveedoresFondo,
+    asignacionesRaw,
+    movimientosRaw,
+    mediosPagoRaw,
+    unidadesRaw,
+  ] = await Promise.all([
       prisma.proyecto.findUnique({ where: { id } }),
       prisma.pedido.findMany({
         where: { proyectoId: id },
@@ -94,6 +108,12 @@ export default async function ProyectoDetallePage({
             orderBy: { fecha: "desc" },
           })
         : Promise.resolve([]),
+      tieneFlujoFondos
+        ? prisma.medioPago.findMany({ where: { proyectoId: id }, orderBy: { nombre: "asc" } })
+        : Promise.resolve([]),
+      tieneFlujoFondos
+        ? prisma.unidadProyecto.findMany({ where: { proyectoId: id }, orderBy: { nombre: "asc" } })
+        : Promise.resolve([]),
     ]);
 
   if (!proyecto) {
@@ -102,6 +122,8 @@ export default async function ProyectoDetallePage({
 
   const asignaciones = asignacionesRaw.map(mapProyectoInversor);
   const movimientosFondo = movimientosRaw.map(mapMovimientoFondo);
+  const mediosPago = mediosPagoRaw.map(mapMedioPago);
+  const unidades = unidadesRaw.map(mapUnidadProyecto);
   const proveedoresConRubros = proveedoresFondo.map((p) => ({
     id: p.id,
     nombre: p.nombre,
@@ -295,13 +317,14 @@ export default async function ProyectoDetallePage({
 
         {tieneFlujoFondos && (
           <TabsContent value="flujo-fondos" className="mt-4 flex flex-col gap-4">
-            <ProyectoInversoresPanel proyectoId={proyecto.id} asignaciones={asignaciones} />
             <FlujoFondosSection
               proyectoId={proyecto.id}
               rubros={rubros}
               proveedores={proveedoresConRubros}
               asignaciones={asignaciones}
               movimientos={movimientosFondo}
+              mediosPago={mediosPago}
+              unidades={unidades}
             />
           </TabsContent>
         )}

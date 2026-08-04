@@ -1,19 +1,13 @@
 import type { Prisma } from "@/generated/prisma/client";
 
 export const MONEDA_LABELS = { ARS: "Pesos (ARS)", USD: "Dólares (USD)" };
-export const MEDIO_PAGO_LABELS = {
-  Efectivo: "Efectivo",
-  Transferencia: "Transferencia",
-  Cheque: "Cheque",
-  Tarjeta: "Tarjeta",
-  Otro: "Otro",
-};
 
 export const movimientoFondoInclude = {
   rubro: true,
   subrubro: true,
   proveedor: true,
   proyectoInversor: true,
+  medioPago: true,
 } satisfies Prisma.MovimientoFondoInclude;
 
 export type MovimientoFondoConRelaciones = Prisma.MovimientoFondoGetPayload<{
@@ -38,7 +32,8 @@ export type MovimientoFondoOpcion = {
   proyectoInversorId: string | null;
   inversorNombre: string | null;
   notas: string | null;
-  medioPago: string | null;
+  medioPagoId: string | null;
+  medioPagoNombre: string | null;
   archivoUrl: string | null;
 };
 
@@ -61,7 +56,8 @@ export function mapMovimientoFondo(m: MovimientoFondoConRelaciones): MovimientoF
     proyectoInversorId: m.proyectoInversorId,
     inversorNombre: m.proyectoInversor?.nombre ?? null,
     notas: m.notas,
-    medioPago: m.medioPago,
+    medioPagoId: m.medioPagoId,
+    medioPagoNombre: m.medioPago?.nombre ?? null,
     archivoUrl: m.archivoUrl,
   };
 }
@@ -84,5 +80,50 @@ export function mapProyectoInversor(item: {
     proyectoId: item.proyectoId,
     inversorNombre: item.nombre,
     porcentaje: Number(item.porcentaje),
+  };
+}
+
+export type MedioPagoOpcion = {
+  id: string;
+  proyectoId: string;
+  nombre: string;
+};
+
+export function mapMedioPago(item: {
+  id: string;
+  proyectoId: string;
+  nombre: string;
+}): MedioPagoOpcion {
+  return {
+    id: item.id,
+    proyectoId: item.proyectoId,
+    nombre: item.nombre,
+  };
+}
+
+export type UnidadProyectoOpcion = {
+  id: string;
+  proyectoId: string;
+  nombre: string;
+  tipo: string | null;
+  m2: number | null;
+  estado: "DISPONIBLE" | "RESERVADA" | "VENDIDA";
+};
+
+export function mapUnidadProyecto(item: {
+  id: string;
+  proyectoId: string;
+  nombre: string;
+  tipo: string | null;
+  m2: Prisma.Decimal | null;
+  estado: "DISPONIBLE" | "RESERVADA" | "VENDIDA";
+}): UnidadProyectoOpcion {
+  return {
+    id: item.id,
+    proyectoId: item.proyectoId,
+    nombre: item.nombre,
+    tipo: item.tipo,
+    m2: item.m2 ? Number(item.m2) : null,
+    estado: item.estado,
   };
 }

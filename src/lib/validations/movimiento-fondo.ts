@@ -11,7 +11,7 @@ const MovimientoFondoBaseSchema = z.object({
     .positive("El tipo de cambio debe ser mayor a 0")
     .optional(),
   notas: z.string().trim().optional(),
-  medioPago: z.string().trim().optional(),
+  medioPagoId: z.string().optional(),
 });
 
 export const MovimientoGastoSchema = MovimientoFondoBaseSchema.extend({
