@@ -46,55 +46,49 @@ enum TipoMovimientoInventario {
   SALIDA
 }
 
-enum TramiteCategoria {
-  ADMINISTRACION
-  DEMOLICION
-  OBRA
-}
-
 enum EstadoTramiteMunicipal {
   PENDIENTE
   PRESENTADO
 }
 
 model User {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  passwordHash String
-  nombre       String
-  esAdmin      Boolean  @default(false)
+  id                String   @id @default(cuid())
+  email             String   @unique
+  passwordHash      String
+  nombre            String
+  esAdmin           Boolean  @default(false)
   // Claves de las secciones (ver src/lib/paginas.ts) a las que este usuario
   // tiene acceso. Los administradores (esAdmin) siempre tienen acceso a todo,
   // sin importar este campo.
   paginasPermitidas String[] @default([])
-  createdAt    DateTime @default(now())
+  createdAt         DateTime @default(now())
 
   pedidosCreados   Pedido[]  @relation("PedidoCreadoPor")
   entregasCargadas Entrega[] @relation("EntregaRegistradaPor")
 }
 
 model Proyecto {
-  id          String         @id @default(cuid())
-  nombre      String
-  barrio      String?
-  direccion   String?
-  estado      EstadoProyecto @default(ACTIVO)
-  descripcion String?
-  imagenUrl   String?
+  id            String         @id @default(cuid())
+  nombre        String
+  barrio        String?
+  direccion     String?
+  estado        EstadoProyecto @default(ACTIVO)
+  descripcion   String?
+  imagenUrl     String?
   // Pisos por encima de planta baja. Se usa para generar automáticamente un
   // documento (plano) por piso en las categorías de Documentación marcadas
   // como "por piso" (ver DocumentoCategoria.porPiso).
-  cantidadPisos Int          @default(0)
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
+  cantidadPisos Int            @default(0)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 
-  pedidos Pedido[]
-  acopios Acopio[]
-  tramitesMunicipales TramiteMunicipal[]
-  documentos          Documento[]
+  pedidos               Pedido[]
+  acopios               Acopio[]
+  tramitesMunicipales   TramiteMunicipal[]
+  documentos            Documento[]
   // Tipos de documento generados automáticamente para este proyecto (planos
   // por piso). Ver DocumentoTipo.proyectoId.
-  documentoTiposPorPiso DocumentoTipo[] @relation("DocumentoTipoProyecto")
+  documentoTiposPorPiso DocumentoTipo[]    @relation("DocumentoTipoProyecto")
 
   // Flujo de fondos: inversores participantes y movimientos de dinero.
   inversores       ProyectoInversor[]
@@ -105,47 +99,81 @@ model Proyecto {
   unidades         UnidadProyecto[]
 }
 
+// Catálogo de categorías de la pestaña "Municipal": igual que
+// DocumentoCategoria, se crean, renombran y eliminan libremente desde la UI,
+// sin tocar código.
+model CategoriaMunicipal {
+  id        String   @id @default(cuid())
+  nombre    String   @unique
+  orden     Int      @default(0)
+  activo    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  etapas EtapaMunicipal[]
+  tipos  TramiteMunicipalTipo[]
+}
+
+// Agrupa tipos de trámite dentro de una categoría (ej. "Inicio" dentro de
+// "Obra"). También editable libremente desde la UI. Una categoría que no se
+// subdivide simplemente no tiene etapas cargadas.
+model EtapaMunicipal {
+  id          String             @id @default(cuid())
+  categoriaId String
+  categoria   CategoriaMunicipal @relation(fields: [categoriaId], references: [id], onDelete: Cascade)
+  nombre      String
+  orden       Int                @default(0)
+  activo      Boolean            @default(true)
+  createdAt   DateTime           @default(now())
+
+  tipos TramiteMunicipalTipo[]
+
+  @@unique([categoriaId, nombre])
+  @@index([categoriaId])
+}
+
 // Catálogo de documentos/trámites requeridos por categoría (y, dentro de
-// "Obra", por etapa). Se carga con un script (prisma/seed-tramites o
-// scripts/seed-tramites-municipales.ts) y se puede ampliar más adelante
-// agregando filas nuevas, sin tocar código.
+// algunas categorías, por etapa). Se puede ampliar desde la UI (categorías y
+// etapas) o agregando tipos nuevos.
 model TramiteMunicipalTipo {
-  id          String           @id @default(cuid())
-  categoria   TramiteCategoria
+  id          String             @id @default(cuid())
+  categoriaId String
+  categoria   CategoriaMunicipal @relation(fields: [categoriaId], references: [id])
   // Agrupa varios tipos dentro de una categoría (ej. "Inicio" en Obra).
-  // Vacío ("") si la categoría no se subdivide en etapas.
-  etapa       String           @default("")
+  // Null si la categoría no se subdivide en etapas.
+  etapaId     String?
+  etapa       EtapaMunicipal?    @relation(fields: [etapaId], references: [id])
   nombre      String
   // Texto de ayuda/instrucciones para quien carga el trámite.
   descripcion String?
-  orden       Int              @default(0)
-  activo      Boolean          @default(true)
-  createdAt   DateTime         @default(now())
+  orden       Int                @default(0)
+  activo      Boolean            @default(true)
+  createdAt   DateTime           @default(now())
 
   tramites TramiteMunicipal[]
 
-  @@unique([categoria, etapa, nombre])
-  @@index([categoria])
+  @@unique([categoriaId, etapaId, nombre])
+  @@index([categoriaId])
+  @@index([etapaId])
 }
 
 // Instancia por proyecto de cada tipo de trámite del catálogo: se crea la
 // primera vez que alguien marca el estado, adjunta un archivo o escribe una
 // nota para ese trámite en ese proyecto.
 model TramiteMunicipal {
-  id         String                 @id @default(cuid())
-  proyectoId String
-  proyecto   Proyecto               @relation(fields: [proyectoId], references: [id])
-  tipoId     String
-  tipo       TramiteMunicipalTipo   @relation(fields: [tipoId], references: [id])
+  id            String                 @id @default(cuid())
+  proyectoId    String
+  proyecto      Proyecto               @relation(fields: [proyectoId], references: [id])
+  tipoId        String
+  tipo          TramiteMunicipalTipo   @relation(fields: [tipoId], references: [id])
   // Se actualiza automáticamente: PRESENTADO al adjuntar el archivo,
   // PENDIENTE si se lo quita. No se edita a mano.
-  estado     EstadoTramiteMunicipal @default(PENDIENTE)
-  notas      String?
+  estado        EstadoTramiteMunicipal @default(PENDIENTE)
+  notas         String?
   // Un solo archivo por trámite (subir uno nuevo reemplaza al anterior).
   archivoNombre String?
   archivoUrl    String?
-  createdAt  DateTime               @default(now())
-  updatedAt  DateTime               @updatedAt
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
 
   @@unique([proyectoId, tipoId])
   @@index([proyectoId])
@@ -160,15 +188,15 @@ enum EstadoDocumento {
 // Municipal, acá las categorías no son un enum fijo: se crean y eliminan
 // libremente desde la UI, sin tocar código).
 model DocumentoCategoria {
-  id        String   @id @default(cuid())
-  nombre    String   @unique
-  orden     Int      @default(0)
-  activo    Boolean  @default(true)
+  id          String   @id @default(cuid())
+  nombre      String   @unique
+  orden       Int      @default(0)
+  activo      Boolean  @default(true)
   // Si es true, esta categoría no tiene un catálogo de tipos compartido:
   // en cada proyecto se genera automáticamente un tipo de documento por
   // piso ("Planta baja", "Piso 1", ...) según Proyecto.cantidadPisos (ver
   // sincronizarDocumentosPorPiso en src/actions/documentos.ts).
-  porPiso   Boolean  @default(false)
+  porPiso     Boolean  @default(false)
   // Si tiene valor (ej. "S/"), los planos por piso de esta categoría se
   // nombran con ese prefijo + el código corto del piso (S/PB, S/1°, ...,
   // S/Azotea) en vez del nombre largo (Planta baja, Piso 1, ...).
@@ -177,7 +205,7 @@ model DocumentoCategoria {
   // elemento se convierte en una subsección propia (DocumentoTipo.subSeccion)
   // con un documento por piso adentro, en vez de un solo documento por piso.
   subTipos    String[] @default([])
-  createdAt DateTime @default(now())
+  createdAt   DateTime @default(now())
 
   tipos DocumentoTipo[]
 }
@@ -222,20 +250,20 @@ model DocumentoTipo {
 // primera vez que alguien adjunta un archivo o escribe una nota para ese
 // documento en ese proyecto.
 model Documento {
-  id         String          @id @default(cuid())
-  proyectoId String
-  proyecto   Proyecto        @relation(fields: [proyectoId], references: [id])
-  tipoId     String
-  tipo       DocumentoTipo   @relation(fields: [tipoId], references: [id])
+  id            String          @id @default(cuid())
+  proyectoId    String
+  proyecto      Proyecto        @relation(fields: [proyectoId], references: [id])
+  tipoId        String
+  tipo          DocumentoTipo   @relation(fields: [tipoId], references: [id])
   // Se actualiza automáticamente: PRESENTADO al adjuntar el archivo,
   // PENDIENTE si se lo quita. No se edita a mano.
-  estado     EstadoDocumento @default(PENDIENTE)
-  notas      String?
+  estado        EstadoDocumento @default(PENDIENTE)
+  notas         String?
   // Un solo archivo por documento (subir uno nuevo reemplaza al anterior).
   archivoNombre String?
   archivoUrl    String?
-  createdAt  DateTime        @default(now())
-  updatedAt  DateTime        @updatedAt
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
 
   @@unique([proyectoId, tipoId])
   @@index([proyectoId])

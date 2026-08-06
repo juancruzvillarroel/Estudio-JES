@@ -1,6 +1,7 @@
 // Carga (o actualiza) el catálogo de documentos/trámites municipales.
 // Es idempotente: se puede correr varias veces sin duplicar filas, porque
-// usa upsert sobre la clave única (categoria, etapa, nombre).
+// busca por categoría+etapa+nombre antes de crear (categoría y etapa se
+// crean solas si todavía no existen).
 //
 // Para agregar más trámites en el futuro (Administración, Demolición, u
 // otras etapas de Obra), sumá entradas al array ITEMS de abajo y volvé a
@@ -11,8 +12,17 @@
 
 import { prisma } from "../src/lib/db";
 
+// Nombres tal cual quedaron cargados en CategoriaMunicipal (ver
+// scripts-tmp-backfill.ts / la migración de categorías a catálogo editable).
+type CategoriaCodigo = "ADMINISTRACION" | "DEMOLICION" | "OBRA";
+const CATEGORIA_NOMBRES: Record<CategoriaCodigo, string> = {
+  ADMINISTRACION: "Administración",
+  DEMOLICION: "Demolición",
+  OBRA: "Obra",
+};
+
 type ItemSeed = {
-  categoria: "ADMINISTRACION" | "DEMOLICION" | "OBRA";
+  categoria: CategoriaCodigo;
   etapa: string;
   nombre: string;
   descripcion?: string;
@@ -277,38 +287,54 @@ const ITEMS: ItemSeed[] = [
 ];
 
 async function main() {
-  // Migración liviana: la primera versión de este seed usaba "Administración"
-  // como nombre de etapa para el grupo de documentos societarios, lo que se
-  // confundía con el nombre de la categoría. Se renombró a "Documentos".
-  // Este update deja los tipoId existentes intactos (no duplica filas ni
-  // rompe los trámites ya cargados por proyecto).
-  await prisma.tramiteMunicipalTipo.updateMany({
-    where: { categoria: "ADMINISTRACION", etapa: "Administración" },
-    data: { etapa: "Documentos" },
-  });
+  const categoriaIdPorCodigo = new Map<CategoriaCodigo, string>();
+  const etapaIdPorClave = new Map<string, string>();
 
   for (const item of ITEMS) {
-    await prisma.tramiteMunicipalTipo.upsert({
-      where: {
-        categoria_etapa_nombre: {
-          categoria: item.categoria,
-          etapa: item.etapa,
-          nombre: item.nombre,
-        },
-      },
-      update: {
-        descripcion: item.descripcion,
-        orden: item.orden,
-        activo: true,
-      },
-      create: {
-        categoria: item.categoria,
-        etapa: item.etapa,
-        nombre: item.nombre,
-        descripcion: item.descripcion,
-        orden: item.orden,
-      },
+    let categoriaId = categoriaIdPorCodigo.get(item.categoria);
+    if (!categoriaId) {
+      const nombre = CATEGORIA_NOMBRES[item.categoria];
+      const categoria = await prisma.categoriaMunicipal.upsert({
+        where: { nombre },
+        update: {},
+        create: { nombre },
+      });
+      categoriaId = categoria.id;
+      categoriaIdPorCodigo.set(item.categoria, categoriaId);
+    }
+
+    const claveEtapa = `${categoriaId}::${item.etapa}`;
+    let etapaId = etapaIdPorClave.get(claveEtapa);
+    if (!etapaId) {
+      const existente = await prisma.etapaMunicipal.findFirst({
+        where: { categoriaId, nombre: item.etapa },
+      });
+      const etapa =
+        existente ?? (await prisma.etapaMunicipal.create({ data: { categoriaId, nombre: item.etapa } }));
+      etapaId = etapa.id;
+      etapaIdPorClave.set(claveEtapa, etapaId);
+    }
+
+    const existente = await prisma.tramiteMunicipalTipo.findFirst({
+      where: { categoriaId, etapaId, nombre: item.nombre },
     });
+
+    if (existente) {
+      await prisma.tramiteMunicipalTipo.update({
+        where: { id: existente.id },
+        data: { descripcion: item.descripcion, orden: item.orden, activo: true },
+      });
+    } else {
+      await prisma.tramiteMunicipalTipo.create({
+        data: {
+          categoriaId,
+          etapaId,
+          nombre: item.nombre,
+          descripcion: item.descripcion,
+          orden: item.orden,
+        },
+      });
+    }
   }
   console.log(`Listo: ${ITEMS.length} tipos de trámite cargados/actualizados.`);
 }

@@ -31,6 +31,7 @@ export function TramiteItemRow({
   archivoNombre,
   archivoUrl,
   vista = "grid",
+  dragHandle,
 }: {
   proyectoId: string;
   tipoId: string;
@@ -41,6 +42,7 @@ export function TramiteItemRow({
   archivoNombre: string | null;
   archivoUrl: string | null;
   vista?: "grid" | "lista";
+  dragHandle?: React.ReactNode;
 }) {
   const [pending, startTransition] = useTransition();
   const [editandoNotas, setEditandoNotas] = useState(false);
@@ -156,6 +158,7 @@ export function TramiteItemRow({
     return (
       <div className="flex flex-col gap-2 rounded-md border p-2.5">
         <div className="flex flex-nowrap items-center gap-2">
+          {dragHandle}
           {estadoIndicador}
           <p className="min-w-0 flex-1 truncate text-sm font-medium">{nombre}</p>
           {archivoUrl && (
@@ -189,8 +192,9 @@ export function TramiteItemRow({
 
   return (
     <div className="flex flex-col gap-2 rounded-md border p-3">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
+      <div className="flex items-start gap-2">
+        {dragHandle}
+        <div className="min-w-0 flex-1">
           <p className="text-sm font-medium">{nombre}</p>
           {descripcion && (
             <p className="mt-0.5 text-xs text-muted-foreground">{descripcion}</p>

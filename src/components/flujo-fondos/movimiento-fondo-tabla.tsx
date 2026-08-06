@@ -24,7 +24,7 @@ type ProveedorOpcion = { id: string; nombre: string; rubroIds: string[] };
 type ProyectoInversorOpcion = { id: string; inversorNombre: string };
 
 function formatMonto(monto: number) {
-  return monto.toLocaleString("es-AR", { maximumFractionDigits: 0 });
+  return monto.toLocaleString("es-AR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function formatFechaCorta(fecha: string) {
@@ -216,11 +216,11 @@ export function MovimientoFondoTabla({
               onValueChange={(v) => setProveedorId(v ?? "")}
               items={Object.fromEntries(proveedores.map((p) => [p.id, p.nombre]))}
             >
-              <SelectTrigger id={`filtroProveedor-${tipo}`} className="w-40">
-                <SelectValue placeholder="Todos los proveedores" />
+              <SelectTrigger id={`filtroProveedor-${tipo}`} size="sm" className="h-7 w-40 py-0">
+                <SelectValue placeholder="Todos" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">Todos los proveedores</SelectItem>
+                <SelectItem value="">Todos</SelectItem>
                 {proveedores.map((p) => (
                   <SelectItem key={p.id} value={p.id}>
                     {p.nombre}
@@ -233,7 +233,7 @@ export function MovimientoFondoTabla({
         <div className="flex shrink-0 flex-col gap-2">
           <Label htmlFor={`filtroMoneda-${tipo}`}>Moneda</Label>
           <Select value={moneda} onValueChange={(v) => setMoneda(v ?? "")} items={MONEDA_LABELS}>
-            <SelectTrigger id={`filtroMoneda-${tipo}`} className="w-32">
+            <SelectTrigger id={`filtroMoneda-${tipo}`} size="sm" className="h-7 w-32 py-0">
               <SelectValue placeholder="Todas" />
             </SelectTrigger>
             <SelectContent>
@@ -254,7 +254,7 @@ export function MovimientoFondoTabla({
               onValueChange={(v) => setMedioPagoId(v ?? "")}
               items={Object.fromEntries(mediosPago.map((mp) => [mp.id, mp.nombre]))}
             >
-              <SelectTrigger id={`filtroMedioPago-${tipo}`} className="w-36">
+              <SelectTrigger id={`filtroMedioPago-${tipo}`} size="sm" className="h-7 w-36 py-0">
                 <SelectValue placeholder="Todos" />
               </SelectTrigger>
               <SelectContent>

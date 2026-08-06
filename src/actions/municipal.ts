@@ -5,12 +5,36 @@ import { put } from "@vercel/blob";
 import { prisma } from "@/lib/db";
 import { requireSeccion } from "@/lib/dal";
 
-type TramiteCategoria = "ADMINISTRACION" | "DEMOLICION" | "OBRA";
+export type ActionState = { error?: string; success?: boolean } | undefined;
+
+// Al arrastrar un trámite de una etapa a otra (o reordenarlo dentro de la
+// misma etapa) actualizamos su etapa y el orden de todo el contenedor de
+// destino de una sola vez. El filtro por categoriaId evita mover un tipo
+// que no pertenece a la categoría indicada.
+export async function moverTipoTramite(
+  proyectoId: string,
+  categoriaId: string,
+  etapaId: string | null,
+  tipoIdsOrdenados: string[]
+): Promise<ActionState> {
+  await requireSeccion("proyectos");
+
+  await prisma.$transaction(
+    tipoIdsOrdenados.map((id, index) =>
+      prisma.tramiteMunicipalTipo.updateMany({
+        where: { id, categoriaId },
+        data: { etapaId, orden: index },
+      })
+    )
+  );
+  revalidatePath(`/proyectos/${proyectoId}`);
+  return { success: true };
+}
 
 export async function crearTipoTramite(
   proyectoId: string,
-  categoria: TramiteCategoria,
-  etapa: string,
+  categoriaId: string,
+  etapaId: string | null,
   nombre: string,
   descripcion: string | undefined
 ) {
@@ -19,22 +43,33 @@ export async function crearTipoTramite(
   const nombreTrim = nombre.trim();
   if (!nombreTrim) return;
 
-  const ultimo = await prisma.tramiteMunicipalTipo.findFirst({
-    where: { categoria, etapa },
-    orderBy: { orden: "desc" },
+  // Prisma no permite usar `null` dentro de una clave compuesta para
+  // upsert, así que buscamos a mano el tipo (con o sin etapa) con ese
+  // nombre antes de crear o reactivar.
+  const existente = await prisma.tramiteMunicipalTipo.findFirst({
+    where: { categoriaId, etapaId, nombre: nombreTrim },
   });
 
-  await prisma.tramiteMunicipalTipo.upsert({
-    where: { categoria_etapa_nombre: { categoria, etapa, nombre: nombreTrim } },
-    update: { activo: true, descripcion: descripcion?.trim() || null },
-    create: {
-      categoria,
-      etapa,
-      nombre: nombreTrim,
-      descripcion: descripcion?.trim() || null,
-      orden: (ultimo?.orden ?? 0) + 1,
-    },
-  });
+  if (existente) {
+    await prisma.tramiteMunicipalTipo.update({
+      where: { id: existente.id },
+      data: { activo: true, descripcion: descripcion?.trim() || null },
+    });
+  } else {
+    const ultimo = await prisma.tramiteMunicipalTipo.findFirst({
+      where: { categoriaId, etapaId },
+      orderBy: { orden: "desc" },
+    });
+    await prisma.tramiteMunicipalTipo.create({
+      data: {
+        categoriaId,
+        etapaId,
+        nombre: nombreTrim,
+        descripcion: descripcion?.trim() || null,
+        orden: (ultimo?.orden ?? 0) + 1,
+      },
+    });
+  }
   revalidatePath(`/proyectos/${proyectoId}`);
 }
 

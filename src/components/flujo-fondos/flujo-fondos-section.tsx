@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { ResumenFlujoFondos } from "@/components/flujo-fondos/resumen-flujo-fondos";
+import { RubrosResumen } from "@/components/flujo-fondos/rubros-resumen";
 import { MovimientoFondoTabla } from "@/components/flujo-fondos/movimiento-fondo-tabla";
 import { ProyectoInversoresPanel } from "@/components/flujo-fondos/proyecto-inversores-panel";
 import { MediosPagoPanel } from "@/components/flujo-fondos/medios-pago-panel";
@@ -77,11 +78,16 @@ export function FlujoFondosSection({
         <TabsTrigger value="resumen">Resumen</TabsTrigger>
         <TabsTrigger value="gastos">Gastos</TabsTrigger>
         <TabsTrigger value="aportes">Aportes</TabsTrigger>
+        <TabsTrigger value="rubros">Rubros</TabsTrigger>
         <TabsTrigger value="datos">Datos del proyecto</TabsTrigger>
       </TabsList>
 
       <TabsContent value="resumen" className="mt-4">
         <ResumenFlujoFondos asignaciones={inversores} movimientos={items} />
+      </TabsContent>
+
+      <TabsContent value="rubros" className="mt-4">
+        <RubrosResumen rubros={rubros} movimientos={items} />
       </TabsContent>
 
       <TabsContent value="gastos" className="mt-4">
