@@ -34,6 +34,12 @@ export type MovimientoFondoOpcion = {
   notas: string | null;
   medioPagoId: string | null;
   medioPagoNombre: string | null;
+  /**
+   * Derivado del medio de pago: un gasto se considera facturado (con IVA)
+   * cuando se pagó con un medio marcado como tal. Sin medio de pago cuenta
+   * como no facturado.
+   */
+  facturado: boolean;
   archivoUrl: string | null;
 };
 
@@ -58,6 +64,7 @@ export function mapMovimientoFondo(m: MovimientoFondoConRelaciones): MovimientoF
     notas: m.notas,
     medioPagoId: m.medioPagoId,
     medioPagoNombre: m.medioPago?.nombre ?? null,
+    facturado: m.medioPago?.incluyeIva ?? false,
     archivoUrl: m.archivoUrl,
   };
 }
@@ -87,17 +94,21 @@ export type MedioPagoOpcion = {
   id: string;
   proyectoId: string;
   nombre: string;
+  /** Los pagos con factura cuentan como gasto facturado (con IVA). */
+  incluyeIva: boolean;
 };
 
 export function mapMedioPago(item: {
   id: string;
   proyectoId: string;
   nombre: string;
+  incluyeIva: boolean;
 }): MedioPagoOpcion {
   return {
     id: item.id,
     proyectoId: item.proyectoId,
     nombre: item.nombre,
+    incluyeIva: item.incluyeIva,
   };
 }
 

@@ -4,12 +4,16 @@ import { prisma } from "@/lib/db";
 import { requireSeccion } from "@/lib/dal";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionPanel } from "@/components/ui/accordion";
 import { ProyectoDialog } from "@/components/proyectos/proyecto-dialog";
+import {
+  ProyectoSecciones,
+  type ResumenProyecto,
+} from "@/components/proyectos/proyecto-secciones";
 import { TipoMovimientoBadge } from "@/components/movimientos/tipo-movimiento-badge";
 import { MunicipalSection } from "@/components/municipal/municipal-section";
 import { DocumentacionSection } from "@/components/documentacion/documentacion-section";
+import { TareasSection } from "@/components/tareas/tareas-section";
 import { FlujoFondosSection } from "@/components/flujo-fondos/flujo-fondos-section";
 import {
   movimientoFondoInclude,
@@ -18,6 +22,7 @@ import {
   mapMedioPago,
   mapUnidadProyecto,
 } from "@/lib/flujo-fondos";
+import { ventaInclude, mapVenta } from "@/lib/ventas";
 import { capitalizarOracion, formatFecha, formatNumeroPedido } from "@/lib/utils";
 
 const ESTADO_LABELS = {
@@ -54,6 +59,27 @@ function resumirItems(nombres: string[]) {
   return nombres.length > 3 ? `${visibles} y ${nombres.length - 3} más` : visibles;
 }
 
+function plural(cantidad: number, singular: string, plural: string) {
+  return cantidad === 1 ? singular : plural;
+}
+
+/**
+ * Suma los movimientos de fondos en dólares. Los que están en pesos sin tipo
+ * de cambio cargado no se pueden convertir y quedan afuera, igual que en el
+ * consolidado del resumen de Flujo de fondos.
+ */
+function sumarUSD(movimientos: { tipo: string; monto: number; moneda: string; tipoCambio: number | null }[]) {
+  return movimientos.reduce((acc, m) => {
+    if (m.moneda === "USD") return acc + m.monto;
+    if (m.tipoCambio) return acc + m.monto / m.tipoCambio;
+    return acc;
+  }, 0);
+}
+
+function formatUSD(valor: number) {
+  return `USD ${valor.toLocaleString("es-AR", { maximumFractionDigits: 0 })}`;
+}
+
 export default async function ProyectoDetallePage({
   params,
 }: {
@@ -73,6 +99,14 @@ export default async function ProyectoDetallePage({
     movimientosRaw,
     mediosPagoRaw,
     unidadesRaw,
+    ventasRaw,
+    tareasPendientes,
+    tareasTotal,
+    tareasAlta,
+    tramitesPresentados,
+    tramitesTotal,
+    documentosPresentados,
+    documentosTotal,
   ] = await Promise.all([
       prisma.proyecto.findUnique({ where: { id } }),
       prisma.pedido.findMany({
@@ -114,16 +148,51 @@ export default async function ProyectoDetallePage({
       tieneFlujoFondos
         ? prisma.unidadProyecto.findMany({ where: { proyectoId: id }, orderBy: { nombre: "asc" } })
         : Promise.resolve([]),
+      tieneFlujoFondos
+        ? prisma.venta.findMany({
+            where: { proyectoId: id },
+            include: ventaInclude,
+            orderBy: { fecha: "desc" },
+          })
+        : Promise.resolve([]),
+      // Conteos para las tarjetas de la portada. Van como `count` en vez de
+      // traer las filas: la portada solo muestra el número.
+      prisma.tarea.count({ where: { proyectoId: id, estado: "PENDIENTE" } }),
+      prisma.tarea.count({ where: { proyectoId: id } }),
+      prisma.tarea.count({
+        where: { proyectoId: id, estado: "PENDIENTE", prioridad: "ALTA" },
+      }),
+      prisma.tramiteMunicipal.count({ where: { proyectoId: id, estado: "PRESENTADO" } }),
+      prisma.tramiteMunicipalTipo.count({ where: { activo: true } }),
+      prisma.documento.count({ where: { proyectoId: id, estado: "PRESENTADO" } }),
+      prisma.documentoTipo.count({
+        where: { activo: true, OR: [{ proyectoId: null }, { proyectoId: id }] },
+      }),
     ]);
 
   if (!proyecto) {
     notFound();
   }
 
+  // El diálogo de edición es un client component, así que le pasamos solo los
+  // campos que usa: `m2Vendibles` es un Decimal de Prisma y React no puede
+  // serializarlo al cruzar el borde server → client.
+  const proyectoEditable = {
+    id: proyecto.id,
+    nombre: proyecto.nombre,
+    barrio: proyecto.barrio,
+    direccion: proyecto.direccion,
+    estado: proyecto.estado,
+    descripcion: proyecto.descripcion,
+    imagenUrl: proyecto.imagenUrl,
+    cantidadPisos: proyecto.cantidadPisos,
+  };
+
   const asignaciones = asignacionesRaw.map(mapProyectoInversor);
   const movimientosFondo = movimientosRaw.map(mapMovimientoFondo);
   const mediosPago = mediosPagoRaw.map(mapMedioPago);
   const unidades = unidadesRaw.map(mapUnidadProyecto);
+  const ventas = ventasRaw.map(mapVenta);
   const proveedoresConRubros = proveedoresFondo.map((p) => ({
     id: p.id,
     nombre: p.nombre,
@@ -169,6 +238,65 @@ export default async function ProyectoDetallePage({
     })),
   ].sort((a, b) => b.fecha.getTime() - a.fecha.getTime());
 
+  const aportadoUSD = sumarUSD(movimientosFondo.filter((m) => m.tipo === "APORTE"));
+  const gastadoUSD = sumarUSD(movimientosFondo.filter((m) => m.tipo === "GASTO"));
+
+  const saldoUSD = aportadoUSD - gastadoUSD;
+  const ultimoMovimiento = movimientos[0];
+
+  const resumen: ResumenProyecto = {
+    movimientos: {
+      valor: String(movimientos.length),
+      detalle: movimientos.length === 1 ? "movimiento registrado" : "movimientos registrados",
+      progreso: null,
+      tono: "neutral",
+      chips: [
+        { etiqueta: "Pedidos", valor: String(pedidos.length) },
+        { etiqueta: "Entregas", valor: String(entregas.length) },
+        ...(ultimoMovimiento
+          ? [{ etiqueta: "Último", valor: formatFecha(ultimoMovimiento.fecha) }]
+          : []),
+      ],
+    },
+    tareas: {
+      valor: String(tareasPendientes),
+      detalle: tareasTotal === 0 ? "sin tareas cargadas" : plural(tareasPendientes, "tarea pendiente", "tareas pendientes"),
+      // El avance de tareas es cuántas se completaron sobre el total.
+      progreso: tareasTotal > 0 ? { hechos: tareasTotal - tareasPendientes, total: tareasTotal } : null,
+      tono: tareasPendientes === 0 ? "ok" : "alerta",
+      chips: tareasAlta > 0 ? [{ etiqueta: "Prioridad alta", valor: String(tareasAlta) }] : [],
+    },
+    municipal: {
+      valor: `${tramitesPresentados}/${tramitesTotal}`,
+      detalle: "trámites presentados",
+      progreso: { hechos: tramitesPresentados, total: tramitesTotal },
+      tono: tramitesTotal > 0 && tramitesPresentados === tramitesTotal ? "ok" : "neutral",
+      chips: [{ etiqueta: "Faltan", valor: String(Math.max(0, tramitesTotal - tramitesPresentados)) }],
+    },
+    documentacion: {
+      valor: `${documentosPresentados}/${documentosTotal}`,
+      detalle: "documentos cargados",
+      progreso: { hechos: documentosPresentados, total: documentosTotal },
+      tono: documentosTotal > 0 && documentosPresentados === documentosTotal ? "ok" : "neutral",
+      chips: [
+        { etiqueta: "Faltan", valor: String(Math.max(0, documentosTotal - documentosPresentados)) },
+      ],
+    },
+    flujoFondos: tieneFlujoFondos
+      ? {
+          valor: formatUSD(saldoUSD),
+          detalle: "saldo disponible",
+          // El avance es cuánto del total aportado ya se gastó.
+          progreso: aportadoUSD > 0 ? { hechos: gastadoUSD, total: aportadoUSD } : null,
+          tono: saldoUSD < 0 ? "alerta" : "neutral",
+          chips: [
+            { etiqueta: "Aportado", valor: formatUSD(aportadoUSD) },
+            { etiqueta: "Gastado", valor: formatUSD(gastadoUSD) },
+          ],
+        }
+      : null,
+  };
+
   return (
     <div>
       <div className="border-b border-neutral-800 pb-4">
@@ -197,7 +325,7 @@ export default async function ProyectoDetallePage({
                 </p>
               </div>
               <ProyectoDialog
-                proyecto={proyecto}
+                proyecto={proyectoEditable}
                 trigger={<Button variant="outline">Editar datos</Button>}
               />
             </div>
@@ -219,7 +347,7 @@ export default async function ProyectoDetallePage({
               </p>
             </div>
             <ProyectoDialog
-              proyecto={proyecto}
+              proyecto={proyectoEditable}
               trigger={<Button variant="outline">Editar datos</Button>}
             />
           </div>
@@ -230,16 +358,10 @@ export default async function ProyectoDetallePage({
         )}
       </div>
 
-      <Tabs defaultValue="movimientos" className="mt-8">
-        <TabsList>
-          <TabsTrigger value="movimientos">Movimientos</TabsTrigger>
-          <TabsTrigger value="municipal">Municipal</TabsTrigger>
-          <TabsTrigger value="documentacion">Documentación</TabsTrigger>
-          {tieneFlujoFondos && <TabsTrigger value="flujo-fondos">Flujo de fondos</TabsTrigger>}
-        </TabsList>
-
-        <TabsContent value="movimientos" className="mt-4">
-          {movimientos.length === 0 ? (
+      <ProyectoSecciones
+        resumen={resumen}
+        movimientos={
+          movimientos.length === 0 ? (
             <div className="rounded-md border border-dashed p-6 text-sm text-muted-foreground">
               Todavía no hay pedidos ni entregas cargados para este proyecto.
             </div>
@@ -304,31 +426,28 @@ export default async function ProyectoDetallePage({
                 </div>
               ))}
             </Accordion>
-          )}
-        </TabsContent>
-
-        <TabsContent value="municipal" className="mt-4">
-          <MunicipalSection proyectoId={proyecto.id} />
-        </TabsContent>
-
-        <TabsContent value="documentacion" className="mt-4">
-          <DocumentacionSection proyectoId={proyecto.id} />
-        </TabsContent>
-
-        {tieneFlujoFondos && (
-          <TabsContent value="flujo-fondos" className="mt-4 flex flex-col gap-4">
+          )
+        }
+        tareas={<TareasSection proyectoId={proyecto.id} />}
+        municipal={<MunicipalSection proyectoId={proyecto.id} />}
+        documentacion={<DocumentacionSection proyectoId={proyecto.id} />}
+        flujoFondos={
+          tieneFlujoFondos ? (
             <FlujoFondosSection
               proyectoId={proyecto.id}
+              proyectoNombre={proyecto.nombre}
               rubros={rubros}
               proveedores={proveedoresConRubros}
               asignaciones={asignaciones}
               movimientos={movimientosFondo}
               mediosPago={mediosPago}
               unidades={unidades}
+              ventas={ventas}
+              m2Vendibles={proyecto.m2Vendibles ? Number(proyecto.m2Vendibles) : null}
             />
-          </TabsContent>
-        )}
-      </Tabs>
+          ) : null
+        }
+      />
     </div>
   );
 }

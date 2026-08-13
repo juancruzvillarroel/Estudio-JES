@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -30,6 +31,7 @@ export function MedioPagoDialog({
 }) {
   const [open, setOpen] = useState(false);
   const [nombre, setNombre] = useState(item?.nombre ?? "");
+  const [incluyeIva, setIncluyeIva] = useState(item?.incluyeIva ?? false);
   const [error, setError] = useState<string | undefined>();
   const [pending, startTransition] = useTransition();
 
@@ -37,6 +39,7 @@ export function MedioPagoDialog({
     setOpen(next);
     if (next) {
       setNombre(item?.nombre ?? "");
+      setIncluyeIva(item?.incluyeIva ?? false);
       setError(undefined);
     }
   };
@@ -52,8 +55,8 @@ export function MedioPagoDialog({
 
     startTransition(async () => {
       const result = item
-        ? await updateMedioPago(item.id, { nombre: nombre.trim() })
-        : await createMedioPago({ proyectoId, nombre: nombre.trim() });
+        ? await updateMedioPago(item.id, { nombre: nombre.trim(), incluyeIva })
+        : await createMedioPago({ proyectoId, nombre: nombre.trim(), incluyeIva });
 
       if (!result.success) {
         setError(result.error);
@@ -81,6 +84,22 @@ export function MedioPagoDialog({
               placeholder="Ej: Transferencia"
               required
             />
+          </div>
+          <div className="flex items-start gap-2.5 rounded-md border p-3">
+            <Checkbox
+              id="incluyeIva"
+              checked={incluyeIva}
+              onCheckedChange={(checked) => setIncluyeIva(checked === true)}
+              className="mt-0.5"
+            />
+            <div className="flex flex-col gap-0.5">
+              <Label htmlFor="incluyeIva" className="cursor-pointer">
+                Incluye IVA (facturado)
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                Los gastos pagados con este medio se cuentan como facturados en el resumen.
+              </p>
+            </div>
           </div>
           {error && <p className="text-sm text-error">{error}</p>}
           <div className="flex items-center justify-between gap-2">

@@ -356,63 +356,76 @@ function CategoriaPanel({
         onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
       >
-        {etapasCategoria.map((etapa) => {
-          const items = itemsPorContenedor[etapa.id] ?? [];
-          const total = items.length;
-          const presentados = items.filter(
-            (tipo) => tramitesPorTipo.get(tipo.id)?.estado === "PRESENTADO"
-          ).length;
+        {/*
+          Cada etapa arranca colapsada. El panel de Base UI se desmonta cuando
+          está cerrado (`keepMounted` es false por defecto), así que los
+          contenedores ocultos no quedan registrados como zonas de drop.
+        */}
+        <Accordion multiple className="flex flex-col gap-3">
+          {etapasCategoria.map((etapa) => {
+            const items = itemsPorContenedor[etapa.id] ?? [];
+            const total = items.length;
+            const presentados = items.filter(
+              (tipo) => tramitesPorTipo.get(tipo.id)?.estado === "PRESENTADO"
+            ).length;
 
-          return (
-            <div key={etapa.id} className="rounded-md border bg-muted/20 p-3">
-              <div className="mb-2 flex items-center gap-2">
-                <div className="min-w-0 flex-1">
-                  <div className="flex w-full items-center justify-between gap-2">
-                    <span className="text-xs font-medium">{etapa.nombre}</span>
-                    <span className="text-xs text-muted-foreground">
+            return (
+              <div key={etapa.id} className="relative rounded-md border bg-muted/20">
+                <AccordionItem value={etapa.id} className="border-b-0">
+                  <AccordionTrigger className="px-3 py-2.5 pr-11 text-xs font-medium">
+                    <span className="min-w-0 flex-1 truncate">{etapa.nombre}</span>
+                    <span className="shrink-0 text-xs font-normal tabular-nums text-muted-foreground">
                       {presentados}/{total}
                     </span>
-                  </div>
+                  </AccordionTrigger>
+
+                  {/* Queda fuera del panel para seguir visible con la etapa cerrada. */}
                   {total > 0 && (
-                    <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+                    <div className="mx-3 mb-2.5 h-1.5 overflow-hidden rounded-full bg-muted">
                       <div
                         className="h-full rounded-full bg-success transition-[width] duration-300"
                         style={{ width: `${(presentados / total) * 100}%` }}
                       />
                     </div>
                   )}
-                </div>
-                <EtapaMunicipalDialog
-                  proyectoId={proyectoId}
-                  categoriaId={categoria.id}
-                  etapa={etapa}
-                  trigger={
-                    <Button type="button" variant="ghost" size="icon-sm" aria-label="Editar etapa">
-                      <Pencil className="h-3.5 w-3.5" />
-                    </Button>
-                  }
-                />
-              </div>
-              <ContenedorTramites id={etapa.id} items={items.map((t) => t.id)} vista={vista}>
-                {items.map((tipo) => (
-                  <TramiteBlock
-                    key={tipo.id}
+
+                  <AccordionPanel className="px-3">
+                    <ContenedorTramites id={etapa.id} items={items.map((t) => t.id)} vista={vista}>
+                      {items.map((tipo) => (
+                        <TramiteBlock
+                          key={tipo.id}
+                          proyectoId={proyectoId}
+                          tipo={tipo}
+                          tramite={tramitesPorTipo.get(tipo.id)}
+                          vista={vista}
+                        />
+                      ))}
+                      <AgregarDocumentoTile
+                        proyectoId={proyectoId}
+                        categoriaId={categoria.id}
+                        etapaId={etapa.id}
+                        vista={vista}
+                      />
+                    </ContenedorTramites>
+                  </AccordionPanel>
+                </AccordionItem>
+
+                <div className="absolute right-1.5 top-1.5">
+                  <EtapaMunicipalDialog
                     proyectoId={proyectoId}
-                    tipo={tipo}
-                    tramite={tramitesPorTipo.get(tipo.id)}
-                    vista={vista}
+                    categoriaId={categoria.id}
+                    etapa={etapa}
+                    trigger={
+                      <Button type="button" variant="ghost" size="icon-sm" aria-label="Editar etapa">
+                        <Pencil className="h-3.5 w-3.5" />
+                      </Button>
+                    }
                   />
-                ))}
-                <AgregarDocumentoTile
-                  proyectoId={proyectoId}
-                  categoriaId={categoria.id}
-                  etapaId={etapa.id}
-                  vista={vista}
-                />
-              </ContenedorTramites>
-            </div>
-          );
-        })}
+                </div>
+              </div>
+            );
+          })}
+        </Accordion>
 
         <div className={cn(etapasCategoria.length > 0 && "rounded-md border p-3")}>
           {etapasCategoria.length > 0 && (

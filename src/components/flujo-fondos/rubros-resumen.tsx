@@ -24,11 +24,6 @@ function formatPorcentaje(valor: number) {
   return `${valor.toLocaleString("es-AR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
 }
 
-function formatFechaCorta(fecha: string) {
-  const date = new Date(fecha);
-  return date.toLocaleDateString("es-AR", { timeZone: "UTC", day: "2-digit", month: "2-digit", year: "2-digit" });
-}
-
 function formatFechaISOCorta(iso: string) {
   const [anio, mes, dia] = iso.split("-");
   return `${dia}/${mes}/${anio.slice(2)}`;
@@ -249,61 +244,26 @@ export function RubrosResumen({
                   </AccordionTrigger>
                   {subrubros.length > 0 && (
                     <AccordionPanel className="px-3">
-                      <Accordion multiple className="flex flex-col gap-2">
+                      <div className="flex flex-col gap-2">
                         {subrubros.map((sub) => {
                           const porcentajeSub = totalGeneral > 0 ? (sub.total / totalGeneral) * 100 : 0;
-                          const movimientosSub = [...sub.movimientos].sort((a, b) =>
-                            b.fecha.localeCompare(a.fecha)
-                          );
 
                           return (
-                            <div key={sub.id} className="rounded-md border bg-muted/20">
-                              <AccordionItem value={sub.id} className="border-0">
-                                <AccordionTrigger className="px-3 py-2 text-xs font-medium">
-                                  <div className="flex w-full items-center justify-between gap-3">
-                                    <span>{sub.nombre}</span>
-                                    <div className="flex shrink-0 items-center gap-2 text-right">
-                                      <span className="font-normal text-muted-foreground">
-                                        {formatPorcentaje(porcentajeSub)}
-                                      </span>
-                                      <span>{formatUSD(sub.total)}</span>
-                                    </div>
-                                  </div>
-                                </AccordionTrigger>
-                                <AccordionPanel className="px-3">
-                                  {movimientosSub.length === 0 ? (
-                                    <p className="text-xs text-muted-foreground">
-                                      Todavía no hay gastos registrados en este subrubro.
-                                    </p>
-                                  ) : (
-                                    <div className="flex flex-col gap-1.5">
-                                      {movimientosSub.map((m) => (
-                                        <div
-                                          key={m.id}
-                                          className="flex items-center gap-3 rounded-md border bg-background px-3 py-2 text-xs"
-                                        >
-                                          <span className="w-14 shrink-0 text-muted-foreground">
-                                            {formatFechaCorta(m.fecha)}
-                                          </span>
-                                          <span className="min-w-0 flex-1 truncate">
-                                            {m.descripcion || "Sin descripción"}
-                                            {m.proveedorNombre && (
-                                              <span className="text-muted-foreground"> · {m.proveedorNombre}</span>
-                                            )}
-                                          </span>
-                                          <span className="shrink-0 font-medium">
-                                            {m.usd !== null ? formatUSD(m.usd) : "Sin TC"}
-                                          </span>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  )}
-                                </AccordionPanel>
-                              </AccordionItem>
+                            <div
+                              key={sub.id}
+                              className="flex w-full items-center justify-between gap-3 rounded-md border bg-muted/20 px-3 py-2 text-xs font-medium"
+                            >
+                              <span>{sub.nombre}</span>
+                              <div className="flex shrink-0 items-center gap-2 text-right">
+                                <span className="font-normal text-muted-foreground">
+                                  {formatPorcentaje(porcentajeSub)}
+                                </span>
+                                <span>{formatUSD(sub.total)}</span>
+                              </div>
                             </div>
                           );
                         })}
-                      </Accordion>
+                      </div>
                     </AccordionPanel>
                   )}
                 </AccordionItem>

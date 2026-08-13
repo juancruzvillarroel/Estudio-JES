@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Calendar, Pencil, Plus } from "lucide-react";
+import { Calendar, Pencil, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -269,8 +269,15 @@ export function MovimientoFondoTabla({
           </div>
         )}
         {hayFiltrosActivos && (
-          <Button type="button" variant="ghost" size="sm" className="shrink-0" onClick={limpiarFiltros}>
-            Limpiar filtros
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="shrink-0"
+            aria-label="Limpiar filtros"
+            onClick={limpiarFiltros}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
           </Button>
         )}
         <MovimientoFondoDialog

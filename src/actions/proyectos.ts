@@ -4,7 +4,11 @@ import { revalidatePath } from "next/cache";
 import { put } from "@vercel/blob";
 import { prisma } from "@/lib/db";
 import { requireSeccion } from "@/lib/dal";
-import { ProyectoSchema } from "@/lib/validations/proyecto";
+import {
+  ProyectoSchema,
+  ProyectoM2VendiblesSchema,
+  type ProyectoM2VendiblesInput,
+} from "@/lib/validations/proyecto";
 import { sincronizarDocumentosPorPiso } from "@/actions/documentos";
 
 export type ActionState = { error?: string; success?: boolean } | undefined;
@@ -68,4 +72,34 @@ export async function updateProyecto(id: string, _prevState: ActionState, formDa
   revalidatePath(`/proyectos/${id}`);
   revalidatePath("/dashboard");
   return { success: true };
+}
+
+export type M2VendiblesResult =
+  | { success: true; m2Vendibles: number | null }
+  | { success: false; error: string };
+
+/**
+ * Guarda los m² vendibles totales del proyecto. Vive en "flujo-fondos" (y no
+ * en "proyectos") porque el campo se edita desde esa pestaña y es el divisor
+ * de los costos por m² del resumen.
+ */
+export async function updateM2Vendibles(
+  id: string,
+  input: ProyectoM2VendiblesInput
+): Promise<M2VendiblesResult> {
+  await requireSeccion("flujo-fondos");
+
+  const validated = ProyectoM2VendiblesSchema.safeParse(input);
+  if (!validated.success) {
+    return { success: false, error: validated.error.issues[0]?.message ?? "Datos inválidos." };
+  }
+
+  const proyecto = await prisma.proyecto.update({
+    where: { id },
+    data: { m2Vendibles: validated.data.m2Vendibles },
+    select: { m2Vendibles: true },
+  });
+
+  revalidatePath(`/proyectos/${id}`);
+  return { success: true, m2Vendibles: proyecto.m2Vendibles ? Number(proyecto.m2Vendibles) : null };
 }

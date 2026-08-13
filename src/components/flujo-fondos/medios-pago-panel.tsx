@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Pencil, Plus } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { MedioPagoDialog } from "@/components/flujo-fondos/medio-pago-dialog";
 import type { MedioPagoOpcion } from "@/lib/flujo-fondos";
@@ -70,6 +71,7 @@ export function MediosPagoPanel({
           {items.map((it) => (
             <div key={it.id} className="flex items-center gap-3 rounded-md border bg-background px-3 py-2">
               <span className="min-w-0 flex-1 truncate text-sm font-medium">{it.nombre}</span>
+              {it.incluyeIva && <Badge variant="secondary">Facturado</Badge>}
               <MedioPagoDialog
                 proyectoId={proyectoId}
                 item={it}
