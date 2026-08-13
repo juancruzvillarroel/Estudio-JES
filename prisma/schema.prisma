@@ -58,7 +58,10 @@ enum ModalidadVenta {
 
 model User {
   id                String   @id @default(cuid())
-  email             String   @unique
+  // Con lo que se inicia sesión. El email pasó a ser un dato de contacto
+  // opcional: hay gente del estudio que no tiene o no lo usa.
+  usuario           String   @unique
+  email             String?  @unique
   passwordHash      String
   nombre            String
   esAdmin           Boolean  @default(false)

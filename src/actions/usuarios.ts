@@ -25,7 +25,10 @@ export async function createUsuario(_prevState: ActionState, formData: FormData)
 
   const validated = UsuarioCreateSchema.safeParse({
     nombre: formData.get("nombre"),
-    email: formData.get("email"),
+    usuario: formData.get("usuario"),
+    // `?? ""` porque el campo puede no venir en el FormData y el schema espera
+    // cadena vacía (no null) para "sin email".
+    email: formData.get("email") ?? "",
     password: formData.get("password"),
     esAdmin: formData.get("esAdmin") === "on",
     paginasPermitidas: formData.getAll("paginasPermitidas"),
@@ -34,15 +37,23 @@ export async function createUsuario(_prevState: ActionState, formData: FormData)
     return { error: validated.error.issues[0]?.message ?? "Datos inválidos." };
   }
 
-  const existente = await prisma.user.findUnique({ where: { email: validated.data.email } });
+  const existente = await prisma.user.findUnique({ where: { usuario: validated.data.usuario } });
   if (existente) {
-    return { error: "Ya existe un usuario con ese email." };
+    return { error: "Ya existe un usuario con ese nombre de usuario." };
+  }
+
+  if (validated.data.email) {
+    const conEseEmail = await prisma.user.findUnique({ where: { email: validated.data.email } });
+    if (conEseEmail) {
+      return { error: "Ya existe un usuario con ese email." };
+    }
   }
 
   const passwordHash = await bcrypt.hash(validated.data.password, 10);
   await prisma.user.create({
     data: {
       nombre: validated.data.nombre,
+      usuario: validated.data.usuario,
       email: validated.data.email,
       passwordHash,
       esAdmin: validated.data.esAdmin,
@@ -63,7 +74,10 @@ export async function updateUsuario(id: string, _prevState: ActionState, formDat
 
   const validated = UsuarioUpdateSchema.safeParse({
     nombre: formData.get("nombre"),
-    email: formData.get("email"),
+    usuario: formData.get("usuario"),
+    // `?? ""` porque el campo puede no venir en el FormData y el schema espera
+    // cadena vacía (no null) para "sin email".
+    email: formData.get("email") ?? "",
     password: formData.get("password") || undefined,
     esAdmin: formData.get("esAdmin") === "on",
     paginasPermitidas: formData.getAll("paginasPermitidas"),
@@ -77,11 +91,20 @@ export async function updateUsuario(id: string, _prevState: ActionState, formDat
     return { error: "El usuario ya no existe." };
   }
 
-  const otroConEseEmail = await prisma.user.findFirst({
-    where: { email: validated.data.email, NOT: { id } },
+  const otroConEseUsuario = await prisma.user.findFirst({
+    where: { usuario: validated.data.usuario, NOT: { id } },
   });
-  if (otroConEseEmail) {
-    return { error: "Ya existe un usuario con ese email." };
+  if (otroConEseUsuario) {
+    return { error: "Ya existe un usuario con ese nombre de usuario." };
+  }
+
+  if (validated.data.email) {
+    const otroConEseEmail = await prisma.user.findFirst({
+      where: { email: validated.data.email, NOT: { id } },
+    });
+    if (otroConEseEmail) {
+      return { error: "Ya existe un usuario con ese email." };
+    }
   }
 
   if (usuarioActual.esAdmin && !validated.data.esAdmin) {
@@ -95,6 +118,7 @@ export async function updateUsuario(id: string, _prevState: ActionState, formDat
     where: { id },
     data: {
       nombre: validated.data.nombre,
+      usuario: validated.data.usuario,
       email: validated.data.email,
       esAdmin: validated.data.esAdmin,
       paginasPermitidas: validated.data.paginasPermitidas,

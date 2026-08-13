@@ -10,19 +10,21 @@ neonConfig.webSocketConstructor = ws;
 const adapter = new PrismaNeon({ connectionString: process.env.DATABASE_URL });
 const prisma = new PrismaClient({ adapter });
 
+// Se identifica por `usuario`, que es con lo que se inicia sesión. El email es
+// opcional y acá ni se carga.
 const USUARIOS_INICIALES = [
-  { email: "admin@estudio.com", password: "cambiar123", nombre: "Admin", esAdmin: true },
+  { usuario: "admin", password: "cambiar123", nombre: "Admin", esAdmin: true },
 ];
 
 async function main() {
   for (const u of USUARIOS_INICIALES) {
     const passwordHash = await bcrypt.hash(u.password, 10);
     await prisma.user.upsert({
-      where: { email: u.email },
+      where: { usuario: u.usuario },
       update: { esAdmin: u.esAdmin },
-      create: { email: u.email, passwordHash, nombre: u.nombre, esAdmin: u.esAdmin },
+      create: { usuario: u.usuario, passwordHash, nombre: u.nombre, esAdmin: u.esAdmin },
     });
-    console.log(`Usuario listo: ${u.email} / ${u.password}`);
+    console.log(`Usuario listo: ${u.usuario} / ${u.password}`);
   }
 }
 

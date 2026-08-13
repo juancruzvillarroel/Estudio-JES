@@ -15,7 +15,8 @@ import { UsuarioDialog } from "@/components/usuarios/usuario-dialog";
 export type UsuarioRow = {
   id: string;
   nombre: string;
-  email: string;
+  usuario: string;
+  email: string | null;
   esAdmin: boolean;
   paginasPermitidas: string[];
 };
@@ -43,6 +44,7 @@ export function UsuariosLista({
         <TableHeader>
           <TableRow>
             <TableHead>Nombre</TableHead>
+            <TableHead>Usuario</TableHead>
             <TableHead>Email</TableHead>
             <TableHead>Rol</TableHead>
             <TableHead className="text-right">Acciones</TableHead>
@@ -59,7 +61,10 @@ export function UsuariosLista({
                     <span className="ml-1 text-xs text-muted-foreground">(vos)</span>
                   )}
                 </TableCell>
-                <TableCell>{u.email}</TableCell>
+                <TableCell className="font-mono text-xs">{u.usuario}</TableCell>
+                <TableCell>
+                  {u.email ?? <span className="text-muted-foreground">—</span>}
+                </TableCell>
                 <TableCell>
                   <Badge variant={u.esAdmin ? "secondary" : "outline"}>
                     {u.esAdmin ? "Admin" : "Usuario"}

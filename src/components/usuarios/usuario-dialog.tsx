@@ -16,11 +16,13 @@ import {
 import { DeleteButton } from "@/components/ui/delete-button";
 import { createUsuario, deleteUsuario, updateUsuario } from "@/actions/usuarios";
 import { PAGINAS } from "@/lib/paginas";
+import { sugerirUsuario } from "@/lib/usuarios";
 
 type Usuario = {
   id: string;
   nombre: string;
-  email: string;
+  usuario: string;
+  email: string | null;
   esAdmin: boolean;
   paginasPermitidas?: string[];
 };
@@ -39,6 +41,18 @@ export function UsuarioDialog({
   const [error, setError] = useState<string | undefined>();
   const [pending, startTransition] = useTransition();
   const [esAdmin, setEsAdmin] = useState(usuario?.esAdmin ?? false);
+
+  // En un alta el nombre de usuario se propone solo a partir del nombre real
+  // ("Jorge García" → "jorge.garcia"), pero se puede pisar. Una vez que lo
+  // tocaron a mano se deja de proponer para no borrarles lo que escribieron.
+  const [nombre, setNombre] = useState(usuario?.nombre ?? "");
+  const [nombreUsuario, setNombreUsuario] = useState(usuario?.usuario ?? "");
+  const [usuarioEditado, setUsuarioEditado] = useState(false);
+
+  const handleNombre = (valor: string) => {
+    setNombre(valor);
+    if (!usuario && !usuarioEditado) setNombreUsuario(sugerirUsuario(valor));
+  };
 
   const formAction = (formData: FormData) => {
     setError(undefined);
@@ -62,11 +76,37 @@ export function UsuarioDialog({
         <form action={formAction} className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <Label htmlFor="nombre">Nombre</Label>
-            <Input id="nombre" name="nombre" defaultValue={usuario?.nombre} required />
+            <Input
+              id="nombre"
+              name="nombre"
+              value={nombre}
+              onChange={(e) => handleNombre(e.target.value)}
+              required
+            />
           </div>
           <div className="flex flex-col gap-2">
-            <Label htmlFor="email">Email</Label>
-            <Input id="email" name="email" type="email" defaultValue={usuario?.email} required />
+            <Label htmlFor="usuario">Usuario</Label>
+            <Input
+              id="usuario"
+              name="usuario"
+              value={nombreUsuario}
+              onChange={(e) => {
+                setUsuarioEditado(true);
+                setNombreUsuario(e.target.value);
+              }}
+              autoComplete="off"
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              required
+            />
+            <p className="text-xs text-muted-foreground">
+              Con esto inicia sesión. Sin espacios ni acentos.
+            </p>
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="email">Email (opcional)</Label>
+            <Input id="email" name="email" type="email" defaultValue={usuario?.email ?? ""} />
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="password">{usuario ? "Nueva contraseña" : "Contraseña"}</Label>
