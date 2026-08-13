@@ -39,7 +39,14 @@ export const tareaInclude = {
   asignados: { include: { user: { select: { id: true, nombre: true } } } },
   // El checklist se ordena por `orden` (el que le dio el usuario al cargarlo) y
   // no por fecha, así no se le mueven los pasos de lugar al editarlos.
-  items: { orderBy: { orden: "asc" } },
+  //
+  // `items` trae solo los sueltos (los que no están en ninguna sección); los
+  // demás vienen dentro de su sección, ya agrupados como se muestran.
+  items: { where: { seccionId: null }, orderBy: { orden: "asc" } },
+  secciones: {
+    orderBy: { orden: "asc" },
+    include: { items: { orderBy: { orden: "asc" } } },
+  },
 } satisfies Prisma.TareaInclude;
 
 export type TareaConRelaciones = Prisma.TareaGetPayload<{ include: typeof tareaInclude }>;
@@ -52,6 +59,13 @@ export type TareaItemOpcion = {
   id: string;
   texto: string;
   completado: boolean;
+};
+
+/** Bloque de sub ítems dentro de una tarea. */
+export type TareaSeccionOpcion = {
+  id: string;
+  titulo: string;
+  items: TareaItemOpcion[];
 };
 
 export type TareaOpcion = {
@@ -67,7 +81,9 @@ export type TareaOpcion = {
   completadaEl: string | null;
   createdAt: string;
   asignados: { id: string; nombre: string }[];
+  /** Sub ítems sueltos, los que no están dentro de ninguna sección. */
   items: TareaItemOpcion[];
+  secciones: TareaSeccionOpcion[];
 };
 
 export function mapTarea(t: TareaConRelaciones): TareaOpcion {
@@ -84,19 +100,35 @@ export function mapTarea(t: TareaConRelaciones): TareaOpcion {
     completadaEl: t.completadaEl?.toISOString() ?? null,
     createdAt: t.createdAt.toISOString(),
     asignados: t.asignados.map((a) => ({ id: a.user.id, nombre: a.user.nombre })),
-    items: t.items.map((i) => ({ id: i.id, texto: i.texto, completado: i.completado })),
+    items: t.items.map(mapItem),
+    secciones: t.secciones.map((s) => ({
+      id: s.id,
+      titulo: s.titulo,
+      items: s.items.map(mapItem),
+    })),
   };
 }
 
+function mapItem(i: { id: string; texto: string; completado: boolean }): TareaItemOpcion {
+  return { id: i.id, texto: i.texto, completado: i.completado };
+}
+
+/** Todos los sub ítems de la tarea: los sueltos y los de todas las secciones. */
+export function todosLosItems(tarea: TareaOpcion): TareaItemOpcion[] {
+  return [...tarea.items, ...tarea.secciones.flatMap((s) => s.items)];
+}
+
 /**
- * Avance del checklist. Devuelve null cuando la tarea no tiene sub items, para
- * que la vista sepa que no hay nada que mostrar (y no dibuje un "0/0").
+ * Avance del checklist, contando sueltos y de secciones juntos. Devuelve null
+ * cuando la tarea no tiene sub ítems, para que la vista sepa que no hay nada
+ * que mostrar (y no dibuje un "0/0").
  */
 export function avanceItems(tarea: TareaOpcion): { hechos: number; total: number } | null {
-  if (tarea.items.length === 0) return null;
+  const items = todosLosItems(tarea);
+  if (items.length === 0) return null;
   return {
-    hechos: tarea.items.filter((i) => i.completado).length,
-    total: tarea.items.length,
+    hechos: items.filter((i) => i.completado).length,
+    total: items.length,
   };
 }
 

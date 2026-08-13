@@ -675,27 +675,50 @@ model Tarea {
 
   asignados TareaAsignado[]
   items     TareaItem[]
+  secciones TareaSeccion[]
 
   @@index([proyectoId])
   @@index([rubroId])
   @@index([estado])
 }
 
+// Agrupa sub ítems dentro de una tarea, para las tareas largas que se dividen
+// en bloques ("Documentación", "Obra", …). Es opcional: los sub ítems pueden
+// colgar directo de la tarea, sin sección.
+model TareaSeccion {
+  id        String   @id @default(cuid())
+  tareaId   String
+  tarea     Tarea    @relation(fields: [tareaId], references: [id], onDelete: Cascade)
+  titulo    String
+  orden     Int      @default(0)
+  createdAt DateTime @default(now())
+
+  items TareaItem[]
+
+  @@index([tareaId])
+}
+
 // Checklist de una tarea: los pasos sueltos que se van tildando para ir
 // completando la tarea. Cuando se tildan todos, la tarea se marca completada
 // sola (y si se destilda uno, vuelve a pendiente).
 model TareaItem {
-  id         String   @id @default(cuid())
+  id         String        @id @default(cuid())
   tareaId    String
-  tarea      Tarea    @relation(fields: [tareaId], references: [id], onDelete: Cascade)
+  tarea      Tarea         @relation(fields: [tareaId], references: [id], onDelete: Cascade)
+  // Null = el ítem cuelga directo de la tarea, sin sección. Se mantiene el
+  // vínculo con la tarea aunque esté dentro de una sección: así el checklist
+  // completo se lee de una sola consulta.
+  seccionId  String?
+  seccion    TareaSeccion? @relation(fields: [seccionId], references: [id], onDelete: Cascade)
   texto      String
-  completado Boolean  @default(false)
-  // Orden manual dentro del checklist: el alta los numera 0,1,2… así se
-  // muestran siempre como los escribió el usuario, no por fecha de creación.
-  orden      Int      @default(0)
-  createdAt  DateTime @default(now())
+  completado Boolean       @default(false)
+  // Orden manual dentro de su grupo: el alta los numera 0,1,2… así se muestran
+  // siempre como los escribió el usuario, no por fecha de creación.
+  orden      Int           @default(0)
+  createdAt  DateTime      @default(now())
 
   @@index([tareaId])
+  @@index([seccionId])
 }
 
 // Relación N a N entre tareas y los usuarios responsables. Es una tabla propia

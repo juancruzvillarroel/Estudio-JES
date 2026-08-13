@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/db";
 import { verifySession } from "@/lib/dal";
 import {
@@ -24,28 +25,97 @@ function revalidar(proyectoId: string) {
   revalidatePath("/tareas");
 }
 
+type ChecklistInput = {
+  items: { id?: string; texto: string }[];
+  secciones: { id?: string; titulo: string; items: { id?: string; texto: string }[] }[];
+};
+
+/**
+ * Deja el checklist de la tarea igual a lo que llegó del formulario.
+ *
+ * No se puede borrar todo y recrearlo: se perdería qué sub ítems estaban
+ * tildados. Los que traen `id` ya existen y se actualizan; los que no, se
+ * crean. Lo mismo con las secciones.
+ *
+ * El orden de los pasos importa: las secciones que sobran se borran al final,
+ * después de reacomodar los ítems. Si se borraran antes, un ítem que el usuario
+ * sacó de una sección para dejarlo suelto se lo llevaría puesto la cascada.
+ */
+async function sincronizarChecklist(
+  tx: Prisma.TransactionClient,
+  tareaId: string,
+  { items, secciones }: ChecklistInput
+) {
+  // Primero las secciones, para tener el id real de las nuevas antes de
+  // colgarles los ítems.
+  const seccionIds: string[] = [];
+  for (const [orden, s] of secciones.entries()) {
+    if (s.id) {
+      await tx.tareaSeccion.update({ where: { id: s.id }, data: { titulo: s.titulo, orden } });
+      seccionIds.push(s.id);
+    } else {
+      const creada = await tx.tareaSeccion.create({
+        data: { tareaId, titulo: s.titulo, orden },
+        select: { id: true },
+      });
+      seccionIds.push(creada.id);
+    }
+  }
+
+  // Sueltos y de secciones se tratan igual: lo único que cambia es el
+  // `seccionId`, null para los sueltos.
+  const todos = [
+    ...items.map((i, orden) => ({ ...i, orden, seccionId: null as string | null })),
+    ...secciones.flatMap((s, i) =>
+      s.items.map((it, orden) => ({ ...it, orden, seccionId: seccionIds[i] }))
+    ),
+  ];
+
+  await tx.tareaItem.deleteMany({
+    where: { tareaId, id: { notIn: todos.flatMap((i) => (i.id ? [i.id] : [])) } },
+  });
+
+  for (const i of todos) {
+    const datos = { texto: i.texto, orden: i.orden, seccionId: i.seccionId };
+    if (i.id) {
+      await tx.tareaItem.update({ where: { id: i.id }, data: datos });
+    } else {
+      await tx.tareaItem.create({ data: { ...datos, tareaId } });
+    }
+  }
+
+  await tx.tareaSeccion.deleteMany({ where: { tareaId, id: { notIn: seccionIds } } });
+}
+
 export async function crearTarea(input: TareaInput): Promise<ActionResult> {
   const session = await verifySession();
   const validated = TareaSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: validated.error.issues[0]?.message ?? "Datos inválidos." };
   }
-  const { proyectoId, titulo, descripcion, rubroId, prioridad, asignadoIds, items } =
+  const { proyectoId, titulo, descripcion, rubroId, prioridad, asignadoIds, items, secciones } =
     validated.data;
 
   try {
-    const item = await prisma.tarea.create({
-      data: {
-        proyectoId,
-        titulo,
-        descripcion: descripcion || null,
-        rubroId: rubroId || null,
-        prioridad,
-        creadoPorId: session.userId,
-        asignados: { create: asignadoIds.map((userId) => ({ userId })) },
-        items: { create: items.map((i, orden) => ({ texto: i.texto, orden })) },
-      },
-      include: tareaInclude,
+    // La tarea se crea primero y el checklist se arma después, porque los
+    // ítems de una sección necesitan tanto el id de la sección como el de la
+    // tarea, y ninguno existe hasta que se graba. Va todo en una transacción
+    // para no dejar una tarea a medio armar si algo falla.
+    const item = await prisma.$transaction(async (tx) => {
+      const creada = await tx.tarea.create({
+        data: {
+          proyectoId,
+          titulo,
+          descripcion: descripcion || null,
+          rubroId: rubroId || null,
+          prioridad,
+          creadoPorId: session.userId,
+          asignados: { create: asignadoIds.map((userId) => ({ userId })) },
+        },
+        select: { id: true },
+      });
+      await sincronizarChecklist(tx, creada.id, { items, secciones });
+      return tx.tarea.findUniqueOrThrow({ where: { id: creada.id }, include: tareaInclude });
     });
     revalidar(proyectoId);
     return { success: true, item: mapTarea(item) };
@@ -63,36 +133,29 @@ export async function actualizarTarea(
   if (!validated.success) {
     return { success: false, error: validated.error.issues[0]?.message ?? "Datos inválidos." };
   }
-  const { titulo, descripcion, rubroId, prioridad, asignadoIds, items } = validated.data;
+  const { titulo, descripcion, rubroId, prioridad, asignadoIds, items, secciones } =
+    validated.data;
 
   try {
-    // Los asignados se reemplazan por completo: es más simple y más barato que
-    // calcular el diff, porque son pocos por tarea.
-    //
-    // El checklist NO se puede reemplazar así: borrarlo y recrearlo perdería
-    // qué sub ítems estaban tildados. Por eso se hace el diff a mano contra los
-    // ids que mandó el formulario.
-    const conservados = items.filter((i) => i.id).map((i) => i.id as string);
-    const item = await prisma.tarea.update({
-      where: { id },
-      data: {
-        titulo,
-        descripcion: descripcion || null,
-        rubroId: rubroId || null,
-        prioridad,
-        asignados: {
-          deleteMany: {},
-          create: asignadoIds.map((userId) => ({ userId })),
+    const item = await prisma.$transaction(async (tx) => {
+      // Los asignados se reemplazan por completo: es más simple y más barato
+      // que calcular el diff, porque son pocos por tarea. El checklist no,
+      // porque hay que conservar qué estaba tildado (ver sincronizarChecklist).
+      await tx.tarea.update({
+        where: { id },
+        data: {
+          titulo,
+          descripcion: descripcion || null,
+          rubroId: rubroId || null,
+          prioridad,
+          asignados: {
+            deleteMany: {},
+            create: asignadoIds.map((userId) => ({ userId })),
+          },
         },
-        items: {
-          deleteMany: { id: { notIn: conservados } },
-          update: items.flatMap((i, orden) =>
-            i.id ? [{ where: { id: i.id }, data: { texto: i.texto, orden } }] : []
-          ),
-          create: items.flatMap((i, orden) => (i.id ? [] : [{ texto: i.texto, orden }])),
-        },
-      },
-      include: tareaInclude,
+      });
+      await sincronizarChecklist(tx, id, { items, secciones });
+      return tx.tarea.findUniqueOrThrow({ where: { id }, include: tareaInclude });
     });
     revalidar(item.proyectoId);
     return { success: true, item: mapTarea(item) };
