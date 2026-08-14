@@ -11,9 +11,14 @@ import { capitalizarOracion } from "@/lib/utils";
 export default async function ProyectosPage() {
   await requireSeccion("proyectos");
 
+  // Una obra pasa a "Activo" cuando se le carga el primer gasto, no cuando se
+  // le carga el primer pedido de materiales: el pedido se arma mucho antes de
+  // que la obra arranque de verdad, y dejaba proyectos figurando en marcha sin
+  // haber movido un peso. Los aportes de inversores no cuentan, por eso el
+  // filtro por tipo: entra plata antes de que se empiece a gastar.
   const proyectos = await prisma.proyecto.findMany({
     orderBy: { createdAt: "desc" },
-    include: { _count: { select: { pedidos: true } } },
+    include: { _count: { select: { movimientosFondo: { where: { tipo: "GASTO" } } } } },
   });
 
   return (
@@ -40,7 +45,7 @@ export default async function ProyectosPage() {
       ) : (
         <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {proyectos.map((p) => {
-            const tieneMovimientos = p._count.pedidos > 0;
+            const tieneGastos = p._count.movimientosFondo > 0;
             return (
               <Link key={p.id} href={`/proyectos/${p.id}`}>
                 <Card size="sm" className="h-full overflow-hidden pt-0 transition-colors hover:bg-muted/50">
@@ -68,8 +73,8 @@ export default async function ProyectosPage() {
                         {p.direccion ? capitalizarOracion(p.direccion) : "Sin dirección"}
                       </p>
                     </div>
-                    <Badge variant={tieneMovimientos ? "success" : "secondary"} className="shrink-0">
-                      {tieneMovimientos ? "Activo" : "Espera"}
+                    <Badge variant={tieneGastos ? "success" : "secondary"} className="shrink-0">
+                      {tieneGastos ? "Activo" : "Espera"}
                     </Badge>
                   </CardContent>
                 </Card>
