@@ -37,6 +37,12 @@ type ChecklistInput = {
  * tildados. Los que traen `id` ya existen y se actualizan; los que no, se
  * crean. Lo mismo con las secciones.
  *
+ * Se trabaja por diferencia contra lo que hay guardado, en vez de mandar un
+ * UPDATE por cada renglón. Cada consulta a la base cuesta unos 60 ms, así que
+ * una tarea con 20 sub ítems y 8 secciones se iba a más de 4 segundos y
+ * quedaba pegada contra el límite de la transacción. Guardar sin haber tocado
+ * nada ahora no escribe nada.
+ *
  * El orden de los pasos importa: las secciones que sobran se borran al final,
  * después de reacomodar los ítems. Si se borraran antes, un ítem que el usuario
  * sacó de una sección para dejarlo suelto se lo llevaría puesto la cascada.
@@ -46,13 +52,30 @@ async function sincronizarChecklist(
   tareaId: string,
   { items, secciones }: ChecklistInput
 ) {
+  const [seccionesGuardadas, itemsGuardados] = await Promise.all([
+    tx.tareaSeccion.findMany({ where: { tareaId }, select: { id: true, titulo: true, orden: true } }),
+    tx.tareaItem.findMany({
+      where: { tareaId },
+      select: { id: true, texto: true, orden: true, seccionId: true },
+    }),
+  ]);
+  const seccionPorId = new Map(seccionesGuardadas.map((s) => [s.id, s]));
+  const itemPorId = new Map(itemsGuardados.map((i) => [i.id, i]));
+
   // Primero las secciones, para tener el id real de las nuevas antes de
   // colgarles los ítems.
+  //
+  // Un id que ya no está en la base se trata como si no hubiera venido: puede
+  // pasar si el diálogo quedó abierto mientras se borraba la sección desde otro
+  // lado. Antes eso reventaba la transacción entera.
   const seccionIds: string[] = [];
   for (const [orden, s] of secciones.entries()) {
-    if (s.id) {
-      await tx.tareaSeccion.update({ where: { id: s.id }, data: { titulo: s.titulo, orden } });
-      seccionIds.push(s.id);
+    const guardada = s.id ? seccionPorId.get(s.id) : undefined;
+    if (guardada) {
+      if (guardada.titulo !== s.titulo || guardada.orden !== orden) {
+        await tx.tareaSeccion.update({ where: { id: guardada.id }, data: { titulo: s.titulo, orden } });
+      }
+      seccionIds.push(guardada.id);
     } else {
       const creada = await tx.tareaSeccion.create({
         data: { tareaId, titulo: s.titulo, orden },
@@ -71,21 +94,45 @@ async function sincronizarChecklist(
     ),
   ];
 
-  await tx.tareaItem.deleteMany({
-    where: { tareaId, id: { notIn: todos.flatMap((i) => (i.id ? [i.id] : [])) } },
-  });
-
-  for (const i of todos) {
-    const datos = { texto: i.texto, orden: i.orden, seccionId: i.seccionId };
-    if (i.id) {
-      await tx.tareaItem.update({ where: { id: i.id }, data: datos });
-    } else {
-      await tx.tareaItem.create({ data: { ...datos, tareaId } });
-    }
+  const conservados = todos.flatMap((i) => (i.id && itemPorId.has(i.id) ? [i.id] : []));
+  const aBorrar = itemsGuardados.filter((i) => !conservados.includes(i.id)).map((i) => i.id);
+  if (aBorrar.length > 0) {
+    await tx.tareaItem.deleteMany({ where: { tareaId, id: { in: aBorrar } } });
   }
 
-  await tx.tareaSeccion.deleteMany({ where: { tareaId, id: { notIn: seccionIds } } });
+  const nuevos: { tareaId: string; texto: string; orden: number; seccionId: string | null }[] = [];
+  for (const i of todos) {
+    const datos = { texto: i.texto, orden: i.orden, seccionId: i.seccionId };
+    const guardado = i.id ? itemPorId.get(i.id) : undefined;
+    if (!guardado) {
+      nuevos.push({ ...datos, tareaId });
+    } else if (
+      guardado.texto !== datos.texto ||
+      guardado.orden !== datos.orden ||
+      guardado.seccionId !== datos.seccionId
+    ) {
+      await tx.tareaItem.update({ where: { id: guardado.id }, data: datos });
+    }
+  }
+  // Todos los nuevos entran en un solo INSERT.
+  if (nuevos.length > 0) {
+    await tx.tareaItem.createMany({ data: nuevos });
+  }
+
+  const seccionesABorrar = seccionesGuardadas
+    .filter((s) => !seccionIds.includes(s.id))
+    .map((s) => s.id);
+  if (seccionesABorrar.length > 0) {
+    await tx.tareaSeccion.deleteMany({ where: { tareaId, id: { in: seccionesABorrar } } });
+  }
 }
+
+/**
+ * Margen holgado sobre los 5 s por defecto de Prisma. Con el guardado por
+ * diferencia una tarea grande no llega ni cerca, pero si algún día alguien
+ * carga un checklist enorme conviene que tarde y no que falle.
+ */
+const OPCIONES_TX = { timeout: 15000, maxWait: 10000 } as const;
 
 export async function crearTarea(input: TareaInput): Promise<ActionResult> {
   const session = await verifySession();
@@ -116,10 +163,13 @@ export async function crearTarea(input: TareaInput): Promise<ActionResult> {
       });
       await sincronizarChecklist(tx, creada.id, { items, secciones });
       return tx.tarea.findUniqueOrThrow({ where: { id: creada.id }, include: tareaInclude });
-    });
+    }, OPCIONES_TX);
     revalidar(proyectoId);
     return { success: true, item: mapTarea(item) };
-  } catch {
+  } catch (error) {
+    // Sin esto el motivo real se pierde y del lado del usuario solo queda un
+    // "no se pudo": queda en el log del servidor para poder diagnosticarlo.
+    console.error("crearTarea", error);
     return { success: false, error: "No se pudo crear la tarea." };
   }
 }
@@ -156,10 +206,11 @@ export async function actualizarTarea(
       });
       await sincronizarChecklist(tx, id, { items, secciones });
       return tx.tarea.findUniqueOrThrow({ where: { id }, include: tareaInclude });
-    });
+    }, OPCIONES_TX);
     revalidar(item.proyectoId);
     return { success: true, item: mapTarea(item) };
-  } catch {
+  } catch (error) {
+    console.error("actualizarTarea", error);
     return { success: false, error: "No se pudo guardar la tarea." };
   }
 }
@@ -186,7 +237,8 @@ export async function cambiarEstadoTarea(
     });
     revalidar(item.proyectoId);
     return { success: true, item: mapTarea(item) };
-  } catch {
+  } catch (error) {
+    console.error("cambiarEstadoTarea", error);
     return { success: false, error: "No se pudo actualizar la tarea." };
   }
 }
@@ -228,7 +280,8 @@ export async function cambiarEstadoItemTarea(
           });
     revalidar(item.proyectoId);
     return { success: true, item: mapTarea(item) };
-  } catch {
+  } catch (error) {
+    console.error("cambiarEstadoItemTarea", error);
     return { success: false, error: "No se pudo actualizar el sub ítem." };
   }
 }
@@ -239,7 +292,8 @@ export async function eliminarTarea(id: string): Promise<{ error?: string; succe
     const item = await prisma.tarea.delete({ where: { id } });
     revalidar(item.proyectoId);
     return { success: true };
-  } catch {
+  } catch (error) {
+    console.error("eliminarTarea", error);
     return { error: "No se pudo eliminar la tarea." };
   }
 }
