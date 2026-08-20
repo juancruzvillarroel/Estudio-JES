@@ -22,14 +22,44 @@ export const PRIORIDAD_BADGE: Record<Prioridad, "error" | "warning" | "outline">
 };
 
 /**
- * Peso para ordenar: las tareas más urgentes primero. Coincide con el orden
- * en que se listan las prioridades en el formulario.
+ * Paleta para los badges de las personas asignadas. Cada una se queda siempre
+ * con el mismo color, así se reconoce quién está en cada tarea barriendo la
+ * lista con la vista, sin leer los nombres.
+ *
+ * No hay rojos ni ámbares a propósito: son los colores que la app usa para
+ * decir "urgente" y "atención" (el badge de prioridad, los avisos), y un
+ * nombre en rojo se leería como una alarma en vez de como una persona.
+ *
+ * Las clases están escritas enteras y no armadas con template strings porque
+ * Tailwind busca los nombres de clase como texto en el código: un
+ * `bg-${color}-100` no lo encuentra y el color no llega al build.
  */
-export const PRIORIDAD_ORDEN: Record<Prioridad, number> = {
-  ALTA: 0,
-  MEDIA: 1,
-  BAJA: 2,
-};
+const COLORES_PERSONA = [
+  "bg-sky-100 text-sky-900 dark:bg-sky-950 dark:text-sky-200",
+  "bg-violet-100 text-violet-900 dark:bg-violet-950 dark:text-violet-200",
+  "bg-emerald-100 text-emerald-900 dark:bg-emerald-950 dark:text-emerald-200",
+  "bg-fuchsia-100 text-fuchsia-900 dark:bg-fuchsia-950 dark:text-fuchsia-200",
+  "bg-cyan-100 text-cyan-900 dark:bg-cyan-950 dark:text-cyan-200",
+  "bg-indigo-100 text-indigo-900 dark:bg-indigo-950 dark:text-indigo-200",
+  "bg-teal-100 text-teal-900 dark:bg-teal-950 dark:text-teal-200",
+  "bg-pink-100 text-pink-900 dark:bg-pink-950 dark:text-pink-200",
+];
+
+/**
+ * Color fijo de una persona, salido de su id.
+ *
+ * Va por id y no por nombre para que el color no cambie si a alguien se le
+ * corrige cómo está escrito el nombre. Es un hash, así que dos personas pueden
+ * caer en el mismo color: el color ayuda a encontrar, el nombre es el que
+ * identifica.
+ */
+export function colorPersona(id: string): string {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = (hash * 31 + id.charCodeAt(i)) | 0;
+  }
+  return COLORES_PERSONA[Math.abs(hash) % COLORES_PERSONA.length];
+}
 
 export const tareaInclude = {
   proyecto: { select: { id: true, nombre: true } },
@@ -133,17 +163,21 @@ export function avanceItems(tarea: TareaOpcion): { hechos: number; total: number
 }
 
 /**
- * Orden de la lista: primero las pendientes, dentro de ellas por prioridad
- * (alta arriba) y, a igual prioridad, la más nueva primero. Las completadas
- * van al final, también de la más reciente a la más vieja.
+ * Orden de la lista: por fecha de creación, de la más nueva a la más vieja.
+ *
+ * La prioridad ya no interviene. Ordenar por prioridad hacía que una tarea
+ * recién cargada apareciera en el medio de la lista, según el color que le
+ * hubieras puesto, y era difícil encontrarla; con la fecha, lo último que
+ * cargaste está siempre arriba. La prioridad sigue a la vista en el badge y se
+ * puede filtrar por ella.
+ *
+ * Lo único que se mantiene aparte es el estado: las completadas caen al final.
+ * Casi siempre están ocultas, pero cuando se tildan "Ver completadas" no tiene
+ * sentido que se mezclen entre las que todavía hay que hacer.
  */
 export function ordenarTareas(tareas: TareaOpcion[]): TareaOpcion[] {
   return [...tareas].sort((a, b) => {
     if (a.estado !== b.estado) return a.estado === "PENDIENTE" ? -1 : 1;
-    if (a.estado === "PENDIENTE") {
-      const porPrioridad = PRIORIDAD_ORDEN[a.prioridad] - PRIORIDAD_ORDEN[b.prioridad];
-      if (porPrioridad !== 0) return porPrioridad;
-    }
     return b.createdAt.localeCompare(a.createdAt);
   });
 }

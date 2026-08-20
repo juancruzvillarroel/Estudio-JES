@@ -12,6 +12,7 @@ import { cambiarEstadoItemTarea, cambiarEstadoTarea } from "@/actions/tareas";
 import { cn, formatFecha } from "@/lib/utils";
 import {
   avanceItems,
+  colorPersona,
   PRIORIDAD_BADGE,
   PRIORIDAD_LABELS,
   type OpcionSimple,
@@ -135,58 +136,48 @@ export function TareasLista({
             />
 
             <div className="flex min-w-0 flex-1 flex-col gap-1">
-              {/* Encabezado: a la izquierda de qué obra es y de qué se trata,
-                  a la derecha el estado (prioridad y avance del checklist).
-                  La obra va más grande y en negrita porque es lo que se busca
-                  primero cuando están todas las obras mezcladas; el título de
-                  la tarea la acompaña en letra más fina. */}
-              <div className="flex items-start gap-2">
-                <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2">
+              {/* De qué se trata, en tres renglones de menor a mayor detalle:
+                  la tarea, la obra y el rubro. El título va arriba y con más
+                  peso porque es lo que distingue una fila de otra; la obra y el
+                  rubro lo ubican y por eso quedan en letra chica. */}
+              <div className="flex min-w-0 flex-col">
+                <span
+                  className={cn(
+                    "text-base font-semibold",
+                    completada && "text-muted-foreground line-through"
+                  )}
+                >
+                  {tarea.titulo}
+                </span>
+                {/* La obra y, al lado, la prioridad. En la pestaña de una obra
+                    el nombre no se repite y el badge queda solo en este
+                    renglón, que es donde se lo busca en las dos vistas.
+
+                    La obra va en negrita para poder barrer la lista buscando
+                    una, pero en gris y más chica que el título, así no le
+                    compite. */}
+                <div className="flex flex-wrap items-center gap-2">
                   {mostrarObra && (
                     <span
                       className={cn(
-                        "text-base font-semibold",
-                        completada && "text-muted-foreground line-through"
+                        "text-sm font-semibold text-muted-foreground",
+                        completada && "line-through"
                       )}
                     >
                       {tarea.proyectoNombre}
                     </span>
                   )}
-                  <span
-                    className={cn(
-                      "min-w-0",
-                      // En la pestaña de una obra no se repite el nombre, así
-                      // que el título pasa a ser el que manda.
-                      mostrarObra ? "text-sm font-normal text-muted-foreground" : "font-medium",
-                      completada && "text-muted-foreground line-through"
-                    )}
-                  >
-                    {tarea.titulo}
-                  </span>
-                </div>
-
-                <div className="flex shrink-0 items-center gap-2">
+                  {/* La prioridad solo aplica a lo que falta hacer: en una
+                      tarea ya completada no dice nada y se esconde. */}
                   {!completada && (
                     <Badge variant={PRIORIDAD_BADGE[tarea.prioridad]}>
                       {PRIORIDAD_LABELS[tarea.prioridad]}
                     </Badge>
                   )}
-                  {tieneChecklist && (
-                    <button
-                      type="button"
-                      onClick={() => toggleAbierta(tarea.id)}
-                      aria-expanded={abierta}
-                      className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
-                    >
-                      <ChevronRight
-                        className={cn("h-3.5 w-3.5 transition-transform", abierta && "rotate-90")}
-                      />
-                      <span className="tabular-nums">
-                        {avance ? `${avance.hechos}/${avance.total}` : "Ver checklist"}
-                      </span>
-                    </button>
-                  )}
                 </div>
+                <span className="text-xs text-muted-foreground">
+                  {tarea.rubroNombre ?? "Sin rubro"}
+                </span>
               </div>
 
               {tarea.descripcion && (
@@ -239,20 +230,14 @@ export function TareasLista({
                 </div>
               )}
 
-              {/* La obra ya va en el encabezado, acá no se repite. */}
+              {/* La obra, el rubro y la prioridad van arriba y los asignados a
+                  la derecha: acá queda solo lo que ubica a la tarea en el
+                  tiempo. */}
               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
-                <span>{tarea.rubroNombre ?? "Sin rubro"}</span>
-                {tarea.asignados.length > 0 ? (
-                  <span className="flex flex-wrap items-center gap-1">
-                    {tarea.asignados.map((a) => (
-                      <Badge key={a.id} variant="secondary">
-                        {a.nombre}
-                      </Badge>
-                    ))}
-                  </span>
-                ) : (
-                  <span>Sin asignar</span>
-                )}
+                {/* La fecha de creación es la que manda el orden de la lista,
+                    así que conviene tenerla a la vista para entender por qué
+                    cada tarea está donde está. */}
+                <span>Creada el {formatFecha(tarea.createdAt)}</span>
                 {completada && tarea.completadaEl && (
                   <span className="text-success">
                     Completada el {formatFecha(tarea.completadaEl)}
@@ -261,31 +246,69 @@ export function TareasLista({
               </div>
             </div>
 
-            <div className="flex shrink-0 items-center">
-              {/* Abre el informe imprimible en una pestaña aparte; de ahí se
-                  guarda como PDF para mandárselo a quien tiene que hacerla. */}
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Descargar informe de la tarea"
-                title="Descargar informe"
-                onClick={() => abrirInformeTarea(tarea)}
-              >
-                <FileDown className="h-3.5 w-3.5" />
-              </Button>
-              <TareaDialog
-                rubros={rubros}
-                usuarios={usuarios}
-                item={tarea}
-                onSaved={onSaved}
-                onDeleted={onDeleted}
-                trigger={
-                  <Button type="button" variant="ghost" size="icon-sm" aria-label="Editar tarea">
-                    <Pencil className="h-3.5 w-3.5" />
-                  </Button>
-                }
-              />
+            {/* Columna derecha: arriba el avance del checklist y las dos
+                acciones, abajo quién la tiene que hacer. Todo lo que describe a
+                la tarea (título, obra, rubro, fechas, prioridad) queda del lado
+                izquierdo; acá va lo que se hace con ella y de quién es. */}
+            <div className="flex shrink-0 flex-col items-end gap-2">
+              <div className="flex items-center gap-2">
+                {tieneChecklist && (
+                  <button
+                    type="button"
+                    onClick={() => toggleAbierta(tarea.id)}
+                    aria-expanded={abierta}
+                    className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+                  >
+                    <ChevronRight
+                      className={cn("h-3.5 w-3.5 transition-transform", abierta && "rotate-90")}
+                    />
+                    <span className="tabular-nums">
+                      {avance ? `${avance.hechos}/${avance.total}` : "Ver checklist"}
+                    </span>
+                  </button>
+                )}
+                {/* Abre el informe imprimible en una pestaña aparte; de ahí se
+                    guarda como PDF para mandárselo a quien tiene que hacerla. */}
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Descargar informe de la tarea"
+                  title="Descargar informe"
+                  onClick={() => abrirInformeTarea(tarea)}
+                >
+                  <FileDown className="h-3.5 w-3.5" />
+                </Button>
+                <TareaDialog
+                  rubros={rubros}
+                  usuarios={usuarios}
+                  item={tarea}
+                  onSaved={onSaved}
+                  onDeleted={onDeleted}
+                  trigger={
+                    <Button type="button" variant="ghost" size="icon-sm" aria-label="Editar tarea">
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                  }
+                />
+              </div>
+
+              {/* Quién la tiene que hacer, debajo de las acciones. Va acá y no
+                  con el resto de los datos para que "de quién es cada tarea" se
+                  lea bajando siempre por la misma columna. El ancho está
+                  limitado para que varios nombres largos bajen de renglón en
+                  vez de comerse el título. */}
+              <div className="flex max-w-48 flex-wrap justify-end gap-1">
+                {tarea.asignados.length > 0 ? (
+                  tarea.asignados.map((a) => (
+                    <Badge key={a.id} className={colorPersona(a.id)}>
+                      {a.nombre}
+                    </Badge>
+                  ))
+                ) : (
+                  <span className="text-xs text-muted-foreground">Sin asignar</span>
+                )}
+              </div>
             </div>
           </div>
         );

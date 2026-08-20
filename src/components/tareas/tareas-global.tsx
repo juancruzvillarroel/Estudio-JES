@@ -135,7 +135,7 @@ export function TareasGlobal({
             usuarios={usuarios}
             onSaved={handleSaved}
             trigger={
-              <Button type="button" variant="outline" size="sm">
+              <Button type="button" size="sm">
                 <Plus className="h-3.5 w-3.5" />
                 Nueva tarea
               </Button>
