@@ -19,8 +19,21 @@ export function formatMonto(monto: number) {
   return monto.toLocaleString("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 })
 }
 
+/**
+ * Importes de dinero, con los centavos a la vista.
+ *
+ * Van siempre con dos decimales, aunque sean ceros: así los números quedan
+ * alineados uno debajo del otro en las columnas del resumen. Sin los centavos,
+ * un saldo redondeado no cerraba contra la suma de los movimientos que lo
+ * forman y parecía un error de la cuenta.
+ */
 export function formatMontoMoneda(monto: number, moneda: "ARS" | "USD") {
-  return monto.toLocaleString("es-AR", { style: "currency", currency: moneda, maximumFractionDigits: 0 })
+  return monto.toLocaleString("es-AR", {
+    style: "currency",
+    currency: moneda,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
 }
 
 /**
