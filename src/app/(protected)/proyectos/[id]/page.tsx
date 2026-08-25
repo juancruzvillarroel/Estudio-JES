@@ -288,7 +288,9 @@ export default async function ProyectoDetallePage({
           detalle: "saldo disponible",
           // El avance es cuánto del total aportado ya se gastó.
           progreso: aportadoUSD > 0 ? { hechos: gastadoUSD, total: aportadoUSD } : null,
-          tono: saldoUSD < 0 ? "alerta" : "neutral",
+          // Un saldo negativo es plata que falta, no algo a revisar: va en rojo
+          // y no en el naranja que la app usa para "prestá atención".
+          tono: saldoUSD < 0 ? "error" : "neutral",
           chips: [
             { etiqueta: "Aportado", valor: formatUSD(aportadoUSD) },
             { etiqueta: "Gastado", valor: formatUSD(gastadoUSD) },
