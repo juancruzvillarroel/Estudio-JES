@@ -255,6 +255,17 @@ model DocumentoTipo {
   // una con su propio acordeón y barra de progreso. Null si la categoría no
   // se subdivide.
   subSeccion  String?
+  // Un nivel más de anidamiento, ya dentro de la subsección: si tiene
+  // valor, este tipo es un subitem del tipo apuntado (ej. "Cañerías"
+  // adentro de "Caldera", que a su vez está en la subsección "Instalación
+  // de calefacción"). Null = item de primer nivel, que es como quedaron
+  // todos los que ya existían cuando se agregó la columna.
+  //
+  // Un tipo con hijos hace de carpeta y no se presenta él mismo: lo que se
+  // marca presentado son los hijos, y su progreso es el de ellos.
+  parentId    String?
+  parent      DocumentoTipo?     @relation("DocumentoTipoHijos", fields: [parentId], references: [id])
+  hijos       DocumentoTipo[]    @relation("DocumentoTipoHijos")
   orden       Int                @default(0)
   activo      Boolean            @default(true)
   // Si es true, el usuario lo eliminó a mano para este proyecto puntual:
@@ -266,9 +277,12 @@ model DocumentoTipo {
 
   documentos Documento[]
 
-  @@unique([categoriaId, proyectoId, subSeccion, nombre])
+  // Nombre explícito: el que Prisma armaría solo con estas cinco columnas
+  // pasa los 63 caracteres que aguanta Postgres y quedaría truncado.
+  @@unique([categoriaId, proyectoId, subSeccion, parentId, nombre], map: "DocumentoTipo_scope_nombre_key")
   @@index([categoriaId])
   @@index([proyectoId])
+  @@index([parentId])
 }
 
 // Instancia por proyecto de cada tipo de documento del catálogo: se crea la

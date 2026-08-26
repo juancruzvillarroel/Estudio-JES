@@ -86,8 +86,13 @@ export async function sincronizarDocumentosPorPiso(proyectoId: string, cantidadP
 
   for (const categoria of categoriasPorPiso) {
     const deseados = nombresPorPiso(categoria, cantidadPisos);
+    // Solo los de primer nivel: esta función genera pisos, nunca subitems.
+    // Los subitems que el usuario haya agregado a mano adentro de un piso
+    // (parentId con valor) no están en `deseados`, así que sin este filtro
+    // caerían en la lista de "sobrantes" de más abajo y se borrarían solos
+    // la próxima vez que se guarde el proyecto.
     const existentes = await prisma.documentoTipo.findMany({
-      where: { categoriaId: categoria.id, proyectoId },
+      where: { categoriaId: categoria.id, proyectoId, parentId: null },
     });
     const existentesPorClave = new Map(existentes.map((t) => [clave(t), t]));
 
@@ -150,51 +155,85 @@ export async function crearTipoDocumento(
   categoriaId: string,
   nombre: string,
   descripcion: string | undefined,
-  subSeccion?: string | null
+  subSeccion?: string | null,
+  // Si viene, el tipo nuevo cuelga de ese otro tipo en vez de quedar suelto
+  // en la subsección (ej. un subitem adentro de "Caldera").
+  parentId?: string | null
 ) {
   await requireSeccion("proyectos");
 
   const nombreTrim = nombre.trim();
-  if (!nombreTrim) return;
+  if (!nombreTrim) return null;
 
   const categoria = await prisma.documentoCategoria.findUnique({ where: { id: categoriaId } });
-  if (!categoria) return;
+  if (!categoria) return null;
 
   // Las categorías "por piso" tienen su catálogo de tipos scopeado a este
   // proyecto puntual (no se comparten entre proyectos); el resto sigue
   // usando un catálogo global compartido (proyectoId null), como siempre.
   const proyectoIdTipo = categoria.porPiso ? proyectoId : null;
-  const subSeccionValor = subSeccion ?? null;
+  const parentIdValor = parentId ?? null;
+
+  // El subitem vive en la misma subsección que su padre, siempre. Si se
+  // tomara la subsección que manda la UI, un padre podría terminar con
+  // hijos colgados de otra subsección y el árbol quedaría inconsistente.
+  const padre = parentIdValor
+    ? await prisma.documentoTipo.findUnique({ where: { id: parentIdValor } })
+    : null;
+  // El padre se borró mientras el formulario estaba abierto: no hay dónde
+  // colgar el subitem, y crearlo igual rompería la clave foránea.
+  if (parentIdValor && !padre) return null;
+  const subSeccionValor = padre ? padre.subSeccion : (subSeccion ?? null);
 
   // Prisma no permite usar `null` dentro de una clave compuesta para
   // upsert, así que buscamos a mano el tipo (global o de este proyecto) con
   // ese nombre antes de crear o reactivar.
   const existente = await prisma.documentoTipo.findFirst({
-    where: { categoriaId, proyectoId: proyectoIdTipo, subSeccion: subSeccionValor, nombre: nombreTrim },
+    where: {
+      categoriaId,
+      proyectoId: proyectoIdTipo,
+      subSeccion: subSeccionValor,
+      parentId: parentIdValor,
+      nombre: nombreTrim,
+    },
   });
+
+  // El id vuelve a la UI para poder encadenar: al crear un grupo con su
+  // primer subitem se llama dos veces, y la segunda necesita saber de quién
+  // colgar el subitem.
+  let id: string;
 
   if (existente) {
     await prisma.documentoTipo.update({
       where: { id: existente.id },
       data: { activo: true, excluido: false, descripcion: descripcion?.trim() || null },
     });
+    id = existente.id;
   } else {
     const ultimo = await prisma.documentoTipo.findFirst({
-      where: { categoriaId, proyectoId: proyectoIdTipo, subSeccion: subSeccionValor },
+      where: {
+        categoriaId,
+        proyectoId: proyectoIdTipo,
+        subSeccion: subSeccionValor,
+        parentId: parentIdValor,
+      },
       orderBy: { orden: "desc" },
     });
-    await prisma.documentoTipo.create({
+    const creado = await prisma.documentoTipo.create({
       data: {
         categoriaId,
         proyectoId: proyectoIdTipo,
         subSeccion: subSeccionValor,
+        parentId: parentIdValor,
         nombre: nombreTrim,
         descripcion: descripcion?.trim() || null,
         orden: (ultimo?.orden ?? 0) + 1,
       },
     });
+    id = creado.id;
   }
   revalidatePath(`/proyectos/${proyectoId}`);
+  return { id };
 }
 
 // Si el tipo es "de proyecto" (generado automáticamente por piso) se lo
@@ -203,11 +242,20 @@ export async function crearTipoDocumento(
 // catálogo global y ya tiene instancias cargadas en algún otro proyecto no
 // se puede borrar (rompería esos registros), así que en ese caso se lo
 // oculta del listado en vez de eliminarlo.
+//
+// Si el tipo tiene subitems colgando, primero se van los hijos: el borrado
+// del padre fallaría por la clave foránea y quedarían huérfanos, invisibles
+// en la pantalla pero vivos en la base.
 export async function eliminarTipoDocumento(proyectoId: string, tipoId: string) {
   await requireSeccion("proyectos");
 
   const tipo = await prisma.documentoTipo.findUnique({ where: { id: tipoId } });
   if (!tipo) return { success: true };
+
+  const hijos = await prisma.documentoTipo.findMany({ where: { parentId: tipoId } });
+  for (const hijo of hijos) {
+    await eliminarTipoDocumento(proyectoId, hijo.id);
+  }
 
   if (tipo.proyectoId) {
     await prisma.documentoTipo.update({
