@@ -28,3 +28,24 @@ export const ProyectoM2VendiblesSchema = z.object({
 });
 
 export type ProyectoM2VendiblesInput = z.infer<typeof ProyectoM2VendiblesSchema>;
+
+/**
+ * Porcentaje de honorarios que cobra el estudio sobre los gastos de la obra.
+ * Se carga desde Flujo de fondos > Datos del proyecto. `null` es "sin
+ * definir": la calculadora muestra la base pero no propone monto.
+ *
+ * El tope de 100 es a propósito flojo: el honorario habitual ronda el 12%,
+ * pero no hay motivo para pelearle al usuario si en una obra puntual cobra
+ * otra cosa. Lo que sí se rechaza es un negativo o algo que no sea número.
+ */
+export const ProyectoPorcentajeHonorariosSchema = z.object({
+  porcentajeHonorarios: z
+    .number({ message: "El porcentaje tiene que ser un número" })
+    .min(0, "El porcentaje no puede ser negativo")
+    .max(100, "El porcentaje no puede ser mayor a 100")
+    .nullable(),
+});
+
+export type ProyectoPorcentajeHonorariosInput = z.infer<
+  typeof ProyectoPorcentajeHonorariosSchema
+>;

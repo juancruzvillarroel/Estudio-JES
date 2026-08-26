@@ -7,7 +7,9 @@ import { requireSeccion } from "@/lib/dal";
 import {
   ProyectoSchema,
   ProyectoM2VendiblesSchema,
+  ProyectoPorcentajeHonorariosSchema,
   type ProyectoM2VendiblesInput,
+  type ProyectoPorcentajeHonorariosInput,
 } from "@/lib/validations/proyecto";
 import { sincronizarDocumentosPorPiso } from "@/actions/documentos";
 
@@ -102,4 +104,39 @@ export async function updateM2Vendibles(
 
   revalidatePath(`/proyectos/${id}`);
   return { success: true, m2Vendibles: proyecto.m2Vendibles ? Number(proyecto.m2Vendibles) : null };
+}
+
+export type PorcentajeHonorariosResult =
+  | { success: true; porcentajeHonorarios: number | null }
+  | { success: false; error: string };
+
+/**
+ * Guarda el porcentaje de honorarios que cobra el estudio en esta obra. Es el
+ * multiplicador de la calculadora del resumen (ver src/lib/honorarios.ts).
+ */
+export async function updatePorcentajeHonorarios(
+  id: string,
+  input: ProyectoPorcentajeHonorariosInput
+): Promise<PorcentajeHonorariosResult> {
+  await requireSeccion("flujo-fondos");
+
+  const validated = ProyectoPorcentajeHonorariosSchema.safeParse(input);
+  if (!validated.success) {
+    return { success: false, error: validated.error.issues[0]?.message ?? "Datos inválidos." };
+  }
+
+  const proyecto = await prisma.proyecto.update({
+    where: { id },
+    data: { porcentajeHonorarios: validated.data.porcentajeHonorarios },
+    select: { porcentajeHonorarios: true },
+  });
+
+  revalidatePath(`/proyectos/${id}`);
+  return {
+    success: true,
+    // Ojo con `? :` sobre el Decimal: un 0 es un porcentaje válido, así que se
+    // compara contra null en vez de mirar si es "falsy".
+    porcentajeHonorarios:
+      proyecto.porcentajeHonorarios === null ? null : Number(proyecto.porcentajeHonorarios),
+  };
 }

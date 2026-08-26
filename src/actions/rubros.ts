@@ -16,7 +16,26 @@ function parseForm(formData: FormData) {
     nombre: formData.get("nombre"),
     codigoPrefijo:
       codigoPrefijoRaw && String(codigoPrefijoRaw).trim() !== "" ? codigoPrefijoRaw : undefined,
+    // Un checkbox destildado no viaja en el FormData: ausente es false.
+    pagaHonorarios: formData.get("pagaHonorarios") !== null,
+    esHonorarios: formData.get("esHonorarios") !== null,
   });
+}
+
+/**
+ * Deja a `id` como el único rubro de honorarios. Es una marca excluyente: si
+ * hubiera dos, la calculadora no sabría cuál corta el período. Además ese
+ * rubro nunca paga honorarios sobre sí mismo, o cada cobro engordaría la base
+ * del siguiente.
+ */
+async function marcarComoUnicoDeHonorarios(id: string) {
+  await prisma.$transaction([
+    prisma.rubro.updateMany({
+      where: { id: { not: id }, esHonorarios: true },
+      data: { esHonorarios: false },
+    }),
+    prisma.rubro.update({ where: { id }, data: { pagaHonorarios: false } }),
+  ]);
 }
 
 export async function createRubro(_prevState: ActionState, formData: FormData): Promise<ActionState> {
@@ -33,6 +52,7 @@ export async function createRubro(_prevState: ActionState, formData: FormData): 
     await prisma.subrubro.createMany({
       data: SUBRUBROS_DEFAULT.map((nombre, orden) => ({ rubroId: rubro.id, nombre, orden })),
     });
+    if (validated.data.esHonorarios) await marcarComoUnicoDeHonorarios(rubro.id);
   } catch {
     return { error: "Ya existe un rubro con ese nombre." };
   }
@@ -51,6 +71,7 @@ export async function updateRubro(id: string, _prevState: ActionState, formData:
 
   try {
     await prisma.rubro.update({ where: { id }, data: validated.data });
+    if (validated.data.esHonorarios) await marcarComoUnicoDeHonorarios(id);
   } catch (e) {
     const target = (e as { meta?: { target?: string[] } })?.meta?.target;
     if (target?.includes("codigoPrefijo")) {

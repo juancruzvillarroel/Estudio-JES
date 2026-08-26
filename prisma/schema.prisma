@@ -97,6 +97,11 @@ model Proyecto {
   // total vendible se conoce desde el anteproyecto, mucho antes de tener
   // cargada cada unidad.
   m2Vendibles   Decimal?       @db.Decimal(10, 2)
+  // Porcentaje de honorarios que cobra el estudio sobre los gastos de esta
+  // obra (ej. 12.00). Se carga a mano desde "Datos del proyecto" y puede
+  // variar de obra en obra. En null significa "sin definir": la calculadora
+  // de honorarios no propone ningún monto hasta que se cargue.
+  porcentajeHonorarios Decimal? @db.Decimal(5, 2)
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 
@@ -317,6 +322,19 @@ model Rubro {
   codigoPrefijo String?  @unique
   orden         Int      @default(0)
   createdAt     DateTime @default(now())
+
+  // Honorarios del estudio (ver src/lib/honorarios.ts).
+  //
+  // `pagaHonorarios`: si los gastos de este rubro entran en la base sobre la
+  // que se calcula el honorario. Arranca en true porque la mayoría paga; se
+  // destilda la compra del terreno, que es la excepción.
+  //
+  // `esHonorarios`: marca el rubro donde se cargan los honorarios en sí. Es
+  // el que dispara la calculadora y el que corta el período (la base son los
+  // gastos posteriores al último movimiento de este rubro). Debería haber uno
+  // solo: al marcarlo se desmarca el anterior (ver src/actions/rubros.ts).
+  pagaHonorarios Boolean @default(true)
+  esHonorarios   Boolean @default(false)
 
   proveedores Proveedor[]
   materiales  Material[]

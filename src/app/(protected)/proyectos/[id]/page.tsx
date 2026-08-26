@@ -80,6 +80,25 @@ function formatUSD(valor: number) {
   return `USD ${valor.toLocaleString("es-AR", { maximumFractionDigits: 0 })}`;
 }
 
+/**
+ * Pasa el porcentaje de honorarios (un Decimal de Prisma) al número que espera
+ * el client component, o null si no está cargado.
+ *
+ * No alcanza con `valor ? Number(valor) : null`, porque un 0 es un porcentaje
+ * válido y quedaría en null. Pero tampoco sirve comparar contra null a secas:
+ * si el campo llega `undefined` —pasa con el cliente de Prisma desactualizado,
+ * antes de reiniciar el dev server— `Number(undefined)` devuelve NaN, y un NaN
+ * cuelga la pestaña entera. El estado de la sección se sincroniza con un
+ * `if (prop !== prev)`, y como NaN nunca es igual a sí mismo, ese if se cumple
+ * en cada render y React corta por "Too many re-renders". Por eso se exige un
+ * número finito y todo lo demás cae en null.
+ */
+function aPorcentaje(valor: unknown): number | null {
+  if (valor === null || valor === undefined) return null;
+  const numero = Number(valor);
+  return Number.isFinite(numero) ? numero : null;
+}
+
 export default async function ProyectoDetallePage({
   params,
 }: {
@@ -446,6 +465,7 @@ export default async function ProyectoDetallePage({
               unidades={unidades}
               ventas={ventas}
               m2Vendibles={proyecto.m2Vendibles ? Number(proyecto.m2Vendibles) : null}
+              porcentajeHonorarios={aPorcentaje(proyecto.porcentajeHonorarios)}
             />
           ) : null
         }

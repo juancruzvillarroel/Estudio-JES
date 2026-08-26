@@ -30,6 +30,8 @@ import {
 } from "@/actions/movimientos-fondo";
 import { obtenerCotizacionDolarBlue } from "@/actions/cotizaciones";
 import { MONEDA_LABELS, type MedioPagoOpcion, type MovimientoFondoOpcion } from "@/lib/flujo-fondos";
+import type { SugerenciaHonorarios } from "@/lib/honorarios";
+import { formatMontoMoneda } from "@/lib/utils";
 import type { MovimientoFondoInput } from "@/lib/validations/movimiento-fondo";
 
 type SubrubroOpcion = { id: string; nombre: string };
@@ -103,6 +105,7 @@ export function MovimientoFondoDialog({
   proveedores,
   proyectoInversores,
   mediosPago,
+  sugerenciaHonorarios,
   item,
   defaultTipo,
   trigger,
@@ -114,6 +117,13 @@ export function MovimientoFondoDialog({
   proveedores: ProveedorOpcion[];
   proyectoInversores: ProyectoInversorOpcion[];
   mediosPago: MedioPagoOpcion[];
+  /**
+   * Montos que propone la calculadora de honorarios, uno por moneda (ver
+   * src/lib/honorarios.ts). Solo aparecen al elegir el rubro de honorarios en
+   * un gasto nuevo, y se aplican con un click: nunca pisan lo que se haya
+   * escrito a mano.
+   */
+  sugerenciaHonorarios?: SugerenciaHonorarios[] | null;
   item?: MovimientoFondoOpcion;
   defaultTipo?: "GASTO" | "APORTE";
   trigger: React.ReactNode;
@@ -176,6 +186,25 @@ export function MovimientoFondoDialog({
       if (inputArchivoRef.current) inputArchivoRef.current.value = "";
       if (inputCamaraRef.current) inputCamaraRef.current.value = "";
     }
+  };
+
+  // La calculadora propone el monto solo al cargar un honorario nuevo. En una
+  // edición no aparece: el período ya se cerró con ese mismo gasto adentro, así
+  // que la cuenta que corresponde es la que se guardó, no la de hoy.
+  //
+  // Hay una sugerencia por moneda, porque los gastos en pesos y en dólares se
+  // liquidan por separado. Se muestra la de la moneda elegida en el formulario:
+  // así, si la obra gastó en las dos, se cargan dos honorarios cambiando la
+  // moneda y aplicando la sugerencia que aparece en cada caso.
+  const sugerencia =
+    !item && tipo === "GASTO" && sugerenciaHonorarios
+      ? (sugerenciaHonorarios.find((s) => s.rubroId === rubroId && s.moneda === moneda) ?? null)
+      : null;
+
+  const aplicarSugerencia = () => {
+    if (!sugerencia) return;
+    setMontoTexto(formatMontoInicial(sugerencia.monto));
+    setValue("monto", sugerencia.monto, { shouldValidate: true });
   };
 
   const handleProveedorCreado = (proveedor: { id: string; nombre: string; codigo: string }) => {
@@ -552,6 +581,21 @@ export function MovimientoFondoDialog({
                   setValue("monto", parseMontoTexto(formateado), { shouldValidate: true });
                 }}
               />
+              {sugerencia && (
+                <button
+                  type="button"
+                  onClick={aplicarSugerencia}
+                  className="text-left text-xs text-muted-foreground underline-offset-2 hover:underline"
+                >
+                  Usar{" "}
+                  <span className="font-medium text-foreground tabular-nums">
+                    {formatMontoMoneda(sugerencia.monto, sugerencia.moneda)}
+                  </span>
+                  : {sugerencia.porcentaje.toLocaleString("es-AR", { maximumFractionDigits: 2 })}% de
+                  los gastos en {sugerencia.moneda === "ARS" ? "pesos" : "dólares"} desde el último
+                  honorario.
+                </button>
+              )}
             </div>
             <div className="flex flex-col gap-2">
               <Label htmlFor="moneda">Moneda</Label>

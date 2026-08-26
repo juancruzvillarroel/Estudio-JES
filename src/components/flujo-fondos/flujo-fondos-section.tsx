@@ -10,6 +10,7 @@ import { ProyectoInversoresPanel } from "@/components/flujo-fondos/proyecto-inve
 import { MediosPagoPanel } from "@/components/flujo-fondos/medios-pago-panel";
 import { UnidadesProyectoPanel } from "@/components/flujo-fondos/unidades-proyecto-panel";
 import { M2VendiblesPanel } from "@/components/flujo-fondos/m2-vendibles-panel";
+import { PorcentajeHonorariosPanel } from "@/components/flujo-fondos/porcentaje-honorarios-panel";
 import { VentasSection } from "@/components/ventas/ventas-section";
 import type {
   MovimientoFondoOpcion,
@@ -17,6 +18,7 @@ import type {
   MedioPagoOpcion,
   UnidadProyectoOpcion,
 } from "@/lib/flujo-fondos";
+import { sugerirHonorarios } from "@/lib/honorarios";
 import type { VentaOpcion } from "@/lib/ventas";
 
 type SubrubroOpcion = { id: string; nombre: string };
@@ -24,6 +26,9 @@ type RubroOpcion = {
   id: string;
   nombre: string;
   codigoPrefijo?: string | null;
+  /** Ver src/lib/honorarios.ts: qué rubros entran en la base y cuál es el de honorarios. */
+  pagaHonorarios: boolean;
+  esHonorarios: boolean;
   subrubros: SubrubroOpcion[];
 };
 type ProveedorOpcion = { id: string; nombre: string; rubroIds: string[] };
@@ -39,6 +44,7 @@ export function FlujoFondosSection({
   unidades,
   ventas,
   m2Vendibles,
+  porcentajeHonorarios,
 }: {
   proyectoId: string;
   /** Encabeza el informe imprimible que se descarga desde el resumen. */
@@ -51,6 +57,7 @@ export function FlujoFondosSection({
   unidades: UnidadProyectoOpcion[];
   ventas: VentaOpcion[];
   m2Vendibles: number | null;
+  porcentajeHonorarios: number | null;
 }) {
   const [items, setItems] = useState(movimientos);
   const [prevMovimientos, setPrevMovimientos] = useState(movimientos);
@@ -82,6 +89,15 @@ export function FlujoFondosSection({
     setM2Actuales(m2Vendibles);
   }
 
+  // Mismo motivo que los m²: al cargar el porcentaje desde "Datos del proyecto"
+  // la calculadora de honorarios del resumen se actualiza en el acto.
+  const [porcentajeActual, setPorcentajeActual] = useState(porcentajeHonorarios);
+  const [prevPorcentaje, setPrevPorcentaje] = useState(porcentajeHonorarios);
+  if (porcentajeHonorarios !== prevPorcentaje) {
+    setPrevPorcentaje(porcentajeHonorarios);
+    setPorcentajeActual(porcentajeHonorarios);
+  }
+
   const handleSaved = (movimiento: MovimientoFondoOpcion) => {
     setItems((prev) => {
       const existe = prev.some((m) => m.id === movimiento.id);
@@ -92,6 +108,14 @@ export function FlujoFondosSection({
   const handleDeleted = (id: string) => {
     setItems((prev) => prev.filter((m) => m.id !== id));
   };
+
+  // Se calcula acá, donde están todos los movimientos de la obra: el diálogo
+  // solo ve los de la pestaña en la que se abrió.
+  const sugerenciaHonorarios = sugerirHonorarios({
+    movimientos: items,
+    rubros,
+    porcentaje: porcentajeActual,
+  });
 
   const gastos = items.filter((m) => m.tipo === "GASTO");
   const aportes = items.filter((m) => m.tipo === "APORTE");
@@ -118,6 +142,7 @@ export function FlujoFondosSection({
           ventas={ventas}
           unidades={unidades}
           m2Vendibles={m2Actuales}
+          porcentajeHonorarios={porcentajeActual}
         />
       </TabsContent>
 
@@ -133,6 +158,7 @@ export function FlujoFondosSection({
           proveedores={proveedores}
           proyectoInversores={proyectoInversores}
           mediosPago={mediosPagoActuales}
+          sugerenciaHonorarios={sugerenciaHonorarios}
           movimientos={gastos}
           emptyMessage="Todavía no hay gastos cargados para este proyecto."
           onSaved={handleSaved}
@@ -179,6 +205,11 @@ export function FlujoFondosSection({
           proyectoId={proyectoId}
           m2Vendibles={m2Actuales}
           onChange={setM2Actuales}
+        />
+        <PorcentajeHonorariosPanel
+          proyectoId={proyectoId}
+          porcentajeHonorarios={porcentajeActual}
+          onChange={setPorcentajeActual}
         />
         <UnidadesProyectoPanel proyectoId={proyectoId} unidades={unidades} />
       </TabsContent>

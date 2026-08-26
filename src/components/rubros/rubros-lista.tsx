@@ -30,6 +30,8 @@ type Rubro = {
   id: string;
   nombre: string;
   codigoPrefijo?: string | null;
+  pagaHonorarios: boolean;
+  esHonorarios: boolean;
   _count: { proveedores: number };
   subrubros: Subrubro[];
 };
@@ -90,6 +92,17 @@ function RubroBlock({
         >
           {rubro.nombre}
         </button>
+        {/* Se avisa solo cuando el rubro se sale de lo normal, para no repetir
+            "paga honorarios" en los veintipico que sí pagan. */}
+        {rubro.esHonorarios ? (
+          <span className="shrink-0 rounded border px-1.5 py-0.5 text-xs text-muted-foreground">
+            Honorarios
+          </span>
+        ) : !rubro.pagaHonorarios ? (
+          <span className="shrink-0 rounded border px-1.5 py-0.5 text-xs text-muted-foreground">
+            No paga honorarios
+          </span>
+        ) : null}
         <span className="shrink-0 text-xs text-muted-foreground">
           {rubro.subrubros.length} subrubros
         </span>

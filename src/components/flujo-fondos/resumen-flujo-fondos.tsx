@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { abrirInformeResumen, type BloqueInforme } from "@/components/flujo-fondos/informe-resumen";
+import { Panel } from "@/components/flujo-fondos/panel";
+import { HonorariosPanel } from "@/components/flujo-fondos/honorarios-panel";
 import { cn, formatMontoMoneda, formatFecha } from "@/lib/utils";
 import type {
   MovimientoFondoOpcion,
@@ -14,7 +16,14 @@ import type {
 } from "@/lib/flujo-fondos";
 import type { VentaOpcion } from "@/lib/ventas";
 
-type RubroOpcion = { id: string; nombre: string; codigoPrefijo?: string | null };
+type RubroOpcion = {
+  id: string;
+  nombre: string;
+  codigoPrefijo?: string | null;
+  /** Ver src/lib/honorarios.ts: qué rubros entran en la base y cuál es el de honorarios. */
+  pagaHonorarios: boolean;
+  esHonorarios: boolean;
+};
 
 /**
  * Código del rubro cuyo gasto se considera "incidencia del terreno" en el
@@ -84,27 +93,6 @@ function dentroDelRango(fechaISO: string, desde: string, hasta: string) {
   if (desde && dia < desde) return false;
   if (hasta && dia > hasta) return false;
   return true;
-}
-
-/** Contenedor de sección: un solo rectángulo por bloque temático. */
-function Panel({
-  titulo,
-  descripcion,
-  children,
-}: {
-  titulo: string;
-  descripcion?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="overflow-hidden rounded-xl border bg-card">
-      <header className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 bg-neutral-800 px-4 py-3">
-        <h4 className="text-sm font-semibold text-white">{titulo}</h4>
-        {descripcion && <p className="text-xs text-neutral-300">{descripcion}</p>}
-      </header>
-      {children}
-    </section>
-  );
 }
 
 function Barra({ porcentaje, className }: { porcentaje: number; className?: string }) {
@@ -319,6 +307,7 @@ export function ResumenFlujoFondos({
   ventas,
   unidades,
   m2Vendibles,
+  porcentajeHonorarios,
 }: {
   proyectoNombre: string;
   asignaciones: ProyectoInversorOpcion[];
@@ -327,6 +316,7 @@ export function ResumenFlujoFondos({
   ventas: VentaOpcion[];
   unidades: UnidadProyectoOpcion[];
   m2Vendibles: number | null;
+  porcentajeHonorarios: number | null;
 }) {
   const [desde, setDesde] = useState("");
   const [hasta, setHasta] = useState("");
@@ -584,6 +574,18 @@ export function ResumenFlujoFondos({
     </div>
   );
 
+  // El único bloque que no obedece al filtro de fechas: su período lo marca el
+  // último honorario cobrado, no el rango que se esté mirando. Por eso recibe
+  // `movimientos` y no `movimientosEnRango`, y aclara sus propias fechas en el
+  // encabezado.
+  const panelHonorarios = (
+    <HonorariosPanel
+      movimientos={movimientos}
+      rubros={rubros}
+      porcentaje={porcentajeHonorarios}
+    />
+  );
+
   if (movimientos.length === 0) {
     return (
       <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
@@ -596,6 +598,7 @@ export function ResumenFlujoFondos({
     return (
       <div className="flex flex-col gap-5">
         {filtro}
+        {panelHonorarios}
         <div className="rounded-xl border border-dashed p-6 text-center text-sm text-muted-foreground">
           No hay movimientos en el período elegido.
         </div>
@@ -640,84 +643,93 @@ export function ResumenFlujoFondos({
         </div>
       </Panel>
 
-      <Panel
-        titulo="Facturación de gastos"
-        descripcion="Un gasto cuenta como facturado según el medio de pago con el que se abonó"
-      >
-        {gastadoUSD <= 0 ? (
-          <p className="p-4 text-sm text-muted-foreground">
-            No hay gastos en dólares (o convertibles a dólares) en el período elegido.
-          </p>
-        ) : (
-          <div className="flex flex-col gap-5 p-4">
-            <div className="flex flex-wrap items-end justify-between gap-4">
-              <div>
-                <p className="text-xs text-muted-foreground">Facturado</p>
-                <p className="text-3xl font-semibold tabular-nums text-success">
-                  {formatPorcentaje(pesoFacturado)}
-                </p>
-              </div>
-              <div className="text-right">
-                <p className="text-xs text-muted-foreground">Gasto total del período</p>
-                <p className="text-lg font-medium tabular-nums">
-                  {formatMontoMoneda(gastadoUSD, "USD")}
-                </p>
-              </div>
-            </div>
+      {/* Segunda fila: los dos bloques que miran el gasto desde otro ángulo.
+          Van a la par en pantallas anchas y se apilan en las angostas. */}
+      <div className="grid items-start gap-5 lg:grid-cols-2">
+        {panelHonorarios}
 
-            <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-muted">
-              <div className="bg-success" style={{ width: `${pesoFacturado}%` }} />
-              <div className="bg-neutral-400" style={{ width: `${pesoNoFacturado}%` }} />
-            </div>
-
-            <div className="grid gap-5 sm:grid-cols-2">
-              <LeyendaFacturacion
-                color="bg-success"
-                label="Con factura (IVA)"
-                monto={formatMontoMoneda(facturadoUSD, "USD")}
-                porcentaje={formatPorcentaje(pesoFacturado)}
-                detalle={`${gastosFacturados.length} ${gastosFacturados.length === 1 ? "gasto" : "gastos"}`}
-              />
-              <LeyendaFacturacion
-                color="bg-neutral-400"
-                label="Sin factura"
-                monto={formatMontoMoneda(noFacturadoUSD, "USD")}
-                porcentaje={formatPorcentaje(pesoNoFacturado)}
-                detalle={`${gastos.length - gastosFacturados.length} ${
-                  gastos.length - gastosFacturados.length === 1 ? "gasto" : "gastos"
-                }`}
-              />
-            </div>
-
-            {gastoPorMedioPago.length > 0 && (
-              <div className="flex flex-col gap-2 border-t pt-3">
-                <p className="text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
-                  Por medio de pago
-                </p>
-                <ul className="flex flex-col divide-y">
-                  {gastoPorMedioPago.map((m) => (
-                    <li key={m.nombre} className="flex items-center gap-3 py-2 first:pt-0 last:pb-0">
-                      <span
-                        className={cn(
-                          "h-2 w-2 shrink-0 rounded-full",
-                          m.facturado ? "bg-success" : "bg-neutral-400"
-                        )}
-                      />
-                      <span className="min-w-0 flex-1 truncate text-xs">{m.nombre}</span>
-                      <span className="shrink-0 text-xs font-medium tabular-nums">
-                        {formatMontoMoneda(m.total, "USD")}
-                      </span>
-                      <span className="w-12 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground">
-                        {formatPorcentaje((m.total / gastadoUSD) * 100)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+        <Panel
+          titulo="Facturación de gastos"
+          descripcion="Un gasto cuenta como facturado según el medio de pago con el que se abonó"
+        >
+          {gastadoUSD <= 0 ? (
+            <p className="p-4 text-sm text-muted-foreground">
+              No hay gastos en dólares (o convertibles a dólares) en el período elegido.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-5 p-4">
+              <div className="flex flex-wrap items-end justify-between gap-4">
+                <div>
+                  <p className="text-xs text-muted-foreground">Facturado</p>
+                  <p className="text-3xl font-semibold tabular-nums text-success">
+                    {formatPorcentaje(pesoFacturado)}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-xs text-muted-foreground">Gasto total del período</p>
+                  <p className="text-lg font-medium tabular-nums">
+                    {formatMontoMoneda(gastadoUSD, "USD")}
+                  </p>
+                </div>
               </div>
-            )}
-          </div>
-        )}
-      </Panel>
+
+              <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-muted">
+                <div className="bg-success" style={{ width: `${pesoFacturado}%` }} />
+                <div className="bg-neutral-400" style={{ width: `${pesoNoFacturado}%` }} />
+              </div>
+
+              <div className="grid gap-5 sm:grid-cols-2">
+                <LeyendaFacturacion
+                  color="bg-success"
+                  label="Con factura (IVA)"
+                  monto={formatMontoMoneda(facturadoUSD, "USD")}
+                  porcentaje={formatPorcentaje(pesoFacturado)}
+                  detalle={`${gastosFacturados.length} ${gastosFacturados.length === 1 ? "gasto" : "gastos"}`}
+                />
+                <LeyendaFacturacion
+                  color="bg-neutral-400"
+                  label="Sin factura"
+                  monto={formatMontoMoneda(noFacturadoUSD, "USD")}
+                  porcentaje={formatPorcentaje(pesoNoFacturado)}
+                  detalle={`${gastos.length - gastosFacturados.length} ${
+                    gastos.length - gastosFacturados.length === 1 ? "gasto" : "gastos"
+                  }`}
+                />
+              </div>
+
+              {gastoPorMedioPago.length > 0 && (
+                <div className="flex flex-col gap-2 border-t pt-3">
+                  <p className="text-[10px] font-semibold tracking-wide text-muted-foreground uppercase">
+                    Por medio de pago
+                  </p>
+                  <ul className="flex flex-col divide-y">
+                    {gastoPorMedioPago.map((m) => (
+                      <li
+                        key={m.nombre}
+                        className="flex items-center gap-3 py-2 first:pt-0 last:pb-0"
+                      >
+                        <span
+                          className={cn(
+                            "h-2 w-2 shrink-0 rounded-full",
+                            m.facturado ? "bg-success" : "bg-neutral-400"
+                          )}
+                        />
+                        <span className="min-w-0 flex-1 truncate text-xs">{m.nombre}</span>
+                        <span className="shrink-0 text-xs font-medium tabular-nums">
+                          {formatMontoMoneda(m.total, "USD")}
+                        </span>
+                        <span className="w-12 shrink-0 text-right text-[11px] tabular-nums text-muted-foreground">
+                          {formatPorcentaje((m.total / gastadoUSD) * 100)}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+        </Panel>
+      </div>
 
       <Panel
         titulo="Costo por m² vendible"

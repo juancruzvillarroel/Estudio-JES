@@ -10,6 +10,10 @@ export const RubroSchema = z.object({
     .regex(/^[A-Za-z0-9]+$/, "El prefijo solo puede tener letras y números")
     .transform((v) => v.toUpperCase())
     .optional(),
+  // Honorarios del estudio (ver src/lib/honorarios.ts). Llegan de un
+  // checkbox, así que el valor ausente en el FormData significa "destildado".
+  pagaHonorarios: z.boolean().default(true),
+  esHonorarios: z.boolean().default(false),
 });
 
 export type RubroInput = z.infer<typeof RubroSchema>;

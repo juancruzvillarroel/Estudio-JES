@@ -19,6 +19,12 @@ export type MovimientoFondoOpcion = {
   proyectoId: string;
   tipo: "GASTO" | "APORTE";
   fecha: string;
+  /**
+   * Cuándo se cargó. Desempata a los movimientos que tienen la misma fecha,
+   * que es lo que le permite a la calculadora de honorarios saber cuáles
+   * quedaron de cada lado del último cobro (ver src/lib/honorarios.ts).
+   */
+  createdAt: string;
   descripcion: string;
   monto: number;
   moneda: "ARS" | "USD";
@@ -49,6 +55,7 @@ export function mapMovimientoFondo(m: MovimientoFondoConRelaciones): MovimientoF
     proyectoId: m.proyectoId,
     tipo: m.tipo,
     fecha: m.fecha.toISOString(),
+    createdAt: m.createdAt.toISOString(),
     descripcion: m.descripcion,
     monto: Number(m.monto),
     moneda: m.moneda,

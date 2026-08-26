@@ -17,9 +17,16 @@ import { MovimientoFondoDialog } from "@/components/flujo-fondos/movimiento-fond
 import { RubroFiltroMultiple } from "@/components/rubros/rubro-filtro-multiple";
 import { cn } from "@/lib/utils";
 import { MONEDA_LABELS, type MedioPagoOpcion, type MovimientoFondoOpcion } from "@/lib/flujo-fondos";
+import { compararEnElDia, type SugerenciaHonorarios } from "@/lib/honorarios";
 
 type SubrubroOpcion = { id: string; nombre: string };
-type RubroOpcion = { id: string; nombre: string; subrubros: SubrubroOpcion[] };
+type RubroOpcion = {
+  id: string;
+  nombre: string;
+  /** Ver src/lib/honorarios.ts: marca el rubro donde se cobran los honorarios. */
+  esHonorarios: boolean;
+  subrubros: SubrubroOpcion[];
+};
 type ProveedorOpcion = { id: string; nombre: string; rubroIds: string[] };
 type ProyectoInversorOpcion = { id: string; inversorNombre: string };
 
@@ -89,6 +96,7 @@ export function MovimientoFondoTabla({
   proveedores,
   proyectoInversores,
   mediosPago,
+  sugerenciaHonorarios,
   movimientos,
   emptyMessage,
   onSaved,
@@ -100,11 +108,15 @@ export function MovimientoFondoTabla({
   proveedores: ProveedorOpcion[];
   proyectoInversores: ProyectoInversorOpcion[];
   mediosPago: MedioPagoOpcion[];
+  /** Se pasa tal cual al diálogo; ver src/lib/honorarios.ts. */
+  sugerenciaHonorarios?: SugerenciaHonorarios[] | null;
   movimientos: MovimientoFondoOpcion[];
   emptyMessage: string;
   onSaved: (movimiento: MovimientoFondoOpcion) => void;
   onDeleted: (id: string) => void;
 }) {
+  const rubroHonorariosId = rubros.find((r) => r.esHonorarios)?.id;
+
   const [fechaDesde, setFechaDesde] = useState("");
   const [fechaHasta, setFechaHasta] = useState("");
   const [rubroIds, setRubroIds] = useState<string[]>([]);
@@ -135,7 +147,15 @@ export function MovimientoFondoTabla({
     if (medioPagoId && m.medioPagoId !== medioPagoId) return false;
     return true;
   });
-  const ordenados = [...filtrados].sort((a, b) => b.fecha.localeCompare(a.fecha));
+  // Los días van del más nuevo al más viejo, pero adentro de cada día se usa el
+  // mismo orden que la calculadora de honorarios: el honorario arriba de todo y
+  // el resto agrupado por rubro. Así la lista muestra tal cual dónde cae el
+  // corte entre un período y el siguiente.
+  const enElDia = compararEnElDia(rubroHonorariosId);
+  const ordenados = [...filtrados].sort((a, b) => {
+    if (a.fecha !== b.fecha) return b.fecha.localeCompare(a.fecha);
+    return enElDia(a, b);
+  });
 
   const totalARS = filtrados
     .filter((m) => m.moneda === "ARS")
@@ -286,6 +306,7 @@ export function MovimientoFondoTabla({
           proveedores={proveedores}
           proyectoInversores={proyectoInversores}
           mediosPago={mediosPago}
+          sugerenciaHonorarios={sugerenciaHonorarios}
           defaultTipo={tipo}
           onSaved={onSaved}
           trigger={
@@ -316,7 +337,16 @@ export function MovimientoFondoTabla({
       ) : (
         <div className="mt-4 flex flex-col gap-2">
           {ordenados.map((m) => (
-            <div key={m.id} className="flex items-start gap-3 rounded-md border bg-background p-3">
+            <div
+              key={m.id}
+              className={cn(
+                "flex items-start gap-3 rounded-md border p-3",
+                // Los honorarios se pintan distinto porque no son un gasto más:
+                // son el corte entre un período y el siguiente, así que conviene
+                // ubicarlos de un vistazo al recorrer la lista.
+                m.rubroId && m.rubroId === rubroHonorariosId ? "bg-muted" : "bg-background"
+              )}
+            >
               <div className="w-14 shrink-0 pr-2 text-xs text-muted-foreground">{formatFechaCorta(m.fecha)}</div>
               <div className="min-w-0 flex-1">
                 {m.tipo === "GASTO" ? (
