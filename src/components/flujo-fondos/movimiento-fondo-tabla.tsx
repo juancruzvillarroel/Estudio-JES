@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Calendar, Pencil, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,6 +37,30 @@ function formatMonto(monto: number) {
 function formatFechaCorta(fecha: string) {
   const date = new Date(fecha);
   return date.toLocaleDateString("es-AR", { timeZone: "UTC", day: "2-digit", month: "2-digit", year: "2-digit" });
+}
+
+function formatFechaLarga(fecha: string) {
+  const date = new Date(fecha);
+  return date.toLocaleDateString("es-AR", { timeZone: "UTC", day: "2-digit", month: "long", year: "numeric" });
+}
+
+/** Un par etiqueta/valor del detalle de un movimiento. */
+function Dato({
+  label,
+  children,
+  ancho,
+}: {
+  label: string;
+  children: ReactNode;
+  /** Ocupa las dos columnas en escritorio (para textos largos). */
+  ancho?: boolean;
+}) {
+  return (
+    <div className={cn("min-w-0", ancho && "sm:col-span-2")}>
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="text-sm break-words">{children}</dd>
+    </div>
+  );
 }
 
 function formatFechaISOCorta(iso: string) {
@@ -123,6 +147,9 @@ export function MovimientoFondoTabla({
   const [proveedorId, setProveedorId] = useState("");
   const [moneda, setMoneda] = useState("");
   const [medioPagoId, setMedioPagoId] = useState("");
+  // Un solo movimiento abierto a la vez: la lista es larga y con varios
+  // desplegados se pierde de vista dónde estaba uno parado.
+  const [abiertoId, setAbiertoId] = useState<string | null>(null);
 
   const hayFiltrosActivos = Boolean(
     fechaDesde || fechaHasta || rubroIds.length > 0 || proveedorId || moneda || medioPagoId
@@ -166,7 +193,11 @@ export function MovimientoFondoTabla({
 
   return (
     <div>
-      <div className="flex flex-nowrap items-end gap-3 overflow-x-auto pb-1">
+      {/* Antes era `flex-nowrap` + `overflow-x-auto`: los filtros se salían del
+          ancho de la pantalla y había que arrastrarlos de costado para ver los
+          últimos. Ahora envuelven y se ven todos. En escritorio siguen
+          entrando en un solo renglón, así que no cambia nada. */}
+      <div className="flex flex-wrap items-end gap-3 pb-1">
         <div className="flex shrink-0 flex-col gap-2">
           <Label>Fecha</Label>
           <Popover>
@@ -318,9 +349,11 @@ export function MovimientoFondoTabla({
         />
       </div>
 
+      {/* En móvil la barra negra se esconde: no dice nada, es decorativa, y lo
+          único que hacía era empujar los dos totales fuera de la pantalla. */}
       <div className="mt-4 flex items-center gap-3">
-        <div className="h-9 flex-1 rounded-md bg-neutral-800" />
-        <div className="flex items-center gap-2">
+        <div className="h-9 flex-1 rounded-md bg-neutral-800 max-sm:hidden" />
+        <div className="flex flex-1 items-center gap-2 max-sm:justify-between sm:flex-none">
           <div className="bg-neutral-800 px-4 py-1.5 text-sm font-semibold text-white shadow-md ring-1 ring-inset ring-white/15">
             ${formatMonto(totalARS)}
           </div>
@@ -336,66 +369,149 @@ export function MovimientoFondoTabla({
         </div>
       ) : (
         <div className="mt-4 flex flex-col gap-2">
-          {ordenados.map((m) => (
-            <div
-              key={m.id}
-              className={cn(
-                "flex items-start gap-3 rounded-md border p-3",
-                // Los honorarios se pintan distinto porque no son un gasto más:
-                // son el corte entre un período y el siguiente, así que conviene
-                // ubicarlos de un vistazo al recorrer la lista.
-                m.rubroId && m.rubroId === rubroHonorariosId ? "bg-muted" : "bg-background"
-              )}
-            >
-              <div className="w-14 shrink-0 pr-2 text-xs text-muted-foreground">{formatFechaCorta(m.fecha)}</div>
-              <div className="min-w-0 flex-1">
-                {m.tipo === "GASTO" ? (
-                  <>
-                    <div className="truncate">
-                      <span className="text-sm font-semibold text-foreground">
-                        {m.rubroNombre ?? "Sin rubro"}
-                      </span>
-                      {m.subrubroNombre && (
-                        <span className="text-sm text-muted-foreground"> · {m.subrubroNombre}</span>
-                      )}{" "}
-                      <span className="text-sm text-muted-foreground">
-                        · {m.proveedorNombre ?? "Sin proveedor"}
-                      </span>
+          {ordenados.map((m) => {
+            const abierto = abiertoId === m.id;
+            const equivalente =
+              m.tipoCambio != null
+                ? m.moneda === "ARS"
+                  ? m.monto / m.tipoCambio
+                  : m.monto * m.tipoCambio
+                : null;
+
+            return (
+              <div
+                key={m.id}
+                className={cn(
+                  "overflow-hidden rounded-md border",
+                  // Los honorarios se pintan distinto porque no son un gasto más:
+                  // son el corte entre un período y el siguiente, así que conviene
+                  // ubicarlos de un vistazo al recorrer la lista.
+                  m.rubroId && m.rubroId === rubroHonorariosId ? "bg-muted" : "bg-background"
+                )}
+              >
+                {/* La fila entera es el botón que abre el detalle. Antes había un
+                    lápiz al final de cada renglón: en móvil comía ancho, era un
+                    blanco chico para el dedo y llevaba directo al formulario sin
+                    poder mirar antes el movimiento completo. Ahora se toca el
+                    renglón, se ve todo desplegado, y recién ahí aparece "Editar". */}
+                <button
+                  type="button"
+                  aria-expanded={abierto}
+                  onClick={() => setAbiertoId((prev) => (prev === m.id ? null : m.id))}
+                  className="flex w-full items-start gap-3 p-3 text-left transition-colors hover:bg-muted/50"
+                >
+                  <div className="w-14 shrink-0 pr-2 text-xs text-muted-foreground">{formatFechaCorta(m.fecha)}</div>
+                  <div className="min-w-0 flex-1">
+                    {m.tipo === "GASTO" ? (
+                      <>
+                        {/* El `truncate` de acá se banca: lo que se corta se lee
+                            entero abriendo el movimiento. */}
+                        <div className="truncate">
+                          <span className="text-sm font-semibold text-foreground">
+                            {m.rubroNombre ?? "Sin rubro"}
+                          </span>
+                          {m.subrubroNombre && (
+                            <span className="text-sm text-muted-foreground"> · {m.subrubroNombre}</span>
+                          )}{" "}
+                          <span className="text-sm text-muted-foreground">
+                            · {m.proveedorNombre ?? "Sin proveedor"}
+                          </span>
+                        </div>
+                        <p className="truncate text-xs text-muted-foreground">{m.descripcion}</p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="truncate text-sm font-medium">{m.descripcion}</p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {m.inversorNombre ?? "Sin inversor"}
+                        </p>
+                      </>
+                    )}
+                  </div>
+                  <MontoMovimiento
+                    monto={m.monto}
+                    moneda={m.moneda}
+                    tipoCambio={m.tipoCambio}
+                    medioPagoNombre={m.medioPagoNombre}
+                  />
+                </button>
+
+                {abierto && (
+                  <div className="border-t px-3 py-3">
+                    <dl className="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-2">
+                      <Dato label="Fecha">{formatFechaLarga(m.fecha)}</Dato>
+                      {m.tipo === "GASTO" ? (
+                        <>
+                          <Dato label="Rubro">
+                            {m.rubroNombre ?? "Sin rubro"}
+                            {m.subrubroNombre ? ` · ${m.subrubroNombre}` : ""}
+                          </Dato>
+                          <Dato label="Proveedor">{m.proveedorNombre ?? "Sin proveedor"}</Dato>
+                        </>
+                      ) : (
+                        <Dato label="Inversor">{m.inversorNombre ?? "Sin inversor"}</Dato>
+                      )}
+                      <Dato label="Medio de pago">
+                        {m.medioPagoNombre ?? "Sin medio de pago"}
+                        {m.facturado ? " · Facturado" : ""}
+                      </Dato>
+                      <Dato label="Monto">
+                        {m.moneda === "USD" ? `USD ${formatMonto(m.monto)}` : `$${formatMonto(m.monto)}`}
+                      </Dato>
+                      <Dato label="Tipo de cambio">
+                        {m.tipoCambio != null && equivalente != null
+                          ? `$${m.tipoCambio} · equivale a ${
+                              m.moneda === "ARS"
+                                ? `USD ${formatMonto(equivalente)}`
+                                : `$${formatMonto(equivalente)}`
+                            }`
+                          : "Sin tipo de cambio"}
+                      </Dato>
+                      <Dato label="Descripción" ancho>
+                        {m.descripcion || "—"}
+                      </Dato>
+                      {m.notas && (
+                        <Dato label="Notas" ancho>
+                          {m.notas}
+                        </Dato>
+                      )}
+                    </dl>
+
+                    {/* Las acciones al final, alineadas a la derecha: entrar acá
+                        es para mirar, editar es la excepción. */}
+                    <div className="mt-3 flex flex-wrap items-center justify-end gap-2">
+                      {m.archivoUrl && (
+                        <a
+                          href={m.archivoUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="mr-auto text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                        >
+                          Ver comprobante
+                        </a>
+                      )}
+                      <MovimientoFondoDialog
+                        proyectoId={proyectoId}
+                        rubros={rubros}
+                        proveedores={proveedores}
+                        proyectoInversores={proyectoInversores}
+                        mediosPago={mediosPago}
+                        item={m}
+                        onSaved={onSaved}
+                        onDeleted={onDeleted}
+                        trigger={
+                          <Button type="button" variant="outline" size="sm">
+                            <Pencil className="h-3.5 w-3.5" />
+                            Editar
+                          </Button>
+                        }
+                      />
                     </div>
-                    <p className="truncate text-xs text-muted-foreground">{m.descripcion}</p>
-                  </>
-                ) : (
-                  <>
-                    <p className="truncate text-sm font-medium">{m.descripcion}</p>
-                    <p className="truncate text-xs text-muted-foreground">
-                      {m.inversorNombre ?? "Sin inversor"}
-                    </p>
-                  </>
+                  </div>
                 )}
               </div>
-              <MontoMovimiento
-                monto={m.monto}
-                moneda={m.moneda}
-                tipoCambio={m.tipoCambio}
-                medioPagoNombre={m.medioPagoNombre}
-              />
-              <MovimientoFondoDialog
-                proyectoId={proyectoId}
-                rubros={rubros}
-                proveedores={proveedores}
-                proyectoInversores={proyectoInversores}
-                mediosPago={mediosPago}
-                item={m}
-                onSaved={onSaved}
-                onDeleted={onDeleted}
-                trigger={
-                  <Button type="button" variant="ghost" size="icon-sm" className="self-center" aria-label="Editar movimiento">
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                }
-              />
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

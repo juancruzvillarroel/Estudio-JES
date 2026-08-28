@@ -160,7 +160,9 @@ export function TramiteItemRow({
         <div className="flex flex-nowrap items-center gap-2">
           {dragHandle}
           {estadoIndicador}
-          <p className="min-w-0 flex-1 truncate text-sm font-medium">{nombre}</p>
+          {/* Sin `truncate`: el nombre del trámite baja de renglón en vez de
+              cortarse. En móvil casi ninguno entraba en una sola línea. */}
+          <p className="min-w-0 flex-1 break-words text-sm font-medium">{nombre}</p>
           {archivoUrl && (
             <a
               href={archivoUrl}

@@ -372,8 +372,14 @@ function CategoriaPanel({
             return (
               <div key={etapa.id} className="relative rounded-md border bg-muted/20">
                 <AccordionItem value={etapa.id} className="border-b-0">
-                  <AccordionTrigger className="px-3 py-2.5 pr-11 text-xs font-medium">
-                    <span className="min-w-0 flex-1 truncate">{etapa.nombre}</span>
+                  {/* `items-start`: cuando el nombre de la etapa ocupa dos
+                      renglones, la flecha y el contador quedan alineados con el
+                      primero en vez de flotando en el medio. */}
+                  <AccordionTrigger className="items-start px-3 py-2.5 pr-11 text-xs font-medium">
+                    {/* Antes era `truncate` y los nombres largos se cortaban con
+                        puntos suspensivos, que en móvil pasa casi siempre. Ahora
+                        bajan de renglón: ocupan más alto pero se leen enteros. */}
+                    <span className="min-w-0 flex-1 break-words">{etapa.nombre}</span>
                     <span className="shrink-0 text-xs font-normal tabular-nums text-muted-foreground">
                       {presentados}/{total}
                     </span>
@@ -508,9 +514,13 @@ export function MunicipalBoard({
             return (
               <div key={categoria.id} className="rounded-md border">
                 <div className="flex items-center gap-2 pr-3">
-                  <AccordionItem value={categoria.id} className="flex-1 border-0">
-                    <AccordionTrigger className="w-full px-3 py-3 text-sm font-semibold">
-                      {categoria.nombre}
+                  {/* `min-w-0` es lo que deja que el nombre baje de renglón: sin
+                      eso el ítem no puede achicarse por debajo de su contenido y
+                      una categoría de nombre largo estira la fila más allá del
+                      ancho de la pantalla. */}
+                  <AccordionItem value={categoria.id} className="min-w-0 flex-1 border-0">
+                    <AccordionTrigger className="w-full items-start px-3 py-3 text-sm font-semibold">
+                      <span className="min-w-0 flex-1 break-words">{categoria.nombre}</span>
                     </AccordionTrigger>
                     <AccordionPanel className="px-3">
                       <CategoriaPanel

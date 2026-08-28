@@ -48,9 +48,13 @@ export default async function PedidoDetallePage({
   return (
     <div>
       <div className="border-b border-neutral-800 pb-4">
-        <div className="flex items-start justify-between gap-3">
+        {/* En móvil el encabezado se apila: el número del pedido en grande más
+            la columna de acciones al lado no entraban juntos en el ancho de la
+            pantalla y se pisaban. De `sm` para arriba vuelve a ser una fila con
+            las acciones a la derecha, como venía. */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0 flex-1">
-            <h1 className="text-3xl font-semibold tracking-tight">
+            <h1 className="text-2xl font-semibold tracking-tight break-words sm:text-3xl">
               Pedido <span className="font-mono tracking-[0.05em]">#{formatNumeroPedido(pedido.numero)}</span>
             </h1>
             <div className="mt-1">
@@ -80,7 +84,9 @@ export default async function PedidoDetallePage({
               </p>
             )}
           </div>
-          <div className="flex shrink-0 flex-col items-end gap-2">
+          {/* En móvil las tres acciones van en un renglón alineadas a la
+              derecha; en escritorio se apilan como antes. */}
+          <div className="flex shrink-0 items-center gap-2 max-sm:justify-end sm:flex-col sm:items-end">
             <Button
               render={<Link href={`/pedidos/${pedido.id}/editar`} />}
               nativeButton={false}
@@ -103,14 +109,19 @@ export default async function PedidoDetallePage({
         {pedido.notas && <p className="mt-4 text-sm text-muted-foreground">{pedido.notas}</p>}
       </div>
 
+      {/* `table-fixed` reparte el ancho que hay en vez de dejar que lo pidan las
+          celdas: el material se queda con lo que sobra y baja de renglón, y las
+          tres columnas de cantidades tienen un ancho chico y fijo. Sin esto la
+          tabla se hacía más ancha que la pantalla y había que arrastrarla para
+          leer cuánto falta, que es justo el dato que se viene a mirar. */}
       <div className="mt-6 rounded-md border">
-        <Table>
+        <Table className="table-fixed">
           <TableHeader>
             <TableRow>
-              <TableHead>Material</TableHead>
-              <TableHead>Pedido</TableHead>
-              <TableHead>Entregado</TableHead>
-              <TableHead>Falta</TableHead>
+              <TableHead className="px-2">Material</TableHead>
+              <TableHead className="w-[4.5rem] px-1 sm:w-28 sm:px-2">Pedido</TableHead>
+              <TableHead className="w-[4.5rem] px-1 sm:w-28 sm:px-2">Entregado</TableHead>
+              <TableHead className="w-[4.5rem] px-1 sm:w-28 sm:px-2">Falta</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -120,14 +131,23 @@ export default async function PedidoDetallePage({
               const falta = pedida - entregada;
               return (
                 <TableRow key={item.id}>
-                  <TableCell className="font-medium">{item.material.nombre}</TableCell>
-                  <TableCell>
+                  {/* `whitespace-normal` pisa el `whitespace-nowrap` que traen
+                      todas las celdas por defecto (ver ui/table.tsx). */}
+                  <TableCell className="px-2 align-top font-medium whitespace-normal break-words">
+                    {item.material.nombre}
+                  </TableCell>
+                  <TableCell className="px-1 align-top whitespace-normal sm:px-2">
                     {pedida} {item.unidad}
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="px-1 align-top whitespace-normal sm:px-2">
                     {entregada} {item.unidad}
                   </TableCell>
-                  <TableCell className={cn(falta > 0 ? "text-error" : "text-success")}>
+                  <TableCell
+                    className={cn(
+                      "px-1 align-top whitespace-normal sm:px-2",
+                      falta > 0 ? "text-error" : "text-success"
+                    )}
+                  >
                     {falta > 0 ? `${falta} ${item.unidad}` : "Completo"}
                   </TableCell>
                 </TableRow>
