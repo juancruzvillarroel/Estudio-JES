@@ -53,9 +53,13 @@ export function TareasGlobal({
 
   // Nada tildado en un filtro significa "todas": así el usuario ve el conjunto
   // completo sin tener que tildar las siete obras una por una.
+  //
+  // "Ver completadas" es la excepción: no suma, cambia de lista. O se ven las
+  // pendientes o se ven las completadas, nunca mezcladas, porque lo que falta
+  // hacer se perdía entre lo ya hecho, que es lo que se acumula con el tiempo.
   const visibles = ordenarTareas(
     items.filter((t) => {
-      if (!verCompletadas && t.estado === "COMPLETADA") return false;
+      if (verCompletadas ? t.estado !== "COMPLETADA" : t.estado === "COMPLETADA") return false;
       if (obrasFiltro.length > 0 && !obrasFiltro.includes(t.proyectoId)) return false;
       if (rubrosFiltro.length > 0 && !rubrosFiltro.includes(t.rubroId ?? SIN_RUBRO)) return false;
       if (personasFiltro.length > 0) {
@@ -74,51 +78,18 @@ export function TareasGlobal({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-end gap-3">
-        <FiltroMultiple
-          id="filtroObra"
-          label="Obra"
-          opciones={proyectos}
-          value={obrasFiltro}
-          onChange={setObrasFiltro}
-          etiquetaTodos="Todas las obras"
-          sustantivo="obras"
-        />
-        <FiltroMultiple
-          id="filtroRubro"
-          label="Rubro"
-          opciones={[...rubros, { id: SIN_RUBRO, nombre: "Sin rubro" }]}
-          value={rubrosFiltro}
-          onChange={setRubrosFiltro}
-          etiquetaTodos="Todos los rubros"
-          sustantivo="rubros"
-        />
-        <FiltroMultiple
-          id="filtroPersona"
-          label="Asignada a"
-          opciones={[...usuarios, { id: SIN_ASIGNAR, nombre: "Sin asignar" }]}
-          value={personasFiltro}
-          onChange={setPersonasFiltro}
-          etiquetaTodos="Todas las personas"
-          sustantivo="personas"
-        />
-
-        {hayFiltros && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              setObrasFiltro([]);
-              setRubrosFiltro([]);
-              setPersonasFiltro([]);
-            }}
-          >
-            Limpiar filtros
-          </Button>
-        )}
-
-        <div className="ml-auto flex items-center gap-3">
+      {/* Barra de filtros y acciones.
+          En móvil las acciones suben arriba de todo y los filtros van en una
+          grilla de dos columnas: sueltos se acomodaban solos según el ancho de
+          cada uno y quedaban escalonados, con la grilla arrancan todos en la
+          misma línea y miden lo mismo.
+          De `sm` para arriba el envoltorio de la grilla pasa a `contents`, así
+          los filtros vuelven a ser hijos directos de la fila y todo queda en
+          un solo renglón como venía. */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+        {/* En móvil `order-first` las manda arriba; en escritorio `order-last`
+            más `ml-auto` las devuelve al extremo derecho de la fila. */}
+        <div className="order-first flex items-center justify-between gap-3 sm:order-last sm:ml-auto">
           <label className="flex cursor-default items-center gap-2">
             <Checkbox
               id="verCompletadasGlobal"
@@ -135,17 +106,87 @@ export function TareasGlobal({
             usuarios={usuarios}
             onSaved={handleSaved}
             trigger={
-              <Button type="button" size="sm">
-                <Plus className="h-3.5 w-3.5" />
-                Nueva tarea
+              <Button
+                type="button"
+                size="sm"
+                aria-label="Nueva tarea"
+                // En móvil queda como un círculo con un más y nada de texto:
+                // ocupa poco y es un blanco cómodo para el pulgar. Los `max-sm`
+                // van sólo hacia abajo, así que el botón de escritorio no se
+                // toca. El texto no se borra, se esconde para el lector de
+                // pantalla, que sigue leyendo "Nueva tarea".
+                className="max-sm:size-10 max-sm:rounded-full max-sm:p-0"
+              >
+                <Plus className="size-3.5 max-sm:size-5" />
+                <span className="max-sm:sr-only">Nueva tarea</span>
               </Button>
             }
           />
         </div>
+
+        <div className="grid grid-cols-2 items-end gap-3 sm:contents">
+          <FiltroMultiple
+            id="filtroObra"
+            label="Obra"
+            opciones={proyectos}
+            value={obrasFiltro}
+            onChange={setObrasFiltro}
+            etiquetaTodos="Todas las obras"
+            sustantivo="obras"
+            className="w-full sm:w-40"
+          />
+          <FiltroMultiple
+            id="filtroRubro"
+            label="Rubro"
+            opciones={[...rubros, { id: SIN_RUBRO, nombre: "Sin rubro" }]}
+            value={rubrosFiltro}
+            onChange={setRubrosFiltro}
+            etiquetaTodos="Todos los rubros"
+            sustantivo="rubros"
+            className="w-full sm:w-40"
+          />
+          <FiltroMultiple
+            id="filtroPersona"
+            label="Asignada a"
+            opciones={[...usuarios, { id: SIN_ASIGNAR, nombre: "Sin asignar" }]}
+            value={personasFiltro}
+            onChange={setPersonasFiltro}
+            etiquetaTodos="Todas las personas"
+            sustantivo="personas"
+            className="w-full sm:w-40"
+          />
+
+          {/* En móvil cae en la celda libre al lado de "Asignada a", que es
+              justo donde queda a mano después de tocar los filtros. */}
+          {hayFiltros && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setObrasFiltro([]);
+                setRubrosFiltro([]);
+                setPersonasFiltro([]);
+              }}
+            >
+              Limpiar filtros
+            </Button>
+          )}
+        </div>
       </div>
 
+      {/* Se aclara siempre cuál de las dos listas se está mirando: el contador
+          es lo único que distingue "no hay pendientes" de "no hay completadas"
+          cuando el número es chico y el tilde queda fuera de la vista. */}
       <p className="text-xs text-muted-foreground">
-        {visibles.length} {visibles.length === 1 ? "tarea" : "tareas"}
+        {visibles.length}{" "}
+        {visibles.length === 1
+          ? verCompletadas
+            ? "tarea completada"
+            : "tarea pendiente"
+          : verCompletadas
+            ? "tareas completadas"
+            : "tareas pendientes"}
         {hayFiltros ? " con los filtros aplicados" : ""}
       </p>
 
@@ -159,7 +200,11 @@ export function TareasGlobal({
         vacio={
           hayFiltros
             ? "No hay tareas que coincidan con los filtros."
-            : "Todavía no hay tareas cargadas."
+            : items.length === 0
+              ? "Todavía no hay tareas cargadas."
+              : verCompletadas
+                ? "Todavía no hay tareas completadas."
+                : "No quedan tareas pendientes."
         }
       />
     </div>

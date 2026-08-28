@@ -148,3 +148,71 @@
     scrollbar-gutter: stable;
   }
 }
+
+/**
+ * Salida de una tarea que se acaba de tildar (ver tareas-lista.tsx).
+ *
+ * Arranca quieta a propósito: el primer tramo no mueve nada para dar tiempo
+ * a ver cómo se llena el cuadrado, que es el momento en el que la tarea se
+ * da por hecha. Recién después se corre, se apaga y colapsa su propio alto,
+ * así las de abajo suben solas y no queda un hueco.
+ *
+ * El margen negativo del final se come el gap-2 de la lista: sin eso, la
+ * fila desaparece pero el espacio que ocupaba entre sus vecinas queda.
+ *
+ * Si cambiás la duración, actualizá MS_SALIDA en tareas-lista.tsx: el
+ * componente espera ese tiempo antes de sacar la tarea de la lista.
+ */
+.tarea-saliendo {
+  animation: tarea-saliendo 520ms ease-in forwards;
+  overflow: hidden;
+}
+
+@keyframes tarea-saliendo {
+  0% {
+    opacity: 1;
+    transform: none;
+    max-height: 40rem;
+  }
+  32% {
+    opacity: 1;
+    transform: none;
+    max-height: 40rem;
+  }
+  62% {
+    opacity: 0;
+    transform: translateX(1.5rem);
+    max-height: 40rem;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(1.5rem);
+    max-height: 0;
+    padding-top: 0;
+    padding-bottom: 0;
+    margin-bottom: -0.5rem; /* == gap-2 de la lista */
+    border-width: 0;
+  }
+}
+
+/* Para quien pidió menos movimiento: la tarea se va igual, pero sin el
+   desplazamiento y casi sin espera. */
+@media (prefers-reduced-motion: reduce) {
+  .tarea-saliendo {
+    animation-duration: 120ms;
+  }
+  @keyframes tarea-saliendo {
+    0% {
+      opacity: 1;
+      max-height: 40rem;
+    }
+    100% {
+      opacity: 0;
+      max-height: 0;
+      padding-top: 0;
+      padding-bottom: 0;
+      margin-bottom: -0.5rem; /* == gap-2 de la lista */
+      border-width: 0;
+    }
+  }
+}
