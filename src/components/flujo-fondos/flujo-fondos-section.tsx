@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Tabs, TabsList, TabsTrigger, TabsIndicator, TabsContent } from "@/components/ui/tabs";
+import { cn } from "@/lib/utils";
 import { ResumenFlujoFondos } from "@/components/flujo-fondos/resumen-flujo-fondos";
 import { RubrosResumen } from "@/components/flujo-fondos/rubros-resumen";
 import { GastosCronograma } from "@/components/flujo-fondos/gastos-cronograma";
@@ -20,6 +21,15 @@ import type {
 } from "@/lib/flujo-fondos";
 import { sugerirHonorarios } from "@/lib/honorarios";
 import type { VentaOpcion } from "@/lib/ventas";
+
+/**
+ * Entrada del panel al cambiar de solapa: aparece subiendo apenas unos píxeles.
+ *
+ * Base UI desmonta el panel que no está activo, así que el contenido nuevo se
+ * monta y la animación arranca sola, sin nada que disparar a mano. Es corta a
+ * propósito: acompaña a la pastilla que se desliza y no hace esperar.
+ */
+const PANEL = "mt-4 animate-in fade-in-0 slide-in-from-bottom-1 duration-200 motion-reduce:animate-none";
 
 type SubrubroOpcion = { id: string; nombre: string };
 type RubroOpcion = {
@@ -123,7 +133,27 @@ export function FlujoFondosSection({
 
   return (
     <Tabs defaultValue="resumen">
-      <TabsList>
+      {/* La barra ocupa todo el ancho de la página y las siete solapas se
+          reparten ese ancho en partes iguales (`flex-1` ya venía en cada una,
+          lo que faltaba era el `w-full` acá).
+
+          En móvil no entran en un renglón: quedaban cortadas contra el borde y
+          había que arrastrar la barra para llegar a las últimas, sin ninguna
+          señal de que estuvieran ahí. Ahí envuelve en varios renglones y cada
+          solapa vuelve a medir lo que dice, así se ven todas de una.
+
+          `h-auto!` con el `!`: el alto fijo lo pone `group-data-horizontal/tabs:h-8`
+          en ui/tabs.tsx, que es un selector de descendiente y le gana en
+          especificidad a una utilidad suelta. Y las solapas necesitan un alto
+          propio porque traen `h-[calc(100%-1px)]`, que con la barra de alto
+          automático no resuelve a nada. Se las apunta por `data-slot` y no con
+          `*:` porque el indicador también es hijo directo de la barra y no
+          tiene que recibir ni el alto ni el `flex-none`. */}
+      <TabsList
+        variant="indicator"
+        className="w-full max-sm:h-auto! max-sm:flex-wrap max-sm:gap-1 max-sm:[&_[data-slot=tabs-trigger]]:h-7 max-sm:[&_[data-slot=tabs-trigger]]:flex-none"
+      >
+        <TabsIndicator />
         <TabsTrigger value="resumen">Resumen</TabsTrigger>
         <TabsTrigger value="gastos">Gastos</TabsTrigger>
         <TabsTrigger value="aportes">Aportes</TabsTrigger>
@@ -133,7 +163,7 @@ export function FlujoFondosSection({
         <TabsTrigger value="datos">Datos del proyecto</TabsTrigger>
       </TabsList>
 
-      <TabsContent value="resumen" className="mt-4">
+      <TabsContent value="resumen" className={PANEL}>
         <ResumenFlujoFondos
           proyectoNombre={proyectoNombre}
           asignaciones={inversores}
@@ -146,11 +176,11 @@ export function FlujoFondosSection({
         />
       </TabsContent>
 
-      <TabsContent value="rubros" className="mt-4">
+      <TabsContent value="rubros" className={PANEL}>
         <RubrosResumen rubros={rubros} movimientos={items} />
       </TabsContent>
 
-      <TabsContent value="gastos" className="mt-4">
+      <TabsContent value="gastos" className={PANEL}>
         <MovimientoFondoTabla
           proyectoId={proyectoId}
           tipo="GASTO"
@@ -166,7 +196,7 @@ export function FlujoFondosSection({
         />
       </TabsContent>
 
-      <TabsContent value="aportes" className="mt-4">
+      <TabsContent value="aportes" className={PANEL}>
         <MovimientoFondoTabla
           proyectoId={proyectoId}
           tipo="APORTE"
@@ -181,11 +211,11 @@ export function FlujoFondosSection({
         />
       </TabsContent>
 
-      <TabsContent value="cronograma" className="mt-4">
+      <TabsContent value="cronograma" className={PANEL}>
         <GastosCronograma rubros={rubros} movimientos={items} />
       </TabsContent>
 
-      <TabsContent value="ventas" className="mt-4 flex flex-col gap-4">
+      <TabsContent value="ventas" className={cn(PANEL, "flex flex-col gap-4")}>
         <VentasSection
           proyectoId={proyectoId}
           ventas={ventas}
@@ -194,7 +224,7 @@ export function FlujoFondosSection({
         />
       </TabsContent>
 
-      <TabsContent value="datos" className="mt-4 flex flex-col gap-4">
+      <TabsContent value="datos" className={cn(PANEL, "flex flex-col gap-4")}>
         <ProyectoInversoresPanel proyectoId={proyectoId} asignaciones={inversores} />
         <MediosPagoPanel
           proyectoId={proyectoId}
