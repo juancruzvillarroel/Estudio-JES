@@ -494,7 +494,8 @@ export function TareaDialog({
             )}
 
             <p className="text-xs text-muted-foreground">
-              Cuando tildes todos los sub ítems, la tarea se marca completada sola.
+              Cuando tildes todos los sub ítems, se te va a preguntar si la tarea va a revisión o
+              si la das por completada.
             </p>
           </div>
 

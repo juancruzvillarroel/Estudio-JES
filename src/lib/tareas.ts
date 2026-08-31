@@ -98,6 +98,23 @@ export type TareaSeccionOpcion = {
   items: TareaItemOpcion[];
 };
 
+/**
+ * Circuito de una tarea: se hace, se manda a revisar (o no) y se aprueba.
+ *
+ * El paso por revisión es opcional: al tildar una tarea se elige si va a
+ * revisión o si se da por terminada ahí mismo. Desde revisión se aprueba
+ * (COMPLETADA) o se devuelve, y volver a PENDIENTE no es un estado nuevo sino
+ * el mismo de siempre con `aCorregir` prendido: la tarea tiene que reaparecer
+ * entre las pendientes, no en una cuarta lista aparte.
+ */
+export type EstadoTarea = "PENDIENTE" | "EN_REVISION" | "COMPLETADA";
+
+export const ESTADO_TAREA_LABELS: Record<EstadoTarea, string> = {
+  PENDIENTE: "Pendientes",
+  EN_REVISION: "En revisión",
+  COMPLETADA: "Completadas",
+};
+
 export type TareaOpcion = {
   id: string;
   proyectoId: string;
@@ -107,8 +124,14 @@ export type TareaOpcion = {
   rubroId: string | null;
   rubroNombre: string | null;
   prioridad: Prioridad;
-  estado: "PENDIENTE" | "COMPLETADA";
+  estado: EstadoTarea;
   completadaEl: string | null;
+  /** Desde cuándo espera revisión. Solo tiene valor mientras está EN_REVISION. */
+  enRevisionEl: string | null;
+  /** La devolvieron de la revisión: se muestra con el cartelito "Corregir". */
+  aCorregir: boolean;
+  /** Qué hay que corregir. Se puede devolver sin escribir nada. */
+  correccionNota: string | null;
   createdAt: string;
   asignados: { id: string; nombre: string }[];
   /** Sub ítems sueltos, los que no están dentro de ninguna sección. */
@@ -128,6 +151,9 @@ export function mapTarea(t: TareaConRelaciones): TareaOpcion {
     prioridad: t.prioridad,
     estado: t.estado,
     completadaEl: t.completadaEl?.toISOString() ?? null,
+    enRevisionEl: t.enRevisionEl?.toISOString() ?? null,
+    aCorregir: t.aCorregir,
+    correccionNota: t.correccionNota,
     createdAt: t.createdAt.toISOString(),
     asignados: t.asignados.map((a) => ({ id: a.user.id, nombre: a.user.nombre })),
     items: t.items.map(mapItem),
@@ -162,6 +188,12 @@ export function avanceItems(tarea: TareaOpcion): { hechos: number; total: number
   };
 }
 
+const ORDEN_ESTADO: Record<EstadoTarea, number> = {
+  PENDIENTE: 0,
+  EN_REVISION: 1,
+  COMPLETADA: 2,
+};
+
 /**
  * Orden de la lista: por fecha de creación, de la más nueva a la más vieja.
  *
@@ -171,13 +203,28 @@ export function avanceItems(tarea: TareaOpcion): { hechos: number; total: number
  * cargaste está siempre arriba. La prioridad sigue a la vista en el badge y se
  * puede filtrar por ella.
  *
- * Lo único que se mantiene aparte es el estado: las completadas caen al final.
- * Casi siempre están ocultas, pero cuando se tildan "Ver completadas" no tiene
- * sentido que se mezclen entre las que todavía hay que hacer.
+ * Antes que la fecha se miran dos cosas:
+ *
+ * - El estado, que las agrupa en el orden del circuito. Ahora cada estado tiene
+ *   su propia solapa, así que casi nunca conviven en la misma lista, pero el
+ *   orden queda igual por si alguna vista las junta.
+ * - Lo que volvió de la revisión, que va arriba de todo entre las pendientes:
+ *   es trabajo que alguien ya dio por hecho y quedó frenado esperando el
+ *   arreglo, así que es lo primero que hay que ver.
+ *
+ * Las que están en revisión se ordenan al revés, de la que hace más tiempo que
+ * espera a la más reciente: ahí lo que interesa es destrabar lo más viejo.
  */
 export function ordenarTareas(tareas: TareaOpcion[]): TareaOpcion[] {
   return [...tareas].sort((a, b) => {
-    if (a.estado !== b.estado) return a.estado === "PENDIENTE" ? -1 : 1;
+    if (a.estado !== b.estado) return ORDEN_ESTADO[a.estado] - ORDEN_ESTADO[b.estado];
+    if (a.estado === "EN_REVISION") {
+      // `?? createdAt`: las que ya estaban en la base antes de que existiera la
+      // revisión no tienen fecha, y sin este respaldo caerían todas juntas.
+      const espera = (t: TareaOpcion) => t.enRevisionEl ?? t.createdAt;
+      return espera(a).localeCompare(espera(b));
+    }
+    if (a.aCorregir !== b.aCorregir) return a.aCorregir ? -1 : 1;
     return b.createdAt.localeCompare(a.createdAt);
   });
 }

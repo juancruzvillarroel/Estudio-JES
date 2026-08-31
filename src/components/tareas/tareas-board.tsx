@@ -3,11 +3,26 @@
 import { useState } from "react";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
 import { TareaDialog } from "@/components/tareas/tarea-dialog";
 import { TareasLista } from "@/components/tareas/tareas-lista";
-import { ordenarTareas, type OpcionSimple, type TareaOpcion } from "@/lib/tareas";
+import { EstadoTareasTabs } from "@/components/tareas/estado-tareas-tabs";
+import {
+  ordenarTareas,
+  type EstadoTarea,
+  type OpcionSimple,
+  type TareaOpcion,
+} from "@/lib/tareas";
+
+/**
+ * Qué decir cuando la solapa elegida no tiene nada. Es distinto de "no hay
+ * tareas": acá sí las hay, pero están todas en otra solapa, y el mensaje tiene
+ * que dejar claro cuál se está mirando.
+ */
+const VACIO_POR_ESTADO: Record<EstadoTarea, string> = {
+  PENDIENTE: "No quedan tareas pendientes en esta obra.",
+  EN_REVISION: "No hay nada esperando revisión en esta obra.",
+  COMPLETADA: "Todavía no hay tareas completadas en esta obra.",
+};
 
 /** Pestaña "Tareas" de un proyecto: pendientes de esa obra. */
 export function TareasBoard({
@@ -28,7 +43,7 @@ export function TareasBoard({
     setItems(tareas);
   }
 
-  const [verCompletadas, setVerCompletadas] = useState(false);
+  const [estado, setEstado] = useState<EstadoTarea>("PENDIENTE");
 
   const handleSaved = (tarea: TareaOpcion) => {
     setItems((prev) => {
@@ -41,14 +56,23 @@ export function TareasBoard({
     setItems((prev) => prev.filter((t) => t.id !== id));
   };
 
-  const pendientes = items.filter((t) => t.estado === "PENDIENTE").length;
-  const completadas = items.length - pendientes;
-  // El tilde cambia de lista, no agrega: o se ven las pendientes o se ven las
-  // completadas. Mezcladas, lo que falta hacer se perdía entre lo ya hecho, que
-  // es lo que se acumula con el tiempo.
-  const visibles = ordenarTareas(
-    items.filter((t) => (verCompletadas ? t.estado === "COMPLETADA" : t.estado === "PENDIENTE"))
-  );
+  // Cada solapa muestra un solo estado, nunca mezclados: lo que falta hacer se
+  // perdía entre lo ya hecho, que es lo que se acumula con el tiempo.
+  const conteos = {
+    PENDIENTE: items.filter((t) => t.estado === "PENDIENTE").length,
+    EN_REVISION: items.filter((t) => t.estado === "EN_REVISION").length,
+    COMPLETADA: items.filter((t) => t.estado === "COMPLETADA").length,
+  };
+  const pendientes = conteos.PENDIENTE;
+  const visibles = ordenarTareas(items.filter((t) => t.estado === estado));
+
+  // El renglón de abajo del título. Nombra lo que sigue abierto, y lo que está
+  // en revisión cuenta como abierto: decir "no quedan tareas pendientes" con
+  // cinco esperando el visto bueno haría pensar que la obra está al día.
+  const abiertas = [
+    pendientes > 0 ? `${pendientes} ${pendientes === 1 ? "pendiente" : "pendientes"}` : null,
+    conteos.EN_REVISION > 0 ? `${conteos.EN_REVISION} en revisión` : null,
+  ].filter(Boolean);
 
   return (
     <div className="flex flex-col gap-4">
@@ -60,28 +84,12 @@ export function TareasBoard({
         <div className="min-w-0">
           <h3 className="text-sm font-semibold">Tareas de la obra</h3>
           <p className="text-xs text-muted-foreground">
-            {pendientes === 0
-              ? "No quedan tareas pendientes."
-              : `${pendientes} ${pendientes === 1 ? "tarea pendiente" : "tareas pendientes"}.`}
+            {abiertas.length === 0
+              ? "No queda nada abierto."
+              : `${abiertas.join(" · ")}.`}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-3">
-          {/* El `|| verCompletadas` es la salida de emergencia: si estando en la
-              vista de completadas se destildan todas, el contador queda en cero
-              y sin esto el tilde desaparecía dejando al usuario mirando una
-              lista vacía y sin forma de volver a las pendientes. */}
-          {(completadas > 0 || verCompletadas) && (
-            <label className="flex cursor-default items-center gap-2">
-              <Checkbox
-                id="verCompletadas"
-                checked={verCompletadas}
-                onCheckedChange={(checked) => setVerCompletadas(checked === true)}
-              />
-              <Label htmlFor="verCompletadas" className="cursor-pointer text-xs font-normal">
-                Ver completadas ({completadas})
-              </Label>
-            </label>
-          )}
           <TareaDialog
             proyectoId={proyectoId}
             rubros={rubros}
@@ -105,20 +113,20 @@ export function TareasBoard({
         </div>
       </div>
 
-      <TareasLista
-        tareas={visibles}
-        rubros={rubros}
-        usuarios={usuarios}
-        onSaved={handleSaved}
-        onDeleted={handleDeleted}
-        vacio={
-          items.length === 0
-            ? "Todavía no hay tareas cargadas para esta obra."
-            : verCompletadas
-              ? "Todavía no hay tareas completadas en esta obra."
-              : "No quedan tareas pendientes en esta obra."
-        }
-      />
+      <EstadoTareasTabs value={estado} onChange={setEstado} conteos={conteos}>
+        <TareasLista
+          tareas={visibles}
+          rubros={rubros}
+          usuarios={usuarios}
+          onSaved={handleSaved}
+          onDeleted={handleDeleted}
+          vacio={
+            items.length === 0
+              ? "Todavía no hay tareas cargadas para esta obra."
+              : VACIO_POR_ESTADO[estado]
+          }
+        />
+      </EstadoTareasTabs>
     </div>
   );
 }

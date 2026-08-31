@@ -79,31 +79,31 @@ model User {
 }
 
 model Proyecto {
-  id            String         @id @default(cuid())
-  nombre        String
-  barrio        String?
-  direccion     String?
-  estado        EstadoProyecto @default(ACTIVO)
-  descripcion   String?
-  imagenUrl     String?
+  id                   String         @id @default(cuid())
+  nombre               String
+  barrio               String?
+  direccion            String?
+  estado               EstadoProyecto @default(ACTIVO)
+  descripcion          String?
+  imagenUrl            String?
   // Pisos por encima de planta baja. Se usa para generar automáticamente un
   // documento (plano) por piso en las categorías de Documentación marcadas
   // como "por piso" (ver DocumentoCategoria.porPiso).
-  cantidadPisos Int            @default(0)
+  cantidadPisos        Int            @default(0)
   // Metros cuadrados vendibles totales de la obra. Es el divisor de los
   // costos por m² del resumen de Flujo de fondos (incidencia del terreno y
   // costo de construcción). Se carga a mano desde la pestaña "Datos del
   // proyecto" y no se deriva de la suma de UnidadProyecto.m2 porque el
   // total vendible se conoce desde el anteproyecto, mucho antes de tener
   // cargada cada unidad.
-  m2Vendibles   Decimal?       @db.Decimal(10, 2)
+  m2Vendibles          Decimal?       @db.Decimal(10, 2)
   // Porcentaje de honorarios que cobra el estudio sobre los gastos de esta
   // obra (ej. 12.00). Se carga a mano desde "Datos del proyecto" y puede
   // variar de obra en obra. En null significa "sin definir": la calculadora
   // de honorarios no propone ningún monto hasta que se cargue.
-  porcentajeHonorarios Decimal? @db.Decimal(5, 2)
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
+  porcentajeHonorarios Decimal?       @db.Decimal(5, 2)
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
 
   pedidos               Pedido[]
   acopios               Acopio[]
@@ -679,31 +679,47 @@ enum PrioridadTarea {
   BAJA
 }
 
+// El circuito es PENDIENTE → EN_REVISION → COMPLETADA, pero el paso por
+// revisión es opcional: al completar una tarea se elige si va a revisión o si
+// se da por terminada ahí mismo. Desde revisión se aprueba (COMPLETADA) o se
+// devuelve para corregir, que la vuelve a PENDIENTE con Tarea.aCorregir.
 enum EstadoTarea {
   PENDIENTE
+  EN_REVISION
   COMPLETADA
 }
 
 // Tarea pendiente de una obra. Se carga desde la pestaña "Tareas" de cada
 // proyecto y se consulta en conjunto (todas las obras juntas) desde /tareas.
 model Tarea {
-  id           String         @id @default(cuid())
-  proyectoId   String
-  proyecto     Proyecto       @relation(fields: [proyectoId], references: [id], onDelete: Cascade)
-  titulo       String
-  descripcion  String?
+  id             String         @id @default(cuid())
+  proyectoId     String
+  proyecto       Proyecto       @relation(fields: [proyectoId], references: [id], onDelete: Cascade)
+  titulo         String
+  descripcion    String?
   // El rubro es opcional: hay tareas que no caen en ninguno (ej. trámites
   // generales de la obra). Se usa onDelete por defecto (restrict) para no
   // borrar tareas si alguien elimina un rubro del catálogo.
-  rubroId      String?
-  rubro        Rubro?         @relation(fields: [rubroId], references: [id])
-  prioridad    PrioridadTarea @default(MEDIA)
-  estado       EstadoTarea    @default(PENDIENTE)
-  completadaEl DateTime?
-  creadoPorId  String?
-  creadoPor    User?          @relation("TareaCreadaPor", fields: [creadoPorId], references: [id])
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
+  rubroId        String?
+  rubro          Rubro?         @relation(fields: [rubroId], references: [id])
+  prioridad      PrioridadTarea @default(MEDIA)
+  estado         EstadoTarea    @default(PENDIENTE)
+  completadaEl   DateTime?
+  // Desde cuándo está esperando que alguien la revise. Ordena la lista de
+  // revisión: primero lo que hace más tiempo que está trabado.
+  enRevisionEl   DateTime?
+  // La devolvieron de la revisión. Es un campo aparte y no un estado porque la
+  // tarea vuelve a estar pendiente igual que cualquier otra: tiene que
+  // aparecer en la lista de pendientes, no en una cuarta lista propia. Lo
+  // único que cambia es que se muestra con el cartelito "Corregir".
+  aCorregir      Boolean        @default(false)
+  // Qué hay que corregir, según quien la revisó. Es opcional: se puede
+  // devolver sin escribir nada.
+  correccionNota String?
+  creadoPorId    String?
+  creadoPor      User?          @relation("TareaCreadaPor", fields: [creadoPorId], references: [id])
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
 
   asignados TareaAsignado[]
   items     TareaItem[]
@@ -731,8 +747,9 @@ model TareaSeccion {
 }
 
 // Checklist de una tarea: los pasos sueltos que se van tildando para ir
-// completando la tarea. Cuando se tildan todos, la tarea se marca completada
-// sola (y si se destilda uno, vuelve a pendiente).
+// completando la tarea. Al tildar el último no se completa sola: pregunta si va
+// a revisión o si se da por terminada, igual que al tildar la tarea entera. Si
+// se destilda uno estando completada, vuelve a pendiente.
 model TareaItem {
   id         String        @id @default(cuid())
   tareaId    String

@@ -3,12 +3,16 @@
 import { useState } from "react";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
 import { FiltroMultiple } from "@/components/ui/filtro-multiple";
 import { TareaDialog } from "@/components/tareas/tarea-dialog";
 import { TareasLista } from "@/components/tareas/tareas-lista";
-import { ordenarTareas, type OpcionSimple, type TareaOpcion } from "@/lib/tareas";
+import { EstadoTareasTabs } from "@/components/tareas/estado-tareas-tabs";
+import {
+  ordenarTareas,
+  type EstadoTarea,
+  type OpcionSimple,
+  type TareaOpcion,
+} from "@/lib/tareas";
 
 /**
  * Valores sentinela para poder tildar "las que no tienen rubro" y "las que no
@@ -16,6 +20,20 @@ import { ordenarTareas, type OpcionSimple, type TareaOpcion } from "@/lib/tareas
  */
 const SIN_RUBRO = "__sin_rubro__";
 const SIN_ASIGNAR = "__sin_asignar__";
+
+/** Cómo se cuenta cada lista en el renglón de arriba de las tareas. */
+const SUSTANTIVO_POR_ESTADO: Record<EstadoTarea, { una: string; varias: string }> = {
+  PENDIENTE: { una: "tarea pendiente", varias: "tareas pendientes" },
+  EN_REVISION: { una: "tarea en revisión", varias: "tareas en revisión" },
+  COMPLETADA: { una: "tarea completada", varias: "tareas completadas" },
+};
+
+/** Qué decir cuando la solapa elegida no tiene nada. */
+const VACIO_POR_ESTADO: Record<EstadoTarea, string> = {
+  PENDIENTE: "No quedan tareas pendientes.",
+  EN_REVISION: "No hay nada esperando revisión.",
+  COMPLETADA: "Todavía no hay tareas completadas.",
+};
 
 export function TareasGlobal({
   tareas,
@@ -38,7 +56,7 @@ export function TareasGlobal({
   const [obrasFiltro, setObrasFiltro] = useState<string[]>([]);
   const [rubrosFiltro, setRubrosFiltro] = useState<string[]>([]);
   const [personasFiltro, setPersonasFiltro] = useState<string[]>([]);
-  const [verCompletadas, setVerCompletadas] = useState(false);
+  const [estado, setEstado] = useState<EstadoTarea>("PENDIENTE");
 
   const handleSaved = (tarea: TareaOpcion) => {
     setItems((prev) => {
@@ -54,24 +72,29 @@ export function TareasGlobal({
   // Nada tildado en un filtro significa "todas": así el usuario ve el conjunto
   // completo sin tener que tildar las siete obras una por una.
   //
-  // "Ver completadas" es la excepción: no suma, cambia de lista. O se ven las
-  // pendientes o se ven las completadas, nunca mezcladas, porque lo que falta
-  // hacer se perdía entre lo ya hecho, que es lo que se acumula con el tiempo.
-  const visibles = ordenarTareas(
-    items.filter((t) => {
-      if (verCompletadas ? t.estado !== "COMPLETADA" : t.estado === "COMPLETADA") return false;
-      if (obrasFiltro.length > 0 && !obrasFiltro.includes(t.proyectoId)) return false;
-      if (rubrosFiltro.length > 0 && !rubrosFiltro.includes(t.rubroId ?? SIN_RUBRO)) return false;
-      if (personasFiltro.length > 0) {
-        const coincide =
-          t.asignados.length === 0
-            ? personasFiltro.includes(SIN_ASIGNAR)
-            : t.asignados.some((a) => personasFiltro.includes(a.id));
-        if (!coincide) return false;
-      }
-      return true;
-    })
-  );
+  // El estado no entra acá: lo elige la solapa y se aplica después, sobre este
+  // mismo conjunto. Así los números de las tres solapas ya vienen con los
+  // filtros puestos y dicen cuántas se van a ver al entrar, en vez de contar
+  // tareas de obras que en ese momento están filtradas.
+  const filtradas = items.filter((t) => {
+    if (obrasFiltro.length > 0 && !obrasFiltro.includes(t.proyectoId)) return false;
+    if (rubrosFiltro.length > 0 && !rubrosFiltro.includes(t.rubroId ?? SIN_RUBRO)) return false;
+    if (personasFiltro.length > 0) {
+      const coincide =
+        t.asignados.length === 0
+          ? personasFiltro.includes(SIN_ASIGNAR)
+          : t.asignados.some((a) => personasFiltro.includes(a.id));
+      if (!coincide) return false;
+    }
+    return true;
+  });
+
+  const conteos = {
+    PENDIENTE: filtradas.filter((t) => t.estado === "PENDIENTE").length,
+    EN_REVISION: filtradas.filter((t) => t.estado === "EN_REVISION").length,
+    COMPLETADA: filtradas.filter((t) => t.estado === "COMPLETADA").length,
+  };
+  const visibles = ordenarTareas(filtradas.filter((t) => t.estado === estado));
 
   const hayFiltros =
     obrasFiltro.length > 0 || rubrosFiltro.length > 0 || personasFiltro.length > 0;
@@ -89,17 +112,7 @@ export function TareasGlobal({
       <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
         {/* En móvil `order-first` las manda arriba; en escritorio `order-last`
             más `ml-auto` las devuelve al extremo derecho de la fila. */}
-        <div className="order-first flex items-center justify-between gap-3 sm:order-last sm:ml-auto">
-          <label className="flex cursor-default items-center gap-2">
-            <Checkbox
-              id="verCompletadasGlobal"
-              checked={verCompletadas}
-              onCheckedChange={(checked) => setVerCompletadas(checked === true)}
-            />
-            <Label htmlFor="verCompletadasGlobal" className="cursor-pointer text-xs font-normal">
-              Ver completadas
-            </Label>
-          </label>
+        <div className="order-first flex items-center justify-end gap-3 sm:order-last sm:ml-auto">
           <TareaDialog
             proyectos={proyectos}
             rubros={rubros}
@@ -175,38 +188,35 @@ export function TareasGlobal({
         </div>
       </div>
 
-      {/* Se aclara siempre cuál de las dos listas se está mirando: el contador
-          es lo único que distingue "no hay pendientes" de "no hay completadas"
-          cuando el número es chico y el tilde queda fuera de la vista. */}
-      <p className="text-xs text-muted-foreground">
-        {visibles.length}{" "}
-        {visibles.length === 1
-          ? verCompletadas
-            ? "tarea completada"
-            : "tarea pendiente"
-          : verCompletadas
-            ? "tareas completadas"
-            : "tareas pendientes"}
-        {hayFiltros ? " con los filtros aplicados" : ""}
-      </p>
+      <EstadoTareasTabs value={estado} onChange={setEstado} conteos={conteos}>
+        {/* El número ya está en la solapa, pero acá se escribe con todas las
+            letras y, sobre todo, se aclara si viene recortado por los filtros:
+            sin eso una lista corta parece que no hay trabajo cuando en realidad
+            hay un filtro puesto y olvidado. */}
+        <p className="mb-3 text-xs text-muted-foreground">
+          {visibles.length}{" "}
+          {visibles.length === 1
+            ? SUSTANTIVO_POR_ESTADO[estado].una
+            : SUSTANTIVO_POR_ESTADO[estado].varias}
+          {hayFiltros ? " con los filtros aplicados" : ""}
+        </p>
 
-      <TareasLista
-        tareas={visibles}
-        rubros={rubros}
-        usuarios={usuarios}
-        mostrarObra
-        onSaved={handleSaved}
-        onDeleted={handleDeleted}
-        vacio={
-          hayFiltros
-            ? "No hay tareas que coincidan con los filtros."
-            : items.length === 0
-              ? "Todavía no hay tareas cargadas."
-              : verCompletadas
-                ? "Todavía no hay tareas completadas."
-                : "No quedan tareas pendientes."
-        }
-      />
+        <TareasLista
+          tareas={visibles}
+          rubros={rubros}
+          usuarios={usuarios}
+          mostrarObra
+          onSaved={handleSaved}
+          onDeleted={handleDeleted}
+          vacio={
+            hayFiltros
+              ? "No hay tareas que coincidan con los filtros."
+              : items.length === 0
+                ? "Todavía no hay tareas cargadas."
+                : VACIO_POR_ESTADO[estado]
+          }
+        />
+      </EstadoTareasTabs>
     </div>
   );
 }

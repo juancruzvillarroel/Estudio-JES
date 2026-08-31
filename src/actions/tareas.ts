@@ -10,7 +10,7 @@ import {
   type TareaInput,
   type TareaUpdateInput,
 } from "@/lib/validations/tarea";
-import { mapTarea, tareaInclude, type TareaOpcion } from "@/lib/tareas";
+import { mapTarea, tareaInclude, type EstadoTarea, type TareaOpcion } from "@/lib/tareas";
 
 export type ActionResult =
   | { success: true; item: TareaOpcion }
@@ -216,22 +216,33 @@ export async function actualizarTarea(
 }
 
 /**
- * Marca o desmarca la tarea como completada. Arrastra al checklist entero: si
- * la tarea está hecha, sus sub ítems también lo están, y al reabrirla vuelven
- * todos a pendiente. Si no, quedaría un "5/5" colgado en una tarea abierta.
+ * Mueve la tarea por el circuito: pendiente → en revisión → completada.
+ *
+ * Arrastra al checklist entero: si la tarea está hecha (en revisión o
+ * completada), sus sub ítems también lo están, y al reabrirla vuelven todos a
+ * pendiente. Si no, quedaría un "5/5" colgado en una tarea abierta.
+ *
+ * `aCorregir` y la nota se limpian siempre. Volver a mandar a revisión una
+ * tarea que había vuelto para corregir es empezar de nuevo: el cartelito no
+ * tiene que quedar puesto mientras está esperando que la miren, y el pedido
+ * viejo ya no aplica. Para devolverla está `mandarACorregirTarea`.
  */
 export async function cambiarEstadoTarea(
   id: string,
-  completada: boolean
+  estado: EstadoTarea
 ): Promise<ActionResult> {
   await verifySession();
+  const hecha = estado !== "PENDIENTE";
   try {
     const item = await prisma.tarea.update({
       where: { id },
       data: {
-        estado: completada ? "COMPLETADA" : "PENDIENTE",
-        completadaEl: completada ? new Date() : null,
-        items: { updateMany: { where: {}, data: { completado: completada } } },
+        estado,
+        completadaEl: estado === "COMPLETADA" ? new Date() : null,
+        enRevisionEl: estado === "EN_REVISION" ? new Date() : null,
+        aCorregir: false,
+        correccionNota: null,
+        items: { updateMany: { where: {}, data: { completado: hecha } } },
       },
       include: tareaInclude,
     });
@@ -244,9 +255,49 @@ export async function cambiarEstadoTarea(
 }
 
 /**
- * Tilda o destilda un sub ítem del checklist y recalcula el estado de la
- * tarea: se completa sola cuando queda todo tildado, y vuelve a pendiente en
- * cuanto se destilda alguno.
+ * Devuelve una tarea de la revisión: vuelve a estar pendiente, pero marcada
+ * como "a corregir" y con el motivo, que es opcional.
+ *
+ * El checklist queda tal cual estaba, tildado. Destildarlo borraría el registro
+ * de lo que sí se hizo y obligaría a rehacer el recorrido entero para arreglar
+ * un detalle; lo que hay que corregir se dice en la nota.
+ */
+export async function mandarACorregirTarea(id: string, nota: string): Promise<ActionResult> {
+  await verifySession();
+  const limpia = nota.trim();
+  try {
+    const item = await prisma.tarea.update({
+      where: { id },
+      data: {
+        estado: "PENDIENTE",
+        completadaEl: null,
+        enRevisionEl: null,
+        aCorregir: true,
+        correccionNota: limpia || null,
+      },
+      include: tareaInclude,
+    });
+    revalidar(item.proyectoId);
+    return { success: true, item: mapTarea(item) };
+  } catch (error) {
+    console.error("mandarACorregirTarea", error);
+    return { success: false, error: "No se pudo devolver la tarea." };
+  }
+}
+
+/**
+ * Tilda o destilda un sub ítem del checklist.
+ *
+ * Tildar el último ya no completa la tarea sola. Ahora terminar una tarea es
+ * una decisión —va a revisión o se da por terminada— y esa pregunta la hace la
+ * vista, que después llama a `cambiarEstadoTarea` con lo que se eligió. Si acá
+ * se completara sola, el paso por revisión se saltearía justo en el caso más
+ * común, que es ir tildando el checklist hasta el final.
+ *
+ * Destildar sí sigue reabriendo: una tarea dada por hecha a la que le sacan un
+ * paso no está hecha, y da igual si estaba completada o esperando revisión.
+ * Vuelve a pendiente sin el cartelito de corregir, porque esto no es una
+ * devolución de nadie.
  */
 export async function cambiarEstadoItemTarea(
   itemId: string,
@@ -262,22 +313,25 @@ export async function cambiarEstadoItemTarea(
 
     const tarea = await prisma.tarea.findUniqueOrThrow({
       where: { id: tareaId },
-      select: { estado: true, items: { select: { completado: true } } },
+      select: { estado: true },
     });
-    const todosHechos = tarea.items.every((i) => i.completado);
-    const estado = todosHechos ? "COMPLETADA" : "PENDIENTE";
+    const reabrir = !completado && tarea.estado !== "PENDIENTE";
 
-    const item =
-      estado === tarea.estado
-        ? // El estado no cambió (ej. quedan sub ítems sueltos): no hace falta
-          // tocar la tarea, pero igual hay que devolverla al cliente con el
-          // checklist actualizado.
-          await prisma.tarea.findUniqueOrThrow({ where: { id: tareaId }, include: tareaInclude })
-        : await prisma.tarea.update({
-            where: { id: tareaId },
-            data: { estado, completadaEl: todosHechos ? new Date() : null },
-            include: tareaInclude,
-          });
+    const item = reabrir
+      ? await prisma.tarea.update({
+          where: { id: tareaId },
+          data: {
+            estado: "PENDIENTE",
+            completadaEl: null,
+            enRevisionEl: null,
+            aCorregir: false,
+            correccionNota: null,
+          },
+          include: tareaInclude,
+        })
+      : // La tarea no cambia de estado, pero igual hay que devolverla al
+        // cliente con el checklist actualizado.
+        await prisma.tarea.findUniqueOrThrow({ where: { id: tareaId }, include: tareaInclude });
     revalidar(item.proyectoId);
     return { success: true, item: mapTarea(item) };
   } catch (error) {

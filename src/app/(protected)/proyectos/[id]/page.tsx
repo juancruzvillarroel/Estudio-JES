@@ -120,6 +120,8 @@ export default async function ProyectoDetallePage({
     unidadesRaw,
     ventasRaw,
     tareasPendientes,
+    tareasEnRevision,
+    tareasCompletadas,
     tareasTotal,
     tareasAlta,
     tramitesPresentados,
@@ -177,6 +179,12 @@ export default async function ProyectoDetallePage({
       // Conteos para las tarjetas de la portada. Van como `count` en vez de
       // traer las filas: la portada solo muestra el número.
       prisma.tarea.count({ where: { proyectoId: id, estado: "PENDIENTE" } }),
+      // Las que están esperando que alguien las controle. Se cuentan aparte
+      // porque no son ni trabajo pendiente ni trabajo cerrado: si se sumaran a
+      // las completadas, la portada diría que la obra está al día mientras hay
+      // cosas trabadas esperando revisión.
+      prisma.tarea.count({ where: { proyectoId: id, estado: "EN_REVISION" } }),
+      prisma.tarea.count({ where: { proyectoId: id, estado: "COMPLETADA" } }),
       prisma.tarea.count({ where: { proyectoId: id } }),
       prisma.tarea.count({
         where: { proyectoId: id, estado: "PENDIENTE", prioridad: "ALTA" },
@@ -280,10 +288,19 @@ export default async function ProyectoDetallePage({
     tareas: {
       valor: String(tareasPendientes),
       detalle: tareasTotal === 0 ? "sin tareas cargadas" : plural(tareasPendientes, "tarea pendiente", "tareas pendientes"),
-      // El avance de tareas es cuántas se completaron sobre el total.
-      progreso: tareasTotal > 0 ? { hechos: tareasTotal - tareasPendientes, total: tareasTotal } : null,
-      tono: tareasPendientes === 0 ? "ok" : "alerta",
-      chips: tareasAlta > 0 ? [{ etiqueta: "Prioridad alta", valor: String(tareasAlta) }] : [],
+      // El avance de tareas es cuántas se completaron sobre el total. Se cuentan
+      // las completadas de verdad y no "las que no están pendientes": lo que
+      // está en revisión todavía no se aprobó y puede volver.
+      progreso: tareasTotal > 0 ? { hechos: tareasCompletadas, total: tareasTotal } : null,
+      // Verde recién cuando no queda nada abierto, ni pendiente ni esperando
+      // que lo miren.
+      tono: tareasPendientes === 0 && tareasEnRevision === 0 ? "ok" : "alerta",
+      chips: [
+        ...(tareasAlta > 0 ? [{ etiqueta: "Prioridad alta", valor: String(tareasAlta) }] : []),
+        ...(tareasEnRevision > 0
+          ? [{ etiqueta: "En revisión", valor: String(tareasEnRevision) }]
+          : []),
+      ],
     },
     municipal: {
       valor: `${tramitesPresentados}/${tramitesTotal}`,
