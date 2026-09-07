@@ -43,23 +43,31 @@ import {
  */
 function ItemCheck({
   item,
-  disabled,
+  checked,
   onToggle,
 }: {
   item: TareaItemOpcion;
-  disabled: boolean;
+  /**
+   * El tilde que hay que mostrar, que no es siempre el que está guardado:
+   * apenas se hace clic se pinta el nuevo sin esperar la respuesta.
+   */
+  checked: boolean;
   onToggle: (itemId: string, completado: boolean) => void;
 }) {
   return (
     <li>
       <label className="flex cursor-default items-start gap-2 rounded-md px-1 py-0.5 text-sm hover:bg-accent hover:text-accent-foreground">
+        {/* Sin `disabled`: antes se apagaba todo el checklist mientras se
+            guardaba y el tilde recién clickeado se veía a media luz justo en el
+            momento en que tenía que lucirse. Volver a tocarlo mientras viaja no
+            rompe nada, porque cada clic manda el valor que quiere, no un
+            "invertilo". */}
         <Checkbox
-          checked={item.completado}
-          disabled={disabled}
-          onCheckedChange={(checked) => onToggle(item.id, checked === true)}
-          className="mt-0.5"
+          checked={checked}
+          onCheckedChange={(marcado) => onToggle(item.id, marcado === true)}
+          className="tilde-item mt-0.5 duration-200"
         />
-        <span className={cn("min-w-0", item.completado && "text-muted-foreground line-through")}>
+        <span className={cn("min-w-0", checked && "text-muted-foreground line-through")}>
           {item.texto}
         </span>
       </label>
@@ -97,7 +105,9 @@ export function TareasLista({
   onDeleted: (id: string) => void;
   vacio: string;
 }) {
-  const [pending, startTransition] = useTransition();
+  // Sin el `pending`: nada de la lista se apaga mientras se guarda. Los tildes
+  // se pintan a mano y la fila que se va ya se bloquea sola con su animación.
+  const [, startTransition] = useTransition();
   // Qué checklists están abiertos. Arranca todo cerrado para que la lista se
   // lea de un vistazo; el avance ya se ve en el "3/5" del encabezado.
   const [abiertas, setAbiertas] = useState<string[]>([]);
@@ -124,6 +134,15 @@ export function TareasLista({
   /** La tarea que se está devolviendo de la revisión, con su nota. */
   const [devolviendo, setDevolviendo] = useState<TareaOpcion | null>(null);
   const [nota, setNota] = useState("");
+  /**
+   * Sub ítems recién clickeados, con el tilde que se les pintó al instante.
+   *
+   * El tilde guardado llega recién cuando vuelve el servidor, y esperarlo se
+   * siente como que el clic no agarró: se hace clic, no pasa nada por medio
+   * segundo, y después el cuadrado aparece lleno de golpe. Acá se pinta ya y se
+   * corrige solo si el guardado falla.
+   */
+  const [tildando, setTildando] = useState<Record<string, boolean>>({});
 
   const dejarDeSalir = (id: string) =>
     setSaliendo((prev) => {
@@ -164,8 +183,8 @@ export function TareasLista({
         return;
       }
       // El `setTimeout` va afuera de la transición: si la espera ocurriera
-      // adentro, `pending` seguiría en true toda la animación y apagaría los
-      // tildes del resto de la lista.
+      // adentro, la transición quedaría abierta toda la animación y cualquier
+      // otro clic de la lista entraría en la misma cola.
       //
       // No se descuenta lo que tardó el servidor a propósito. La animación
       // termina con `forwards`, así que pasados los MS_SALIDA la fila ya quedó
@@ -204,14 +223,35 @@ export function TareasLista({
     aplicarEstado(tarea, "PENDIENTE");
   };
 
+  /**
+   * Suelta el tilde pintado a mano y deja mandando el guardado.
+   *
+   * Sólo lo suelta si sigue siendo el que se acaba de confirmar: si mientras
+   * viajaba la respuesta se volvió a tocar el mismo ítem, el pintado ya es otro
+   * y hay que dejarlo hasta que llegue *su* respuesta. Sin esta guarda el
+   * cuadrado pegaba un volantazo al valor viejo y volvía.
+   */
+  const soltarTilde = (itemId: string, valor: boolean) =>
+    setTildando((prev) => {
+      if (prev[itemId] !== valor) return prev;
+      const resto = { ...prev };
+      delete resto[itemId];
+      return resto;
+    });
+
   const handleToggleItem = (tarea: TareaOpcion, itemId: string, completado: boolean) => {
+    setTildando((prev) => ({ ...prev, [itemId]: completado }));
+
     startTransition(async () => {
       const result = await cambiarEstadoItemTarea(itemId, completado);
       if (!result.success) {
         toast.error(result.error);
+        // No se guardó: el cuadrado vuelve a como estaba.
+        soltarTilde(itemId, completado);
         return;
       }
       onSaved(result.item);
+      soltarTilde(itemId, completado);
       // Tildar el último paso es dar la tarea por hecha, así que hace la misma
       // pregunta que tildar la tarea entera. El servidor ya no la completa
       // solo: si lo hiciera, el paso por revisión se saltearía justo en el caso
@@ -451,7 +491,7 @@ export function TareasLista({
                         <ItemCheck
                           key={sub.id}
                           item={sub}
-                          disabled={pending}
+                          checked={tildando[sub.id] ?? sub.completado}
                           onToggle={(itemId, hecho) => handleToggleItem(tarea, itemId, hecho)}
                         />
                       ))}
@@ -475,7 +515,7 @@ export function TareasLista({
                           <ItemCheck
                             key={sub.id}
                             item={sub}
-                            disabled={pending}
+                            checked={tildando[sub.id] ?? sub.completado}
                             onToggle={(itemId, hecho) => handleToggleItem(tarea, itemId, hecho)}
                           />
                         ))}
