@@ -23,7 +23,12 @@ export default async function ProtectedLayout({
         proyectos={proyectos}
       />
       <main className="min-w-0 flex-1 pb-20 md:ml-56 md:pb-0">
-        <div className="mx-auto max-w-5xl p-4 md:p-8">{children}</div>
+        {/* Sin ancho máximo: el contenido usa toda la pantalla y el margen es
+            solo el aire del padding, que crece con el viewport. Había un
+            max-w-5xl acá que dejaba dos franjas blancas enormes en cualquier
+            monitor grande, y las tablas anchas —flujo de fondos, presupuesto,
+            cronograma— son justo las que más lugar necesitan. */}
+        <div className="p-4 md:px-8 md:py-8 2xl:px-12">{children}</div>
       </main>
       <MobileNav esAdmin={session.esAdmin} paginasPermitidas={session.paginasPermitidas} />
     </div>
