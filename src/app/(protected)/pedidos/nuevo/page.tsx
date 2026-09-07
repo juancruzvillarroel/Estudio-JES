@@ -37,6 +37,9 @@ export default async function NuevoMovimientoPage({
     numero: p.numero,
     proyectoId: p.proyectoId,
     proveedorId: p.proveedorId,
+    // Si ya llegó algo antes, lo pendiente no es el pedido entero. Solo cambia
+    // cómo se llama el botón que completa todas las cantidades de una.
+    hayEntregasPrevias: p.items.some((i) => Number(i.cantidadEntregada) > 0),
     items: p.items
       .map((i) => ({
         pedidoItemId: i.id,

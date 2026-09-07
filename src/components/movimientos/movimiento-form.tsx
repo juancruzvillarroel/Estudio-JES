@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useForm, useFieldArray, Controller } from "react-hook-form";
 import { useRouter } from "next/navigation";
-import { Camera, Paperclip, Plus, Trash2, X } from "lucide-react";
+import { Camera, CheckCheck, Paperclip, Plus, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -42,6 +42,8 @@ type PedidoAbierto = {
   numero: number;
   proyectoId: string;
   proveedorId: string;
+  /** Si el pedido ya tuvo entregas: cambia el nombre del botón que completa todo. */
+  hayEntregasPrevias: boolean;
   items: {
     pedidoItemId: string;
     materialNombre: string;
@@ -102,6 +104,7 @@ export function MovimientoForm({
   const [formError, setFormError] = useState<string | null>(null);
   const [archivoAdjunto, setArchivoAdjunto] = useState<File | null>(null);
   const [barras, setBarras] = useState<Record<number, string>>({});
+  const [completoTodo, setCompletoTodo] = useState(false);
   const [acopiosCreados, setAcopiosCreados] = useState<AcopioOpcion[]>([]);
   const [proveedoresCreados, setProveedoresCreados] = useState<
     (Opcion & { codigo: string; rubroId: string })[]
@@ -207,6 +210,9 @@ export function MovimientoForm({
     const items = pedidoSeleccionado?.items ?? [];
     replaceEntregaItems(items.map((i) => ({ pedidoItemId: i.pedidoItemId, cantidad: 0 })));
     setBarras({});
+    // Cambiar de pedido rearma la lista en cero: lo que se había completado con
+    // el botón ya no está, así que el "Vaciar" tampoco tiene qué vaciar.
+    setCompletoTodo(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pedidoId, tipo]);
 
@@ -215,6 +221,48 @@ export function MovimientoForm({
     if (inputArchivoRef.current) inputArchivoRef.current.value = "";
     if (inputCamaraRef.current) inputCamaraRef.current.value = "";
   }, [tipo]);
+
+  /**
+   * Llena todas las cantidades a entregar con lo que falta de cada ítem.
+   *
+   * El caso normal es que el camión traiga el pedido entero, y copiar a mano en
+   * cada renglón el número que ya está escrito al lado ("Pendiente: 647") es
+   * puro trabajo de copista.
+   *
+   * Llena los campos y no manda nada: queda todo editable por si un renglón vino
+   * corto, y la entrega se guarda con el mismo botón de siempre.
+   */
+  const completarTodoEntrega = () => {
+    const items = pedidoSeleccionado?.items ?? [];
+    const barrasNuevas: Record<number, string> = {};
+
+    items.forEach((info, index) => {
+      setValue(`itemsEntrega.${index}.cantidad`, info.restante, { shouldValidate: true });
+
+      // El ayudante de barras solo se completa cuando la cuenta da exacta. Si el
+      // pendiente son 137,5 kg, "11,45 barras" es un número que nadie contó ni
+      // puede contar: mejor dejarlo en blanco que inventar precisión.
+      if (info.pesoPorBarra) {
+        const cantidad = info.restante / info.pesoPorBarra;
+        if (Math.abs(cantidad - Math.round(cantidad)) < 1e-6) {
+          barrasNuevas[index] = String(Math.round(cantidad));
+        }
+      }
+    });
+
+    setBarras(barrasNuevas);
+    setCompletoTodo(true);
+  };
+
+  /** Vuelve todo a cero, por si el botón no era lo que hacía falta. */
+  const vaciarTodoEntrega = () => {
+    const items = pedidoSeleccionado?.items ?? [];
+    items.forEach((_, index) => {
+      setValue(`itemsEntrega.${index}.cantidad`, 0, { shouldValidate: true });
+    });
+    setBarras({});
+    setCompletoTodo(false);
+  };
 
   const handleAcopioCreado = (acopio: AcopioOpcion) => {
     setAcopiosCreados((prev) => [...prev, acopio]);
@@ -539,7 +587,39 @@ export function MovimientoForm({
       ) : (
         pedidoId && (
           <div className="flex flex-col gap-2">
-            <Label>Ítems a entregar</Label>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <Label>
+                Ítems a entregar
+                {entregaItemFields.length > 0 && (
+                  <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+                    {entregaItemFields.length}{" "}
+                    {entregaItemFields.length === 1
+                      ? "material pendiente"
+                      : "materiales pendientes"}
+                  </span>
+                )}
+              </Label>
+              {entregaItemFields.length > 0 && (
+                <div className="flex items-center gap-1">
+                  {completoTodo && (
+                    <Button type="button" variant="ghost" size="sm" onClick={vaciarTodoEntrega}>
+                      Vaciar
+                    </Button>
+                  )}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={completarTodoEntrega}
+                  >
+                    <CheckCheck />
+                    {pedidoSeleccionado?.hayEntregasPrevias
+                      ? "Entregaron todo lo que faltaba"
+                      : "Entregaron todo el pedido"}
+                  </Button>
+                </div>
+              )}
+            </div>
             <div className="flex flex-col gap-3">
               {entregaItemFields.map((field, index) => {
                 const info = pedidoSeleccionado?.items[index];

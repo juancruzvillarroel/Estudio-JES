@@ -36,6 +36,10 @@ export default async function NuevaEntregaPage({
     }))
     .filter((item) => item.restante > 0);
 
+  // Con entregas anteriores, lo pendiente ya no es el pedido entero: cambia cómo
+  // se llama el botón que completa todo.
+  const hayEntregasPrevias = pedido.items.some((item) => Number(item.cantidadEntregada) > 0);
+
   return (
     <div>
       <div className="border-b border-neutral-800 pb-4">
@@ -47,7 +51,11 @@ export default async function NuevaEntregaPage({
         </p>
       </div>
       <div className="mt-6 max-w-xl">
-        <EntregaForm pedidoId={pedido.id} itemsPendientes={itemsPendientes} />
+        <EntregaForm
+          pedidoId={pedido.id}
+          itemsPendientes={itemsPendientes}
+          hayEntregasPrevias={hayEntregasPrevias}
+        />
       </div>
     </div>
   );

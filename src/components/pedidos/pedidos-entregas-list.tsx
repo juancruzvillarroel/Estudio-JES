@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ExternalLink, Pencil } from "lucide-react";
+import { ExternalLink, Pencil, Truck } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -94,7 +94,9 @@ const COL_TIPO = "hidden sm:table-cell sm:w-28";
 const COL_PROVEEDOR = "hidden sm:table-cell";
 const COL_FECHA = "hidden sm:table-cell sm:w-28";
 const COL_ULTIMA = "w-16 px-1.5 sm:w-28 sm:px-2";
-const COL_ACCIONES = "w-24 px-1 sm:w-28 sm:px-2";
+// Más ancha que antes: los pedidos abiertos suman una cuarta acción —registrar
+// la entrega— y con el ancho viejo el cuarto ícono se salía de la celda.
+const COL_ACCIONES = "w-32 px-1 sm:w-36 sm:px-2";
 
 export function PedidosEntregasList({
   pedidos,
@@ -320,6 +322,26 @@ export function PedidosEntregasList({
                     )}
                     {f.tipo === "PEDIDO" ? (
                       <>
+                        {/* Registrar la entrega es lo que más se hace con un
+                            pedido abierto, y hasta ahora había que entrar al
+                            detalle para encontrarlo: desde la lista no se veía
+                            ninguna forma de hacerlo. Va primero de las acciones
+                            por eso mismo. Desaparece cuando el pedido está
+                            completo o cancelado, que es cuando la pantalla de
+                            carga te rebota igual. */}
+                        {(f.estado === "PENDIENTE" || f.estado === "PARCIAL") && (
+                          <Button
+                            render={<Link href={`/pedidos/${f.id}/entregas/nueva`} />}
+                            nativeButton={false}
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label={`Registrar entrega del pedido #${formatNumeroPedido(f.numero)}`}
+                            title="Registrar entrega"
+                          >
+                            <Truck className="h-4 w-4" />
+                          </Button>
+                        )}
                         <Button
                           render={<Link href={`/pedidos/${f.id}/editar`} />}
                           nativeButton={false}

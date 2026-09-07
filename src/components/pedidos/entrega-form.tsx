@@ -4,7 +4,7 @@ import { useRef, useState, useTransition } from "react";
 import { useForm, useFieldArray, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
-import { Camera, Paperclip, X } from "lucide-react";
+import { Camera, CheckCheck, Paperclip, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -24,15 +24,23 @@ type PedidoItemPendiente = {
 export function EntregaForm({
   pedidoId,
   itemsPendientes,
+  /**
+   * Si el pedido ya tuvo entregas antes. Solo cambia cómo se llama el botón de
+   * completar: "todo el pedido" sería mentira cuando la mitad ya llegó la
+   * semana pasada, porque lo que se carga es lo que falta, no lo pedido.
+   */
+  hayEntregasPrevias = false,
 }: {
   pedidoId: string;
   itemsPendientes: PedidoItemPendiente[];
+  hayEntregasPrevias?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [formError, setFormError] = useState<string | null>(null);
   const [remitoArchivo, setRemitoArchivo] = useState<File | null>(null);
   const [barras, setBarras] = useState<Record<number, string>>({});
+  const [completoTodo, setCompletoTodo] = useState(false);
   const inputArchivoRef = useRef<HTMLInputElement>(null);
   const inputCamaraRef = useRef<HTMLInputElement>(null);
 
@@ -55,6 +63,47 @@ export function EntregaForm({
 
   const { fields } = useFieldArray({ control, name: "items" });
 
+  /**
+   * Llena todas las cantidades con lo que falta entregar de cada ítem.
+   *
+   * El caso normal es que el camión traiga el pedido entero, y cargar quince
+   * renglones a mano para escribir en cada uno el número que ya está escrito al
+   * lado ("Pendiente: 40") es puro trabajo de copista.
+   *
+   * Llena los campos y no manda nada: queda todo editable por si un renglón vino
+   * corto, y la entrega se registra con el mismo botón de siempre. Un botón que
+   * guardara solo no dejaría corregir el remito ni marcar inventario.
+   */
+  const completarTodo = () => {
+    const barrasNuevas: Record<number, string> = {};
+
+    itemsPendientes.forEach((info, index) => {
+      setValue(`items.${index}.cantidad`, info.restante, { shouldValidate: true });
+
+      // El ayudante de barras se completa solo cuando la cuenta da exacta. Si el
+      // pendiente son 137,5 kg, "11,45 barras" es un número que nadie contó ni
+      // puede contar; mejor dejarlo en blanco que inventar una precisión falsa.
+      if (info.pesoPorBarra) {
+        const cantidad = info.restante / info.pesoPorBarra;
+        if (Math.abs(cantidad - Math.round(cantidad)) < 1e-6) {
+          barrasNuevas[index] = String(Math.round(cantidad));
+        }
+      }
+    });
+
+    setBarras(barrasNuevas);
+    setCompletoTodo(true);
+  };
+
+  /** Vuelve todo a cero, para arrancar de nuevo si el botón no era lo que hacía falta. */
+  const vaciarTodo = () => {
+    itemsPendientes.forEach((_, index) => {
+      setValue(`items.${index}.cantidad`, 0, { shouldValidate: true });
+    });
+    setBarras({});
+    setCompletoTodo(false);
+  };
+
   const onSubmit = (data: EntregaInput) => {
     setFormError(null);
     startTransition(async () => {
@@ -72,6 +121,29 @@ export function EntregaForm({
       <input type="hidden" {...register("pedidoId")} />
 
       <div className="flex flex-col gap-3">
+        {itemsPendientes.length > 0 && (
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm font-medium">
+              Qué entregaron
+              <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+                {itemsPendientes.length}{" "}
+                {itemsPendientes.length === 1 ? "material pendiente" : "materiales pendientes"}
+              </span>
+            </p>
+            <div className="flex items-center gap-1">
+              {completoTodo && (
+                <Button type="button" variant="ghost" size="sm" onClick={vaciarTodo}>
+                  Vaciar
+                </Button>
+              )}
+              <Button type="button" variant="outline" size="sm" onClick={completarTodo}>
+                <CheckCheck />
+                {hayEntregasPrevias ? "Entregaron todo lo que faltaba" : "Entregaron todo el pedido"}
+              </Button>
+            </div>
+          </div>
+        )}
+
         {fields.map((field, index) => {
           const info = itemsPendientes[index];
           return (
