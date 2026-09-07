@@ -49,3 +49,33 @@ export const ProyectoPorcentajeHonorariosSchema = z.object({
 export type ProyectoPorcentajeHonorariosInput = z.infer<
   typeof ProyectoPorcentajeHonorariosSchema
 >;
+
+/**
+ * Arranque y largo de la obra. Es la línea de tiempo contra la que se ubican
+ * las barras del presupuesto: sin estos dos datos la solapa Presupuesto no
+ * tiene eje horizontal y lo único que puede hacer es pedirlos.
+ *
+ * La fecha llega como "AAAA-MM-DD" (lo que da un <input type="date">) y no como
+ * Date porque viaja de cliente a servidor en una server action, y ahí un Date
+ * se serializa a UTC: cargar el 1 de marzo desde Argentina lo guardaría como el
+ * 28 de febrero a las 21:00. Se arma la fecha en el servidor a mediodía UTC
+ * para que ningún huso la corra de día.
+ *
+ * El largo va en meses y no como fecha de fin porque así se piensa y así se
+ * carga ("la obra son 24 meses"). El tope de 120 (diez años) no es una regla
+ * del negocio: es para que un dedazo no dibuje una grilla de mil columnas.
+ */
+export const ProyectoFechaObraSchema = z.object({
+  fechaInicio: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "La fecha de inicio no es válida")
+    .nullable(),
+  duracionMeses: z
+    .number({ message: "La duración tiene que ser un número" })
+    .int("La duración tiene que ser un número entero de meses")
+    .min(1, "La duración tiene que ser de al menos un mes")
+    .max(120, "La duración no puede superar los 120 meses")
+    .nullable(),
+});
+
+export type ProyectoFechaObraInput = z.infer<typeof ProyectoFechaObraSchema>;

@@ -23,6 +23,7 @@ import {
   mapUnidadProyecto,
 } from "@/lib/flujo-fondos";
 import { ventaInclude, mapVenta } from "@/lib/ventas";
+import { mapPresupuestoItem } from "@/lib/presupuesto";
 import { capitalizarOracion, formatFecha, formatNumeroPedido } from "@/lib/utils";
 
 const ESTADO_LABELS = {
@@ -119,6 +120,7 @@ export default async function ProyectoDetallePage({
     mediosPagoRaw,
     unidadesRaw,
     ventasRaw,
+    presupuestoRaw,
     tareasPendientes,
     tareasEnRevision,
     tareasCompletadas,
@@ -176,6 +178,9 @@ export default async function ProyectoDetallePage({
             orderBy: { fecha: "desc" },
           })
         : Promise.resolve([]),
+      tieneFlujoFondos
+        ? prisma.presupuestoItem.findMany({ where: { proyectoId: id } })
+        : Promise.resolve([]),
       // Conteos para las tarjetas de la portada. Van como `count` en vez de
       // traer las filas: la portada solo muestra el número.
       prisma.tarea.count({ where: { proyectoId: id, estado: "PENDIENTE" } }),
@@ -220,6 +225,7 @@ export default async function ProyectoDetallePage({
   const mediosPago = mediosPagoRaw.map(mapMedioPago);
   const unidades = unidadesRaw.map(mapUnidadProyecto);
   const ventas = ventasRaw.map(mapVenta);
+  const presupuesto = presupuestoRaw.map(mapPresupuestoItem);
   const proveedoresConRubros = proveedoresFondo.map((p) => ({
     id: p.id,
     nombre: p.nombre,
@@ -483,6 +489,14 @@ export default async function ProyectoDetallePage({
               ventas={ventas}
               m2Vendibles={proyecto.m2Vendibles ? Number(proyecto.m2Vendibles) : null}
               porcentajeHonorarios={aPorcentaje(proyecto.porcentajeHonorarios)}
+              // Se manda "AAAA-MM-DD" y no el Date: cruza a un client component,
+              // donde un Date se serializa a UTC y volvería a introducir el
+              // corrimiento de día que updateFechaObra evita guardando a mediodía.
+              fechaInicio={
+                proyecto.fechaInicio ? proyecto.fechaInicio.toISOString().slice(0, 10) : null
+              }
+              duracionMeses={proyecto.duracionMeses}
+              presupuesto={presupuesto}
             />
           ) : null
         }

@@ -102,6 +102,14 @@ model Proyecto {
   // variar de obra en obra. En null significa "sin definir": la calculadora
   // de honorarios no propone ningún monto hasta que se cargue.
   porcentajeHonorarios Decimal?       @db.Decimal(5, 2)
+  // Arranque y largo de la obra: los dos datos que definen la línea de tiempo
+  // del presupuesto (ver PresupuestoItem). Sin ellos la solapa Presupuesto no
+  // tiene contra qué ubicar las barras, y es lo primero que pide.
+  //
+  // La duración va en meses y no como fecha de fin porque así se piensa y así
+  // se carga ("la obra son 24 meses"). La fecha de fin se deriva.
+  fechaInicio          DateTime?
+  duracionMeses        Int?
   createdAt            DateTime       @default(now())
   updatedAt            DateTime       @updatedAt
 
@@ -122,6 +130,7 @@ model Proyecto {
   unidades         UnidadProyecto[]
   ventas           Venta[]
   tareas           Tarea[]
+  presupuesto      PresupuestoItem[]
 }
 
 // Catálogo de categorías de la pestaña "Municipal": igual que
@@ -356,6 +365,7 @@ model Rubro {
 
   movimientosFondo MovimientoFondo[]
   tareas           Tarea[]
+  presupuesto      PresupuestoItem[]
 }
 
 // Subcategoría dentro de un Rubro, usada para clasificar con más detalle los
@@ -370,6 +380,7 @@ model Subrubro {
   createdAt DateTime @default(now())
 
   movimientosFondo MovimientoFondo[]
+  presupuesto      PresupuestoItem[]
 
   @@unique([rubroId, nombre])
   @@index([rubroId])
@@ -543,6 +554,70 @@ model Material {
   acopios               Acopio[]
   acopioPrecios         AcopioPrecio[]
   movimientosInventario InventarioMovimiento[]
+}
+
+// Cómo se reparte el monto de una línea de presupuesto a lo largo de sus meses.
+//
+// Existe porque el total y el calendario no alcanzan: una excavación de 90.000
+// en tres meses no gasta 30.000 por mes, arranca fuerte y afloja. Con una sola
+// forma de repartir, el flujo proyectado da un número plano que no se parece a
+// la obra y no sirve para prever cuándo hace falta la plata.
+//
+// Son cuatro y no una curva libre a propósito: cubren los casos reales de una
+// obra y se eligen de un vistazo. Dibujar una curva a mano sería más exacto y
+// mucho menos usable.
+enum CurvaPresupuesto {
+  // Todos los meses lo mismo. El default, y lo correcto para gastos parejos
+  // como alquileres o sueldos.
+  UNIFORME
+  // Empieza chico y termina grande (terminaciones, carpinterías).
+  CRECIENTE
+  // Empieza grande y termina chico (movimiento de suelos, demolición).
+  DECRECIENTE
+  // Poco al principio y al final, el grueso en el medio (estructura, albañilería).
+  CAMPANA
+}
+
+// Una línea del presupuesto de una obra: cuánto se planea gastar en un rubro (o
+// subrubro) y en qué tramo de la obra.
+//
+// Es el gemelo proyectado de MovimientoFondo. La diferencia de fondo es que un
+// movimiento es un hecho con fecha, y esto es una intención con forma: un total,
+// un tramo y una curva. Los montos mensuales NO se guardan, se derivan (ver
+// src/lib/presupuesto.ts). Guardarlos convertiría esto en una planilla y
+// obligaría a reescribir doce celdas para correr una barra un mes.
+//
+// El tramo se guarda como offset en meses desde Proyecto.fechaInicio y no como
+// fechas absolutas: si la obra se atrasa dos meses, se corrige la fecha de
+// inicio y el presupuesto entero se acomoda solo.
+model PresupuestoItem {
+  id         String    @id @default(cuid())
+  proyectoId String
+  proyecto   Proyecto  @relation(fields: [proyectoId], references: [id], onDelete: Cascade)
+  rubroId    String
+  rubro      Rubro     @relation(fields: [rubroId], references: [id], onDelete: Cascade)
+  // Null = la línea presupuesta el rubro entero. Con subrubro, presupuesta esa
+  // parte. Los dos niveles no se suman entre sí: si un rubro tiene subrubros
+  // presupuestados, su total es la suma de ellos y la línea del rubro se ignora
+  // (ver src/lib/presupuesto.ts).
+  subrubroId String?
+  subrubro   Subrubro? @relation(fields: [subrubroId], references: [id], onDelete: Cascade)
+
+  // Siempre en dólares. Todo Flujo de fondos ya consolida en USD, y un
+  // presupuesto a dos años en pesos se despega de la realidad antes de servir.
+  montoUSD Decimal @db.Decimal(14, 2)
+
+  // Mes de arranque contado desde el inicio de obra: 0 es el primer mes.
+  mesInicio     Int              @default(0)
+  duracionMeses Int              @default(1)
+  curva         CurvaPresupuesto @default(UNIFORME)
+  notas         String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  @@index([proyectoId])
+  @@index([rubroId])
+  @@index([subrubroId])
 }
 
 model Pedido {

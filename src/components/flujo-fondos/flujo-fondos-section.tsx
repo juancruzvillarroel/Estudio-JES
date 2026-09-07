@@ -12,6 +12,8 @@ import { MediosPagoPanel } from "@/components/flujo-fondos/medios-pago-panel";
 import { UnidadesProyectoPanel } from "@/components/flujo-fondos/unidades-proyecto-panel";
 import { M2VendiblesPanel } from "@/components/flujo-fondos/m2-vendibles-panel";
 import { PorcentajeHonorariosPanel } from "@/components/flujo-fondos/porcentaje-honorarios-panel";
+import { FechaObraPanel } from "@/components/flujo-fondos/fecha-obra-panel";
+import { PresupuestoSection } from "@/components/flujo-fondos/presupuesto-section";
 import { VentasSection } from "@/components/ventas/ventas-section";
 import type {
   MovimientoFondoOpcion,
@@ -20,6 +22,7 @@ import type {
   UnidadProyectoOpcion,
 } from "@/lib/flujo-fondos";
 import { sugerirHonorarios } from "@/lib/honorarios";
+import type { PresupuestoItemOpcion } from "@/lib/presupuesto";
 import type { VentaOpcion } from "@/lib/ventas";
 
 /**
@@ -55,6 +58,9 @@ export function FlujoFondosSection({
   ventas,
   m2Vendibles,
   porcentajeHonorarios,
+  fechaInicio,
+  duracionMeses,
+  presupuesto,
 }: {
   proyectoId: string;
   /** Encabeza el informe imprimible que se descarga desde el resumen. */
@@ -68,7 +74,16 @@ export function FlujoFondosSection({
   ventas: VentaOpcion[];
   m2Vendibles: number | null;
   porcentajeHonorarios: number | null;
+  /** "AAAA-MM-DD" o null. Junto con la duración, el eje del presupuesto. */
+  fechaInicio: string | null;
+  duracionMeses: number | null;
+  presupuesto: PresupuestoItemOpcion[];
 }) {
+  // La solapa activa se maneja acá, y no con `defaultValue`, porque el estado
+  // vacío de Presupuesto ofrece un botón que lleva a "Datos del proyecto" a
+  // cargar la fecha de inicio. Sin control no hay forma de moverse solo.
+  const [solapa, setSolapa] = useState("resumen");
+
   const [items, setItems] = useState(movimientos);
   const [prevMovimientos, setPrevMovimientos] = useState(movimientos);
   if (movimientos !== prevMovimientos) {
@@ -108,6 +123,16 @@ export function FlujoFondosSection({
     setPorcentajeActual(porcentajeHonorarios);
   }
 
+  // Igual que los anteriores: al guardar la fecha de inicio desde "Datos del
+  // proyecto", la solapa Presupuesto pasa de su estado vacío a la grilla sin
+  // tener que recargar.
+  const [obra, setObra] = useState({ fechaInicio, duracionMeses });
+  const [prevObra, setPrevObra] = useState({ fechaInicio, duracionMeses });
+  if (fechaInicio !== prevObra.fechaInicio || duracionMeses !== prevObra.duracionMeses) {
+    setPrevObra({ fechaInicio, duracionMeses });
+    setObra({ fechaInicio, duracionMeses });
+  }
+
   const handleSaved = (movimiento: MovimientoFondoOpcion) => {
     setItems((prev) => {
       const existe = prev.some((m) => m.id === movimiento.id);
@@ -132,8 +157,8 @@ export function FlujoFondosSection({
   const proyectoInversores = inversores.map((a) => ({ id: a.id, inversorNombre: a.inversorNombre }));
 
   return (
-    <Tabs defaultValue="resumen">
-      {/* La barra ocupa todo el ancho de la página y las siete solapas se
+    <Tabs value={solapa} onValueChange={(v) => setSolapa(String(v))}>
+      {/* La barra ocupa todo el ancho de la página y las solapas se
           reparten ese ancho en partes iguales (`flex-1` ya venía en cada una,
           lo que faltaba era el `w-full` acá).
 
@@ -158,6 +183,11 @@ export function FlujoFondosSection({
         <TabsTrigger value="gastos">Gastos</TabsTrigger>
         <TabsTrigger value="aportes">Aportes</TabsTrigger>
         <TabsTrigger value="rubros">Rubros</TabsTrigger>
+        {/* Presupuesto va antes que Cronograma a propósito: primero lo que se
+            planea gastar, después lo que se gastó. Leídas en orden, las tres
+            solapas cuentan la obra: qué rubros hay, qué se presupuestó y qué
+            terminó pasando. */}
+        <TabsTrigger value="presupuesto">Presupuesto</TabsTrigger>
         <TabsTrigger value="cronograma">Cronograma</TabsTrigger>
         <TabsTrigger value="ventas">Ventas</TabsTrigger>
         <TabsTrigger value="datos">Datos del proyecto</TabsTrigger>
@@ -211,6 +241,18 @@ export function FlujoFondosSection({
         />
       </TabsContent>
 
+      <TabsContent value="presupuesto" className={PANEL}>
+        <PresupuestoSection
+          proyectoId={proyectoId}
+          rubros={rubros}
+          items={presupuesto}
+          movimientos={items}
+          fechaInicio={obra.fechaInicio}
+          duracionMeses={obra.duracionMeses}
+          onIrADatos={() => setSolapa("datos")}
+        />
+      </TabsContent>
+
       <TabsContent value="cronograma" className={PANEL}>
         <GastosCronograma rubros={rubros} movimientos={items} />
       </TabsContent>
@@ -230,6 +272,12 @@ export function FlujoFondosSection({
           proyectoId={proyectoId}
           medios={mediosPagoActuales}
           onChange={setMediosPagoActuales}
+        />
+        <FechaObraPanel
+          proyectoId={proyectoId}
+          fechaInicio={obra.fechaInicio}
+          duracionMeses={obra.duracionMeses}
+          onChange={setObra}
         />
         <M2VendiblesPanel
           proyectoId={proyectoId}

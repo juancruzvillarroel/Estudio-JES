@@ -8,8 +8,10 @@ import {
   ProyectoSchema,
   ProyectoM2VendiblesSchema,
   ProyectoPorcentajeHonorariosSchema,
+  ProyectoFechaObraSchema,
   type ProyectoM2VendiblesInput,
   type ProyectoPorcentajeHonorariosInput,
+  type ProyectoFechaObraInput,
 } from "@/lib/validations/proyecto";
 import { sincronizarDocumentosPorPiso } from "@/actions/documentos";
 
@@ -138,5 +140,56 @@ export async function updatePorcentajeHonorarios(
     // compara contra null en vez de mirar si es "falsy".
     porcentajeHonorarios:
       proyecto.porcentajeHonorarios === null ? null : Number(proyecto.porcentajeHonorarios),
+  };
+}
+
+export type FechaObraResult =
+  | { success: true; fechaInicio: string | null; duracionMeses: number | null }
+  | { success: false; error: string };
+
+/**
+ * Guarda el arranque y el largo de la obra, los dos datos que definen el eje de
+ * tiempo del presupuesto.
+ *
+ * Van juntos en una sola action, y no uno por campo como m² u honorarios,
+ * porque solos no sirven: una fecha de inicio sin duración no dibuja ninguna
+ * línea de tiempo. Guardarlos de a uno dejaría al proyecto en un estado a medio
+ * cargar que la pantalla tendría que saber explicar.
+ *
+ * La fecha se arma a mediodía UTC a propósito. Si se guardara a medianoche,
+ * cualquier huso al oeste de Greenwich la leería como el día anterior y una
+ * obra que arranca el 1 de marzo pasaría a arrancar en febrero. A mediodía hay
+ * doce horas de colchón para cada lado y el día no se corre nunca.
+ */
+export async function updateFechaObra(
+  id: string,
+  input: ProyectoFechaObraInput
+): Promise<FechaObraResult> {
+  await requireSeccion("flujo-fondos");
+
+  const validated = ProyectoFechaObraSchema.safeParse(input);
+  if (!validated.success) {
+    return { success: false, error: validated.error.issues[0]?.message ?? "Datos inválidos." };
+  }
+
+  const { fechaInicio, duracionMeses } = validated.data;
+
+  const proyecto = await prisma.proyecto.update({
+    where: { id },
+    data: {
+      fechaInicio: fechaInicio ? new Date(`${fechaInicio}T12:00:00.000Z`) : null,
+      duracionMeses,
+    },
+    select: { fechaInicio: true, duracionMeses: true },
+  });
+
+  revalidatePath(`/proyectos/${id}`);
+  return {
+    success: true,
+    // Se devuelve "AAAA-MM-DD" y no el Date para que el input de la pantalla lo
+    // pueda usar tal cual. `toISOString` es seguro acá justamente porque la
+    // fecha quedó guardada al mediodía.
+    fechaInicio: proyecto.fechaInicio ? proyecto.fechaInicio.toISOString().slice(0, 10) : null,
+    duracionMeses: proyecto.duracionMeses,
   };
 }
