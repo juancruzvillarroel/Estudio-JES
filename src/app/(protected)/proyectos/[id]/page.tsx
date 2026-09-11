@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { FileText } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { requireSeccion } from "@/lib/dal";
 import { Button } from "@/components/ui/button";
@@ -23,6 +24,7 @@ import {
   mapUnidadProyecto,
 } from "@/lib/flujo-fondos";
 import { ventaInclude, mapVenta } from "@/lib/ventas";
+import { facturaInclude, mapFactura, diaHoyArgentina } from "@/lib/facturas";
 import { mapPresupuestoItem } from "@/lib/presupuesto";
 import { capitalizarOracion, formatFecha, formatNumeroPedido } from "@/lib/utils";
 
@@ -121,6 +123,7 @@ export default async function ProyectoDetallePage({
     unidadesRaw,
     ventasRaw,
     presupuestoRaw,
+    facturasRaw,
     tareasPendientes,
     tareasEnRevision,
     tareasCompletadas,
@@ -181,6 +184,13 @@ export default async function ProyectoDetallePage({
       tieneFlujoFondos
         ? prisma.presupuestoItem.findMany({ where: { proyectoId: id } })
         : Promise.resolve([]),
+      tieneFlujoFondos
+        ? prisma.factura.findMany({
+            where: { proyectoId: id },
+            include: facturaInclude,
+            orderBy: { fecha: "desc" },
+          })
+        : Promise.resolve([]),
       // Conteos para las tarjetas de la portada. Van como `count` en vez de
       // traer las filas: la portada solo muestra el número.
       prisma.tarea.count({ where: { proyectoId: id, estado: "PENDIENTE" } }),
@@ -217,8 +227,40 @@ export default async function ProyectoDetallePage({
     estado: proyecto.estado,
     descripcion: proyecto.descripcion,
     imagenUrl: proyecto.imagenUrl,
+    brochureUrl: proyecto.brochureUrl,
+    brochureNombre: proyecto.brochureNombre,
     cantidadPisos: proyecto.cantidadPisos,
   };
+
+  /**
+   * Los botones de la portada, apilados con el brochure arriba de "Editar
+   * datos". Van en una variable porque el encabezado se dibuja dos veces —una
+   * versión sobre la foto del proyecto y otra sin foto— y los botones son los
+   * mismos en las dos.
+   *
+   * El de brochure aparece solo si hay uno cargado: un botón que abre la nada
+   * no dice qué falta hacer. Se sube desde "Editar datos".
+   */
+  const acciones = (
+    <div className="flex shrink-0 flex-col items-end gap-2">
+      {proyecto.brochureUrl && (
+        <Button
+          variant="outline"
+          nativeButton={false}
+          render={
+            <a href={proyecto.brochureUrl} target="_blank" rel="noopener noreferrer">
+              <FileText />
+              Ver brochure
+            </a>
+          }
+        />
+      )}
+      <ProyectoDialog
+        proyecto={proyectoEditable}
+        trigger={<Button variant="outline">Editar datos</Button>}
+      />
+    </div>
+  );
 
   const asignaciones = asignacionesRaw.map(mapProyectoInversor);
   const movimientosFondo = movimientosRaw.map(mapMovimientoFondo);
@@ -226,6 +268,16 @@ export default async function ProyectoDetallePage({
   const unidades = unidadesRaw.map(mapUnidadProyecto);
   const ventas = ventasRaw.map(mapVenta);
   const presupuesto = presupuestoRaw.map(mapPresupuestoItem);
+  const facturas = facturasRaw.map(mapFactura);
+  // Lo mínimo que necesita el diálogo de factura para ofrecer los pedidos del
+  // proveedor elegido. `facturaId` viaja para no ofrecer los que ya están
+  // cubiertos por otra factura.
+  const pedidosParaFacturas = pedidos.map((p) => ({
+    id: p.id,
+    numero: p.numero,
+    proveedorId: p.proveedorId,
+    facturaId: p.facturaId,
+  }));
   const proveedoresConRubros = proveedoresFondo.map((p) => ({
     id: p.id,
     nombre: p.nombre,
@@ -368,10 +420,7 @@ export default async function ProyectoDetallePage({
                   {proyecto.direccion ? capitalizarOracion(proyecto.direccion) : "Sin dirección"}
                 </p>
               </div>
-              <ProyectoDialog
-                proyecto={proyectoEditable}
-                trigger={<Button variant="outline">Editar datos</Button>}
-              />
+              {acciones}
             </div>
           </div>
         ) : (
@@ -390,10 +439,7 @@ export default async function ProyectoDetallePage({
                 {proyecto.direccion ? capitalizarOracion(proyecto.direccion) : "Sin dirección"}
               </p>
             </div>
-            <ProyectoDialog
-              proyecto={proyectoEditable}
-              trigger={<Button variant="outline">Editar datos</Button>}
-            />
+            {acciones}
           </div>
         )}
 
@@ -497,6 +543,12 @@ export default async function ProyectoDetallePage({
               }
               duracionMeses={proyecto.duracionMeses}
               presupuesto={presupuesto}
+              facturas={facturas}
+              pedidos={pedidosParaFacturas}
+              // El día se resuelve acá, con el huso de Buenos Aires fijado, y no
+              // en el navegador: si cada lado calculara el suyo, la lista de
+              // vencimientos se reordenaría sola en la hidratación.
+              hoy={diaHoyArgentina()}
             />
           ) : null
         }

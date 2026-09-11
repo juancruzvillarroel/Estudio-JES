@@ -46,7 +46,10 @@ export type MovimientoFondoOpcion = {
    * como no facturado.
    */
   facturado: boolean;
+  /** La constancia de que se pagó: transferencia, recibo, ticket. */
   archivoUrl: string | null;
+  /** El respaldo fiscal. Se archiva por separado del comprobante. */
+  facturaUrl: string | null;
 };
 
 export function mapMovimientoFondo(m: MovimientoFondoConRelaciones): MovimientoFondoOpcion {
@@ -73,6 +76,7 @@ export function mapMovimientoFondo(m: MovimientoFondoConRelaciones): MovimientoF
     medioPagoNombre: m.medioPago?.nombre ?? null,
     facturado: m.medioPago?.incluyeIva ?? false,
     archivoUrl: m.archivoUrl,
+    facturaUrl: m.facturaUrl,
   };
 }
 

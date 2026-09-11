@@ -14,6 +14,8 @@ import { M2VendiblesPanel } from "@/components/flujo-fondos/m2-vendibles-panel";
 import { PorcentajeHonorariosPanel } from "@/components/flujo-fondos/porcentaje-honorarios-panel";
 import { FechaObraPanel } from "@/components/flujo-fondos/fecha-obra-panel";
 import { PresupuestoSection } from "@/components/flujo-fondos/presupuesto-section";
+import { FacturasSection } from "@/components/flujo-fondos/facturas-section";
+import type { PedidoFacturaOpcion } from "@/components/flujo-fondos/factura-dialog";
 import { VentasSection } from "@/components/ventas/ventas-section";
 import type {
   MovimientoFondoOpcion,
@@ -22,6 +24,7 @@ import type {
   UnidadProyectoOpcion,
 } from "@/lib/flujo-fondos";
 import { sugerirHonorarios } from "@/lib/honorarios";
+import type { FacturaOpcion } from "@/lib/facturas";
 import type { PresupuestoItemOpcion } from "@/lib/presupuesto";
 import type { VentaOpcion } from "@/lib/ventas";
 
@@ -61,6 +64,9 @@ export function FlujoFondosSection({
   fechaInicio,
   duracionMeses,
   presupuesto,
+  facturas,
+  pedidos,
+  hoy,
 }: {
   proyectoId: string;
   /** Encabeza el informe imprimible que se descarga desde el resumen. */
@@ -78,6 +84,11 @@ export function FlujoFondosSection({
   fechaInicio: string | null;
   duracionMeses: number | null;
   presupuesto: PresupuestoItemOpcion[];
+  facturas: FacturaOpcion[];
+  /** Los pedidos de la obra, para poder colgarlos de una factura. */
+  pedidos: PedidoFacturaOpcion[];
+  /** "AAAA-MM-DD" resuelto en el servidor. Ver `diaHoyArgentina` en lib/facturas.ts. */
+  hoy: string;
 }) {
   // La solapa activa se maneja acá, y no con `defaultValue`, porque el estado
   // vacío de Presupuesto ofrece un botón que lleva a "Datos del proyecto" a
@@ -181,6 +192,9 @@ export function FlujoFondosSection({
         <TabsIndicator />
         <TabsTrigger value="resumen">Resumen</TabsTrigger>
         <TabsTrigger value="gastos">Gastos</TabsTrigger>
+        {/* Facturas va pegada a Gastos porque son las dos caras de lo mismo:
+            Gastos es lo que ya salió, Facturas lo que todavía hay que pagar. */}
+        <TabsTrigger value="facturas">Facturas</TabsTrigger>
         <TabsTrigger value="aportes">Aportes</TabsTrigger>
         <TabsTrigger value="rubros">Rubros</TabsTrigger>
         {/* Presupuesto va antes que Cronograma a propósito: primero lo que se
@@ -223,6 +237,19 @@ export function FlujoFondosSection({
           emptyMessage="Todavía no hay gastos cargados para este proyecto."
           onSaved={handleSaved}
           onDeleted={handleDeleted}
+        />
+      </TabsContent>
+
+      <TabsContent value="facturas" className={PANEL}>
+        <FacturasSection
+          proyectoId={proyectoId}
+          facturas={facturas}
+          rubros={rubros}
+          proveedores={proveedores}
+          pedidos={pedidos}
+          mediosPago={mediosPagoActuales}
+          gastos={gastos}
+          hoy={hoy}
         />
       </TabsContent>
 

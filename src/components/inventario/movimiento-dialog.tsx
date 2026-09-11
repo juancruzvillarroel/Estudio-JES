@@ -23,6 +23,7 @@ import {
 import { Combobox } from "@/components/ui/combobox";
 import { MaterialDialog } from "@/components/materiales/material-dialog";
 import { createMovimientoInventario, type MovimientoInventarioOpcion } from "@/actions/inventario";
+import { campoNumerico } from "@/lib/utils";
 
 type MaterialOpcion = { id: string; nombre: string; unidad: string };
 type RubroOpcion = { id: string; nombre: string };
@@ -30,7 +31,8 @@ type RubroOpcion = { id: string; nombre: string };
 type FormValues = {
   materialId: string;
   tipo: "ENTRADA" | "SALIDA";
-  cantidad: number;
+  // Opcional porque el campo arranca en blanco y no en cero (ver `campoNumerico`).
+  cantidad?: number;
   notas: string;
 };
 
@@ -60,7 +62,6 @@ export function MovimientoInventarioDialog({
     defaultValues: {
       materialId: "",
       tipo: "ENTRADA",
-      cantidad: 0,
       notas: "",
     },
   });
@@ -77,7 +78,8 @@ export function MovimientoInventarioDialog({
       setError("Elegí un material.");
       return;
     }
-    if (!data.cantidad || data.cantidad <= 0) {
+    const cantidad = data.cantidad ?? 0;
+    if (cantidad <= 0) {
       setError("Ingresá una cantidad mayor a 0.");
       return;
     }
@@ -86,7 +88,7 @@ export function MovimientoInventarioDialog({
       const result = await createMovimientoInventario({
         materialId: data.materialId,
         tipo: data.tipo,
-        cantidad: data.cantidad,
+        cantidad,
         notas: data.notas || undefined,
       });
       if (!result.success) {
@@ -173,7 +175,8 @@ export function MovimientoInventarioDialog({
                 type="number"
                 step="1"
                 min="0"
-                {...register("cantidad", { valueAsNumber: true })}
+                placeholder="—"
+                {...register("cantidad", campoNumerico)}
               />
             </div>
           </div>

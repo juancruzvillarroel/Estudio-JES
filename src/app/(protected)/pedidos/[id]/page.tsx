@@ -15,16 +15,26 @@ import {
 import { EstadoPedidoBadge } from "@/components/pedidos/estado-badge";
 import { EliminarPedidoButton } from "@/components/pedidos/eliminar-pedido-button";
 import { EntregaCardAcciones } from "@/components/pedidos/entrega-card-acciones";
+import { PedidoFacturaPanel } from "@/components/pedidos/pedido-factura-panel";
+import { facturaInclude, mapFactura } from "@/lib/facturas";
 import { cn, formatFecha, formatNumeroPedido } from "@/lib/utils";
 
 export default async function PedidoDetallePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ factura?: string }>;
 }) {
-  await requireSeccion("pedidos");
+  const session = await requireSeccion("pedidos");
+  // Cargar una factura genera deuda y su pago es un gasto de la obra, así que
+  // el panel solo aparece para quien tenga Flujo de fondos.
+  const tieneFlujoFondos = session.esAdmin || session.paginasPermitidas.includes("flujo-fondos");
 
   const { id } = await params;
+  // Lo pone el formulario de alta cuando se pidió cargar la factura junto con
+  // el pedido: al llegar acá el diálogo se abre solo.
+  const { factura: abrirFactura } = await searchParams;
 
   const pedido = await prisma.pedido.findUnique({
     where: { id },
@@ -36,12 +46,26 @@ export default async function PedidoDetallePage({
         include: { items: { include: { pedidoItem: { include: { material: true } } } } },
         orderBy: { fecha: "desc" },
       },
+      factura: { include: facturaInclude },
     },
   });
 
   if (!pedido) {
     notFound();
   }
+
+  const [rubros, proveedores] = tieneFlujoFondos
+    ? await Promise.all([
+        prisma.rubro.findMany({
+          orderBy: { orden: "asc" },
+          select: { id: true, nombre: true, subrubros: { orderBy: { orden: "asc" } } },
+        }),
+        prisma.proveedor.findMany({
+          orderBy: { nombre: "asc" },
+          select: { id: true, nombre: true, rubros: { select: { id: true } } },
+        }),
+      ])
+    : [[], []];
 
   const puedeRegistrarEntrega = pedido.estado === "PENDIENTE" || pedido.estado === "PARCIAL";
 
@@ -107,6 +131,30 @@ export default async function PedidoDetallePage({
         </div>
 
         {pedido.notas && <p className="mt-4 text-sm text-muted-foreground">{pedido.notas}</p>}
+
+        {tieneFlujoFondos && (
+          <PedidoFacturaPanel
+            proyectoId={pedido.proyectoId}
+            pedido={{
+              id: pedido.id,
+              numero: pedido.numero,
+              proveedorId: pedido.proveedorId,
+              facturaId: pedido.facturaId,
+            }}
+            factura={pedido.factura ? mapFactura(pedido.factura) : null}
+            abrirFactura={abrirFactura === "1"}
+            rubros={rubros.map((r) => ({
+              id: r.id,
+              nombre: r.nombre,
+              subrubros: r.subrubros.map((s) => ({ id: s.id, nombre: s.nombre })),
+            }))}
+            proveedores={proveedores.map((p) => ({
+              id: p.id,
+              nombre: p.nombre,
+              rubroIds: p.rubros.map((r) => r.id),
+            }))}
+          />
+        )}
       </div>
 
       {/* `table-fixed` reparte el ancho que hay en vez de dejar que lo pidan las

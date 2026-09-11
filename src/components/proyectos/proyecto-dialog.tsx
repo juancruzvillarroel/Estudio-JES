@@ -30,6 +30,8 @@ type Proyecto = {
   estado: "ACTIVO" | "PAUSADO" | "FINALIZADO";
   descripcion: string | null;
   imagenUrl: string | null;
+  brochureUrl: string | null;
+  brochureNombre: string | null;
   cantidadPisos: number;
 };
 
@@ -106,7 +108,10 @@ export function ProyectoDialog({
               type="number"
               min={0}
               step={1}
-              defaultValue={proyecto?.cantidadPisos ?? 0}
+              placeholder="—"
+              // Con `||` y no `??`: un proyecto guardado con 0 pisos también
+              // muestra el campo vacío. El servidor lee el vacío como 0.
+              defaultValue={proyecto?.cantidadPisos || ""}
             />
             <p className="text-xs text-muted-foreground">
               Se usa para generar automáticamente los planos por piso en Documentación
@@ -132,6 +137,35 @@ export function ProyectoDialog({
               <label className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Checkbox name="quitarImagen" value="on" />
                 Quitar imagen actual
+              </label>
+            )}
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="brochure">Brochure</Label>
+            {proyecto?.brochureUrl && (
+              <a
+                href={proyecto.brochureUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="truncate text-sm underline"
+              >
+                {proyecto.brochureNombre ?? "Ver brochure actual"}
+              </a>
+            )}
+            <Input
+              id="brochure"
+              name="brochure"
+              type="file"
+              accept="application/pdf,image/*"
+            />
+            <p className="text-xs text-muted-foreground">
+              El folleto de venta de la obra. Se abre desde el botón &quot;Ver brochure&quot;
+              de la portada del proyecto. Subir uno nuevo reemplaza al anterior.
+            </p>
+            {proyecto?.brochureUrl && (
+              <label className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Checkbox name="quitarBrochure" value="on" />
+                Quitar brochure actual
               </label>
             )}
           </div>

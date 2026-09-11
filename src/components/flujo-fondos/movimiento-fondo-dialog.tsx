@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useForm, Controller } from "react-hook-form";
-import { Camera, Paperclip, Plus, X } from "lucide-react";
+import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,6 +22,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { DeleteButton } from "@/components/ui/delete-button";
+import { AdjuntoCampo } from "@/components/flujo-fondos/adjunto-campo";
 import { NuevoProveedorDialog } from "@/components/proveedores/nuevo-proveedor-dialog";
 import {
   createMovimientoFondo,
@@ -138,11 +139,14 @@ export function MovimientoFondoDialog({
   const [cotizando, setCotizando] = useState(false);
   const [cotizacionInfo, setCotizacionInfo] = useState<string | undefined>();
   const [proveedoresCreados, setProveedoresCreados] = useState<ProveedorOpcion[]>([]);
-  const [archivoNuevo, setArchivoNuevo] = useState<File | null>(null);
-  const [quitarArchivo, setQuitarArchivo] = useState(false);
+  // Los dos papeles del gasto van por separado: el comprobante prueba el pago y
+  // la factura es el respaldo fiscal. Se archivan en carpetas distintas a fin
+  // de mes (ver el panel de archivo en la solapa Facturas).
+  const [comprobanteNuevo, setComprobanteNuevo] = useState<File | null>(null);
+  const [quitarComprobante, setQuitarComprobante] = useState(false);
+  const [facturaNueva, setFacturaNueva] = useState<File | null>(null);
+  const [quitarFactura, setQuitarFactura] = useState(false);
   const [montoTexto, setMontoTexto] = useState(() => formatMontoInicial(item?.monto ?? 0));
-  const inputArchivoRef = useRef<HTMLInputElement>(null);
-  const inputCamaraRef = useRef<HTMLInputElement>(null);
 
   const { control, register, handleSubmit, watch, reset, setValue } = useForm<FormValues>({
     defaultValues: valoresPorDefecto(item),
@@ -180,11 +184,11 @@ export function MovimientoFondoDialog({
       reset(valoresPorDefecto(item));
       setError(undefined);
       setCotizacionInfo(undefined);
-      setArchivoNuevo(null);
-      setQuitarArchivo(false);
+      setComprobanteNuevo(null);
+      setQuitarComprobante(false);
+      setFacturaNueva(null);
+      setQuitarFactura(false);
       setMontoTexto(formatMontoInicial(item?.monto ?? 0));
-      if (inputArchivoRef.current) inputArchivoRef.current.value = "";
-      if (inputCamaraRef.current) inputCamaraRef.current.value = "";
     }
   };
 
@@ -286,10 +290,17 @@ export function MovimientoFondoDialog({
       };
     }
 
+    const adjuntos = {
+      comprobante: comprobanteNuevo ?? undefined,
+      factura: facturaNueva ?? undefined,
+      quitarComprobante,
+      quitarFactura,
+    };
+
     startTransition(async () => {
       const result = item
-        ? await updateMovimientoFondo(item.id, input, archivoNuevo ?? undefined, quitarArchivo)
-        : await createMovimientoFondo(input, archivoNuevo ?? undefined);
+        ? await updateMovimientoFondo(item.id, input, adjuntos)
+        : await createMovimientoFondo(input, adjuntos);
 
       if (!result.success) {
         setError(result.error);
@@ -298,8 +309,10 @@ export function MovimientoFondoDialog({
       onSaved(result.movimiento);
       setOpen(false);
       reset();
-      setArchivoNuevo(null);
-      setQuitarArchivo(false);
+      setComprobanteNuevo(null);
+      setQuitarComprobante(false);
+      setFacturaNueva(null);
+      setQuitarFactura(false);
       setMontoTexto("");
     });
   };
@@ -424,7 +437,7 @@ export function MovimientoFondoDialog({
                   <p className="text-xs text-muted-foreground">Elegí un rubro para poder agregar un proveedor nuevo.</p>
                 )}
               </div>
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-2 sm:col-span-2">
                 <Label htmlFor="medioPagoId">Medio de pago</Label>
                 {mediosPago.length === 0 ? (
                   <p className="text-xs text-muted-foreground">
@@ -453,88 +466,31 @@ export function MovimientoFondoDialog({
                   />
                 )}
               </div>
-              <div className="flex flex-col gap-2">
-                <Label>Comprobante</Label>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    aria-label="Adjuntar archivo"
-                    onClick={() => inputArchivoRef.current?.click()}
-                  >
-                    <Paperclip className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    aria-label="Sacar foto"
-                    onClick={() => inputCamaraRef.current?.click()}
-                  >
-                    <Camera className="h-4 w-4" />
-                  </Button>
-                  <input
-                    ref={inputArchivoRef}
-                    type="file"
-                    accept="application/pdf,image/*"
-                    className="hidden"
-                    onChange={(e) => {
-                      setArchivoNuevo(e.target.files?.[0] ?? null);
-                      setQuitarArchivo(false);
-                    }}
-                  />
-                  <input
-                    ref={inputCamaraRef}
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    className="hidden"
-                    onChange={(e) => {
-                      setArchivoNuevo(e.target.files?.[0] ?? null);
-                      setQuitarArchivo(false);
-                    }}
-                  />
-                </div>
-              </div>
-              {archivoNuevo ? (
-                <div className="flex items-center justify-between rounded-md border p-2 text-sm sm:col-span-2">
-                  <span className="truncate">{archivoNuevo.name}</span>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Quitar archivo"
-                    onClick={() => {
-                      setArchivoNuevo(null);
-                      if (inputArchivoRef.current) inputArchivoRef.current.value = "";
-                      if (inputCamaraRef.current) inputCamaraRef.current.value = "";
-                    }}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              ) : item?.archivoUrl && !quitarArchivo ? (
-                <div className="flex items-center justify-between rounded-md border p-2 text-sm sm:col-span-2">
-                  <a
-                    href={item.archivoUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="truncate underline"
-                  >
-                    Ver comprobante actual
-                  </a>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon"
-                    aria-label="Quitar archivo"
-                    onClick={() => setQuitarArchivo(true)}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-              ) : null}
+              <AdjuntoCampo
+                label="Comprobante"
+                textoActual="Ver comprobante actual"
+                archivo={comprobanteNuevo}
+                onArchivo={(archivo) => {
+                  setComprobanteNuevo(archivo);
+                  setQuitarComprobante(false);
+                }}
+                urlActual={item?.archivoUrl}
+                quitado={quitarComprobante}
+                onQuitar={() => setQuitarComprobante(true)}
+              />
+              <AdjuntoCampo
+                label="Factura"
+                textoActual="Ver factura actual"
+                archivo={facturaNueva}
+                onArchivo={(archivo) => {
+                  setFacturaNueva(archivo);
+                  setQuitarFactura(false);
+                }}
+                urlActual={item?.facturaUrl}
+                quitado={quitarFactura}
+                onQuitar={() => setQuitarFactura(true)}
+              />
+
             </div>
           ) : (
             <div className="flex flex-col gap-2">
@@ -573,7 +529,7 @@ export function MovimientoFondoDialog({
               <Input
                 id="monto"
                 inputMode="decimal"
-                placeholder="0"
+                placeholder="—"
                 value={montoTexto}
                 onChange={(e) => {
                   const formateado = formatMontoWhileTyping(e.target.value);
@@ -625,7 +581,7 @@ export function MovimientoFondoDialog({
                 type="number"
                 step="0.01"
                 min="0"
-                placeholder="Opcional"
+                placeholder="—"
                 {...register("tipoCambio", { valueAsNumber: true })}
               />
             </div>

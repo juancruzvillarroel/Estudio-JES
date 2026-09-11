@@ -9,6 +9,34 @@ export function formatNumeroPedido(numero: number) {
   return numero.toString().padStart(3, "0")
 }
 
+/**
+ * Un campo numérico en blanco vale cero.
+ *
+ * Se usa como segundo argumento de `register`, en lugar de `valueAsNumber`:
+ * `register("cantidad", campoNumerico)`.
+ *
+ * Los campos de números arrancan vacíos y no en cero, porque tener que borrar a
+ * mano el 0 antes de escribir es incómodo cuando se cargan veinte renglones
+ * seguidos. El costo de arrancar vacío es que `valueAsNumber` traduce un input
+ * vacío a NaN: no pasa ninguna validación y viaja igual al servidor. Acá el
+ * vacío se convierte en 0, que es lo que "no cargué nada" significa en todos
+ * estos formularios.
+ */
+export const campoNumerico = {
+  setValueAs: (valor: unknown) =>
+    valor === "" || valor === null || valor === undefined ? 0 : Number(valor),
+}
+
+/**
+ * Valor con el que `setValue` deja un campo numérico en blanco.
+ *
+ * React Hook Form escribe en el input el valor crudo y guarda en el formulario
+ * el que devuelve `setValueAs`: con la cadena vacía el input queda vacío y el
+ * valor guardado vuelve a 0. Un `0` pelado dejaría el cero escrito en pantalla,
+ * que es justo lo que se quiere evitar.
+ */
+export const CAMPO_NUMERICO_VACIO = "" as unknown as number
+
 /** Pone en mayúscula solo la primera letra de un texto (formato oración). */
 export function capitalizarOracion(texto: string) {
   const t = texto.trim().toLowerCase()

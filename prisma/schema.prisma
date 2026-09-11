@@ -86,6 +86,15 @@ model Proyecto {
   estado               EstadoProyecto @default(ACTIVO)
   descripcion          String?
   imagenUrl            String?
+  // Folleto de venta de la obra (un PDF, casi siempre). Vive acá y no como un
+  // Documento más porque no es documentación de obra: no se presenta en ningún
+  // lado, no tiene estado pendiente/presentado y se abre de un clic desde la
+  // portada del proyecto. Un solo archivo por obra; subir otro reemplaza al
+  // anterior. El nombre se guarda aparte de la URL para poder mostrarlo tal
+  // como lo subieron, sin tener que leerlo de la URL del blob (que lleva un
+  // sufijo aleatorio pegado).
+  brochureUrl          String?
+  brochureNombre       String?
   // Pisos por encima de planta baja. Se usa para generar automáticamente un
   // documento (plano) por piso en las categorías de Documentación marcadas
   // como "por piso" (ver DocumentoCategoria.porPiso).
@@ -131,6 +140,7 @@ model Proyecto {
   ventas           Venta[]
   tareas           Tarea[]
   presupuesto      PresupuestoItem[]
+  facturas         Factura[]
 }
 
 // Catálogo de categorías de la pestaña "Municipal": igual que
@@ -335,6 +345,7 @@ model Proveedor {
   acopios Acopio[]
 
   movimientosFondo MovimientoFondo[]
+  facturas         Factura[]
 }
 
 model Rubro {
@@ -366,6 +377,7 @@ model Rubro {
   movimientosFondo MovimientoFondo[]
   tareas           Tarea[]
   presupuesto      PresupuestoItem[]
+  facturas         Factura[]
 }
 
 // Subcategoría dentro de un Rubro, usada para clasificar con más detalle los
@@ -381,6 +393,7 @@ model Subrubro {
 
   movimientosFondo MovimientoFondo[]
   presupuesto      PresupuestoItem[]
+  facturas         Factura[]
 
   @@unique([rubroId, nombre])
   @@index([rubroId])
@@ -510,7 +523,13 @@ model MovimientoFondo {
   notas       String?
   medioPagoId String?
   medioPago   MedioPago?          @relation(fields: [medioPagoId], references: [id])
+  // Los dos papeles de un gasto, en campos separados a propósito: el
+  // comprobante es la constancia de que se pagó (la transferencia, el recibo)
+  // y la factura es el respaldo fiscal. A fin de mes van a carpetas distintas,
+  // así que meterlos en un solo adjunto obligaría a abrirlos uno por uno para
+  // saber cuál es cuál.
   archivoUrl  String?
+  facturaUrl  String?
   createdAt   DateTime            @default(now())
 
   // Solo para tipo = GASTO
@@ -525,13 +544,78 @@ model MovimientoFondo {
   proyectoInversorId String?
   proyectoInversor   ProyectoInversor? @relation(fields: [proyectoInversorId], references: [id])
 
+  // Factura que este gasto cancela, total o parcialmente. Los gastos sueltos
+  // (el corralón que se paga sin comprobante) no tienen ninguna y siguen
+  // cargándose como siempre. Ver Factura para por qué el pago vive acá y no
+  // como un modelo aparte.
+  facturaId String?
+  factura   Factura? @relation(fields: [facturaId], references: [id], onDelete: SetNull)
+
   @@index([proyectoId])
   @@index([rubroId])
   @@index([subrubroId])
   @@index([proveedorId])
   @@index([proyectoInversorId])
   @@index([medioPagoId])
+  @@index([facturaId])
   @@index([fecha])
+}
+
+/// Una factura de proveedor: una deuda con fecha.
+///
+/// Es lo que distingue "lo que debo" de "lo que gasté", que hasta ahora eran
+/// la misma cosa. Una factura NO es un gasto: el gasto sigue siendo el
+/// MovimientoFondo que la paga. Si se contara la factura además del pago, el
+/// resumen del proyecto duplicaría cada peso.
+///
+/// El pago vive en MovimientoFondo.facturaId y no en un modelo aparte porque
+/// el pago ya ES un gasto, con su rubro, su medio de pago y su fecha. Como
+/// una factura puede tener varios pagos, el pago parcial sale gratis: el
+/// saldo es el monto menos la suma de lo cobrado (ver src/lib/facturas.ts).
+///
+/// El rubro se guarda acá y no se toma del pedido porque una factura puede no
+/// tener pedido detrás (honorarios, un servicio) y porque es lo que el pago
+/// hereda al generarse.
+model Factura {
+  id          String    @id @default(cuid())
+  proyectoId  String
+  proyecto    Proyecto  @relation(fields: [proyectoId], references: [id], onDelete: Cascade)
+  proveedorId String
+  proveedor   Proveedor @relation(fields: [proveedorId], references: [id])
+  /// Número tal como figura en el papel (ej. "A-0001-00012345").
+  numero      String
+  fecha       DateTime
+  /// Cuándo vence. Opcional: muchas facturas llegan sin fecha pactada y se
+  /// pagan cuando se puede. Las que no la tienen quedan en su propio grupo,
+  /// sin ensuciar el orden de las que sí vencen.
+  fechaVencimiento DateTime?
+  /// El total que dice la factura, con IVA y descuentos ya aplicados. Se carga
+  /// a mano: los precios del pedido no incluyen ninguna de esas dos cosas.
+  monto       Decimal   @db.Decimal(14, 2)
+  moneda      Moneda
+  tipoCambio  Decimal?  @db.Decimal(10, 4)
+
+  rubroId    String
+  rubro      Rubro     @relation(fields: [rubroId], references: [id])
+  subrubroId String?
+  subrubro   Subrubro? @relation(fields: [subrubroId], references: [id])
+
+  archivoUrl String?
+  notas      String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  /// Los pedidos que esta factura respalda. Puede ser ninguno.
+  pedidos Pedido[]
+  /// Los gastos que la cancelan. Puede ser más de uno si se paga en partes.
+  pagos   MovimientoFondo[]
+
+  @@unique([proveedorId, numero])
+  @@index([proyectoId])
+  @@index([proveedorId])
+  @@index([rubroId])
+  @@index([subrubroId])
+  @@index([fechaVencimiento])
 }
 
 model Material {
@@ -629,6 +713,12 @@ model Pedido {
   proveedor   Proveedor    @relation(fields: [proveedorId], references: [id])
   acopioId    String?
   acopio      Acopio?      @relation(fields: [acopioId], references: [id])
+  // Factura que respalda este pedido, si la hay. La mayoría de los pedidos de
+  // corralón no tiene: se juntan varios y se pagan sin comprobante, así que el
+  // campo queda en null y el pedido funciona igual que siempre. Varios pedidos
+  // pueden colgar de la misma factura (ver Factura).
+  facturaId   String?
+  factura     Factura?     @relation(fields: [facturaId], references: [id], onDelete: SetNull)
   fecha       DateTime     @default(now())
   estado      EstadoPedido @default(PENDIENTE)
   notas       String?
@@ -645,6 +735,7 @@ model Pedido {
   @@index([proyectoId])
   @@index([proveedorId])
   @@index([acopioId])
+  @@index([facturaId])
   @@index([estado])
 }
 

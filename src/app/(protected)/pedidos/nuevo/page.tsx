@@ -8,7 +8,10 @@ export default async function NuevoMovimientoPage({
 }: {
   searchParams: Promise<{ tipo?: string }>;
 }) {
-  await requireSeccion("pedidos");
+  const session = await requireSeccion("pedidos");
+  // La factura genera deuda de la obra: se ofrece cargarla junto con el pedido
+  // solo a quien maneje Flujo de fondos, igual que el panel del pedido.
+  const tieneFlujoFondos = session.esAdmin || session.paginasPermitidas.includes("flujo-fondos");
 
   const { tipo } = await searchParams;
   const tipoInicial = tipo === "ENTREGA" ? "ENTREGA" : "PEDIDO";
@@ -106,6 +109,7 @@ export default async function NuevoMovimientoPage({
           pedidosAbiertos={pedidosAbiertosPlanos}
           acopios={acopiosOpciones}
           tipoInicial={tipoInicial}
+          puedeCargarFactura={tieneFlujoFondos}
         />
       </div>
     </div>

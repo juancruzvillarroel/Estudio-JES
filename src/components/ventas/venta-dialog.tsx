@@ -393,7 +393,7 @@ export function VentaDialog({
               <Input
                 id="precioTotal"
                 inputMode="decimal"
-                placeholder="0"
+                placeholder="—"
                 value={precioTexto}
                 onChange={(e) => {
                   const formateado = formatMontoWhileTyping(e.target.value);
@@ -432,7 +432,7 @@ export function VentaDialog({
                 <Input
                   id="anticipo"
                   inputMode="decimal"
-                  placeholder="0"
+                  placeholder="—"
                   value={anticipoTexto}
                   onChange={(e) => {
                     const formateado = formatMontoWhileTyping(e.target.value);
@@ -525,6 +525,7 @@ export function VentaDialog({
                           type="number"
                           step="0.01"
                           min="0"
+                          placeholder="—"
                           value={c.monto || ""}
                           onChange={(e) => handleCuotaChange(index, "monto", e.target.value)}
                           className="h-8 w-28"

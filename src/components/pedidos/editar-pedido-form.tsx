@@ -20,7 +20,7 @@ import { updatePedido } from "@/actions/pedidos";
 import { AcopioDialog } from "@/components/acopios/acopio-dialog";
 import { NuevoProveedorDialog } from "@/components/proveedores/nuevo-proveedor-dialog";
 import type { AcopioOpcion } from "@/actions/acopios";
-import { formatMonto } from "@/lib/utils";
+import { campoNumerico, formatMonto } from "@/lib/utils";
 
 type Opcion = { id: string; nombre: string };
 type RubroConProveedores = {
@@ -49,7 +49,9 @@ type FormValues = {
   proveedorId: string;
   acopioId: string;
   notas: string;
-  items: { id: string; materialId: string; cantidad: number; cantidadEntregada: number }[];
+  // `cantidad` es opcional porque un renglón recién agregado arranca en blanco
+  // y no en cero (ver `campoNumerico`). Lo que queda sin cargar vale 0.
+  items: { id: string; materialId: string; cantidad?: number; cantidadEntregada: number }[];
 };
 
 function labelAcopio(a: AcopioOpcion) {
@@ -182,7 +184,9 @@ export function EditarPedidoForm({
       setFormError("Elegí un proveedor.");
       return;
     }
-    const items = data.items.filter((i) => i.materialId && i.cantidad > 0);
+    const items = data.items
+      .map((i) => ({ ...i, cantidad: i.cantidad ?? 0 }))
+      .filter((i) => i.materialId && i.cantidad > 0);
     if (items.length === 0) {
       setFormError("Agregá al menos un material.");
       return;
@@ -413,8 +417,8 @@ export function EditarPedidoForm({
                     type="number"
                     step="1"
                     min={bloqueado ? entregada : 0}
-                    placeholder="Cantidad"
-                    {...register(`items.${index}.cantidad`, { valueAsNumber: true })}
+                    placeholder="—"
+                    {...register(`items.${index}.cantidad`, campoNumerico)}
                   />
                 </div>
                 <Button
@@ -435,7 +439,7 @@ export function EditarPedidoForm({
           variant="outline"
           size="sm"
           className="self-start"
-          onClick={() => appendItem({ id: "", materialId: "", cantidad: 0, cantidadEntregada: 0 })}
+          onClick={() => appendItem({ id: "", materialId: "", cantidadEntregada: 0 })}
         >
           <Plus className="h-4 w-4" />
           Agregar material

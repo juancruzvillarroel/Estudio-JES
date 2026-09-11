@@ -101,6 +101,7 @@ export function ProyectoInversorDialog({
               step="0.01"
               min="0"
               max="100"
+              placeholder="—"
               value={porcentaje}
               onChange={(e) => setPorcentaje(e.target.value)}
               required

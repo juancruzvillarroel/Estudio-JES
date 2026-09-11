@@ -37,6 +37,24 @@ async function subirImagen(formData: FormData): Promise<string | undefined> {
   return blob.url;
 }
 
+/**
+ * Sube el folleto de venta de la obra, si vino uno en el formulario.
+ *
+ * Devuelve también el nombre original. La URL del blob le pega un sufijo
+ * aleatorio al nombre del archivo, así que no sirve para mostrar en pantalla
+ * cuál es el brochure cargado.
+ */
+async function subirBrochure(
+  formData: FormData
+): Promise<{ brochureUrl: string; brochureNombre: string } | undefined> {
+  const archivo = formData.get("brochure");
+  if (!(archivo instanceof File) || archivo.size === 0) return undefined;
+  const blob = await put(`proyectos/brochures/${crypto.randomUUID()}-${archivo.name}`, archivo, {
+    access: "public",
+  });
+  return { brochureUrl: blob.url, brochureNombre: archivo.name };
+}
+
 export async function createProyecto(_prevState: ActionState, formData: FormData): Promise<ActionState> {
   await requireSeccion("proyectos");
 
@@ -46,7 +64,10 @@ export async function createProyecto(_prevState: ActionState, formData: FormData
   }
 
   const imagenUrl = await subirImagen(formData);
-  const proyecto = await prisma.proyecto.create({ data: { ...validated.data, imagenUrl } });
+  const brochure = await subirBrochure(formData);
+  const proyecto = await prisma.proyecto.create({
+    data: { ...validated.data, imagenUrl, ...brochure },
+  });
   await sincronizarDocumentosPorPiso(proyecto.id, validated.data.cantidadPisos);
   revalidatePath("/proyectos");
   revalidatePath("/dashboard");
@@ -63,12 +84,21 @@ export async function updateProyecto(id: string, _prevState: ActionState, formDa
 
   const imagenUrl = await subirImagen(formData);
   const quitarImagen = formData.get("quitarImagen") === "on";
+  const brochure = await subirBrochure(formData);
+  const quitarBrochure = formData.get("quitarBrochure") === "on";
 
   await prisma.proyecto.update({
     where: { id },
     data: {
       ...validated.data,
       ...(imagenUrl ? { imagenUrl } : quitarImagen ? { imagenUrl: null } : {}),
+      // Subir uno nuevo gana sobre el tilde de "quitar": si el usuario marcó
+      // los dos, lo que quiso fue reemplazarlo.
+      ...(brochure
+        ? brochure
+        : quitarBrochure
+          ? { brochureUrl: null, brochureNombre: null }
+          : {}),
     },
   });
   await sincronizarDocumentosPorPiso(id, validated.data.cantidadPisos);

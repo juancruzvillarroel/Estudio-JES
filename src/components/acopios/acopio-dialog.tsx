@@ -23,6 +23,7 @@ import {
 } from "@/components/ui/dialog";
 import { Combobox } from "@/components/ui/combobox";
 import { createAcopio, type AcopioOpcion } from "@/actions/acopios";
+import { campoNumerico } from "@/lib/utils";
 
 type MaterialOpcion = { id: string; nombre: string; codigo?: string; unidad: string };
 type ProyectoOpcion = { id: string; nombre: string };
@@ -31,9 +32,11 @@ type FormValues = {
   proyectoId: string;
   tipo: "MATERIAL" | "MONTO";
   materialId: string;
-  cantidadTotal: number;
-  montoTotal: number;
-  precios: { materialId: string; precioUnitario: number }[];
+  // Los campos numéricos son opcionales porque arrancan en blanco y no en cero
+  // (ver `campoNumerico`). Lo que queda sin cargar vale 0.
+  cantidadTotal?: number;
+  montoTotal?: number;
+  precios: { materialId: string; precioUnitario?: number }[];
   notas: string;
 };
 
@@ -65,9 +68,7 @@ export function AcopioDialog({
       proyectoId: proyectoId ?? "",
       tipo: "MATERIAL",
       materialId: "",
-      cantidadTotal: 0,
-      montoTotal: 0,
-      precios: [{ materialId: "", precioUnitario: 0 }],
+      precios: [{ materialId: "" }],
       notas: "",
     },
   });
@@ -93,7 +94,11 @@ export function AcopioDialog({
       setError("Elegí un material.");
       return;
     }
-    if (data.tipo === "MONTO" && data.precios.some((p) => !p.materialId || p.precioUnitario <= 0)) {
+    const precios = data.precios.map((p) => ({
+      materialId: p.materialId,
+      precioUnitario: p.precioUnitario ?? 0,
+    }));
+    if (data.tipo === "MONTO" && precios.some((p) => !p.materialId || p.precioUnitario <= 0)) {
       setError("Completá el material y el precio de cada fila.");
       return;
     }
@@ -106,15 +111,15 @@ export function AcopioDialog({
               proyectoId: proyectoElegido,
               proveedorId,
               materialId: data.materialId,
-              cantidadTotal: data.cantidadTotal,
+              cantidadTotal: data.cantidadTotal ?? 0,
               notas: data.notas || undefined,
             }
           : {
               tipo: "MONTO",
               proyectoId: proyectoElegido,
               proveedorId,
-              montoTotal: data.montoTotal,
-              precios: data.precios,
+              montoTotal: data.montoTotal ?? 0,
+              precios,
               notas: data.notas || undefined,
             }
       );
@@ -207,7 +212,8 @@ export function AcopioDialog({
                   type="number"
                   step="1"
                   min="0"
-                  {...register("cantidadTotal", { valueAsNumber: true })}
+                  placeholder="—"
+                  {...register("cantidadTotal", campoNumerico)}
                 />
               </div>
             </div>
@@ -220,7 +226,8 @@ export function AcopioDialog({
                   type="number"
                   step="0.01"
                   min="0"
-                  {...register("montoTotal", { valueAsNumber: true })}
+                  placeholder="—"
+                  {...register("montoTotal", campoNumerico)}
                 />
               </div>
               <div className="flex flex-col gap-2">
@@ -247,8 +254,8 @@ export function AcopioDialog({
                           type="number"
                           step="0.01"
                           min="0"
-                          placeholder="Precio"
-                          {...register(`precios.${index}.precioUnitario`, { valueAsNumber: true })}
+                          placeholder="—"
+                          {...register(`precios.${index}.precioUnitario`, campoNumerico)}
                         />
                       </div>
                       <Button
@@ -268,7 +275,7 @@ export function AcopioDialog({
                   variant="outline"
                   size="sm"
                   className="self-start"
-                  onClick={() => append({ materialId: "", precioUnitario: 0 })}
+                  onClick={() => append({ materialId: "" })}
                 >
                   <Plus className="h-4 w-4" />
                   Agregar material

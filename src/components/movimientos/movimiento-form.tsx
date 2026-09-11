@@ -22,7 +22,13 @@ import { registrarEntrega } from "@/actions/entregas";
 import { AcopioDialog } from "@/components/acopios/acopio-dialog";
 import { NuevoProveedorDialog } from "@/components/proveedores/nuevo-proveedor-dialog";
 import type { AcopioOpcion } from "@/actions/acopios";
-import { cn, formatMonto, formatNumeroPedido } from "@/lib/utils";
+import {
+  CAMPO_NUMERICO_VACIO,
+  campoNumerico,
+  cn,
+  formatMonto,
+  formatNumeroPedido,
+} from "@/lib/utils";
 
 type Opcion = { id: string; nombre: string };
 type RubroConProveedores = {
@@ -64,8 +70,11 @@ type FormValues = {
   notas: string;
   numeroRemito: string;
   sumarAInventario: boolean;
-  itemsPedido: { materialId: string; cantidad: number }[];
-  itemsEntrega: { pedidoItemId: string; cantidad: number }[];
+  // `cantidad` es opcional porque los campos numéricos arrancan en blanco (ver
+  // `campoNumerico`): recién existe cuando el input se registra. Lo que queda
+  // sin tocar vale 0.
+  itemsPedido: { materialId: string; cantidad?: number }[];
+  itemsEntrega: { pedidoItemId: string; cantidad?: number }[];
 };
 
 function labelAcopio(a: AcopioOpcion) {
@@ -91,6 +100,7 @@ export function MovimientoForm({
   pedidosAbiertos,
   acopios,
   tipoInicial,
+  puedeCargarFactura,
 }: {
   proyectos: Opcion[];
   rubros: RubroConProveedores[];
@@ -98,6 +108,11 @@ export function MovimientoForm({
   pedidosAbiertos: PedidoAbierto[];
   acopios: AcopioOpcion[];
   tipoInicial?: "PEDIDO" | "ENTREGA";
+  /**
+   * Si el usuario tiene Flujo de fondos. Cargar una factura genera deuda de la
+   * obra, así que a quien no maneja el módulo ni se le ofrece.
+   */
+  puedeCargarFactura?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -105,6 +120,8 @@ export function MovimientoForm({
   const [archivoAdjunto, setArchivoAdjunto] = useState<File | null>(null);
   const [barras, setBarras] = useState<Record<number, string>>({});
   const [completoTodo, setCompletoTodo] = useState(false);
+  // No es un campo del pedido: solo decide a dónde se va después de guardarlo.
+  const [cargarFactura, setCargarFactura] = useState(false);
   const [acopiosCreados, setAcopiosCreados] = useState<AcopioOpcion[]>([]);
   const [proveedoresCreados, setProveedoresCreados] = useState<
     (Opcion & { codigo: string; rubroId: string })[]
@@ -124,7 +141,7 @@ export function MovimientoForm({
       notas: "",
       numeroRemito: "",
       sumarAInventario: false,
-      itemsPedido: [{ materialId: "", cantidad: 0 }],
+      itemsPedido: [{ materialId: "" }],
       itemsEntrega: [],
     },
   });
@@ -186,7 +203,7 @@ export function MovimientoForm({
     if (proveedorId && !proveedoresDisponibles.some((p) => p.id === proveedorId)) {
       setValue("proveedorId", "");
     }
-    replacePedidoItems([{ materialId: "", cantidad: 0 }]);
+    replacePedidoItems([{ materialId: "" }]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rubroId]);
 
@@ -201,14 +218,14 @@ export function MovimientoForm({
   }, [proveedorId, proyectoId]);
 
   useEffect(() => {
-    replacePedidoItems([{ materialId: "", cantidad: 0 }]);
+    replacePedidoItems([{ materialId: "" }]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [acopioId]);
 
   useEffect(() => {
     if (tipo !== "ENTREGA") return;
     const items = pedidoSeleccionado?.items ?? [];
-    replaceEntregaItems(items.map((i) => ({ pedidoItemId: i.pedidoItemId, cantidad: 0 })));
+    replaceEntregaItems(items.map((i) => ({ pedidoItemId: i.pedidoItemId })));
     setBarras({});
     // Cambiar de pedido rearma la lista en cero: lo que se había completado con
     // el botón ya no está, así que el "Vaciar" tampoco tiene qué vaciar.
@@ -254,11 +271,11 @@ export function MovimientoForm({
     setCompletoTodo(true);
   };
 
-  /** Vuelve todo a cero, por si el botón no era lo que hacía falta. */
+  /** Deja todo en blanco, por si el botón no era lo que hacía falta. */
   const vaciarTodoEntrega = () => {
     const items = pedidoSeleccionado?.items ?? [];
     items.forEach((_, index) => {
-      setValue(`itemsEntrega.${index}.cantidad`, 0, { shouldValidate: true });
+      setValue(`itemsEntrega.${index}.cantidad`, CAMPO_NUMERICO_VACIO, { shouldValidate: true });
     });
     setBarras({});
     setCompletoTodo(false);
@@ -291,7 +308,9 @@ export function MovimientoForm({
     }
 
     if (data.tipo === "PEDIDO") {
-      const items = data.itemsPedido.filter((i) => i.materialId && i.cantidad > 0);
+      const items = data.itemsPedido
+        .map((i) => ({ materialId: i.materialId, cantidad: i.cantidad ?? 0 }))
+        .filter((i) => i.materialId && i.cantidad > 0);
       if (items.length === 0) {
         setFormError("Agregá al menos un material.");
         return;
@@ -312,14 +331,23 @@ export function MovimientoForm({
           setFormError(result.error);
           return;
         }
-        router.push(`/pedidos/${result.pedidoId}`);
+        // La factura cuelga del pedido, así que el pedido tiene que existir
+        // primero: "cargarla en el mismo momento" es guardar y caer en la
+        // pantalla del pedido con el formulario de la factura ya abierto.
+        router.push(
+          `/pedidos/${result.pedidoId}${cargarFactura && puedeCargarFactura ? "?factura=1" : ""}`
+        );
       });
     } else {
       if (!data.pedidoId) {
         setFormError("Elegí a qué pedido corresponde la entrega.");
         return;
       }
-      if (!data.itemsEntrega.some((i) => i.cantidad > 0)) {
+      const itemsEntrega = data.itemsEntrega.map((i) => ({
+        pedidoItemId: i.pedidoItemId,
+        cantidad: i.cantidad ?? 0,
+      }));
+      if (!itemsEntrega.some((i) => i.cantidad > 0)) {
         setFormError("Cargá al menos una cantidad entregada.");
         return;
       }
@@ -331,7 +359,7 @@ export function MovimientoForm({
             numeroRemito: data.numeroRemito || undefined,
             notas: data.notas || undefined,
             sumarAInventario: data.sumarAInventario,
-            items: data.itemsEntrega,
+            items: itemsEntrega,
           },
           archivoAdjunto ?? undefined
         );
@@ -557,8 +585,8 @@ export function MovimientoForm({
                     type="number"
                     step="1"
                     min="0"
-                    placeholder="Cantidad"
-                    {...register(`itemsPedido.${index}.cantidad`, { valueAsNumber: true })}
+                    placeholder="—"
+                    {...register(`itemsPedido.${index}.cantidad`, campoNumerico)}
                   />
                 </div>
                 <Button
@@ -578,7 +606,7 @@ export function MovimientoForm({
             variant="outline"
             size="sm"
             className="self-start"
-            onClick={() => appendPedidoItem({ materialId: "", cantidad: 0 })}
+            onClick={() => appendPedidoItem({ materialId: "" })}
           >
             <Plus className="h-4 w-4" />
             Agregar material
@@ -641,7 +669,7 @@ export function MovimientoForm({
                           type="number"
                           step="1"
                           min="0"
-                          placeholder="Barras"
+                          placeholder="—"
                           value={barras[index] ?? ""}
                           onChange={(e) => {
                             const raw = e.target.value;
@@ -667,7 +695,8 @@ export function MovimientoForm({
                         step="1"
                         min="0"
                         max={info.restante}
-                        {...register(`itemsEntrega.${index}.cantidad`, { valueAsNumber: true })}
+                        placeholder="—"
+                        {...register(`itemsEntrega.${index}.cantidad`, campoNumerico)}
                       />
                     </div>
                   </div>
@@ -762,6 +791,24 @@ export function MovimientoForm({
           </div>
         )}
       </div>
+
+      {tipo === "PEDIDO" && puedeCargarFactura && (
+        <label className="flex items-start gap-2 text-sm">
+          <Checkbox
+            checked={cargarFactura}
+            onCheckedChange={(checked) => setCargarFactura(checked === true)}
+            className="mt-0.5"
+          />
+          <span>
+            <span className="font-medium">Cargarle la factura ahora</span>
+            <br />
+            <span className="text-xs text-muted-foreground">
+              Al guardar se abre el formulario de la factura con el pedido ya vinculado. Si todavía
+              no llegó, se puede cargar después desde la pantalla del pedido.
+            </span>
+          </span>
+        </label>
+      )}
 
       {formError && <p className="text-sm text-error">{formError}</p>}
 

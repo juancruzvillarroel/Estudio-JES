@@ -143,6 +143,7 @@ export function MaterialDialog({
                 type="number"
                 step="0.001"
                 min="0"
+                placeholder="—"
                 defaultValue={material?.pesoPorBarra ?? ""}
               />
               <p className="text-xs text-muted-foreground">

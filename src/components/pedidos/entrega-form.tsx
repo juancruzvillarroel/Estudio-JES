@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { EntregaSchema, type EntregaInput } from "@/lib/validations/entrega";
 import { registrarEntrega } from "@/actions/entregas";
+import { CAMPO_NUMERICO_VACIO, campoNumerico } from "@/lib/utils";
 
 type PedidoItemPendiente = {
   pedidoItemId: string;
@@ -57,7 +58,9 @@ export function EntregaForm({
       numeroRemito: "",
       notas: "",
       sumarAInventario: false,
-      items: itemsPendientes.map((i) => ({ pedidoItemId: i.pedidoItemId, cantidad: 0 })),
+      // Sin `cantidad`: los campos arrancan en blanco y no en cero (ver
+      // `campoNumerico`). Lo que no se toca se manda como 0.
+      items: itemsPendientes.map((i) => ({ pedidoItemId: i.pedidoItemId })),
     },
   });
 
@@ -95,10 +98,10 @@ export function EntregaForm({
     setCompletoTodo(true);
   };
 
-  /** Vuelve todo a cero, para arrancar de nuevo si el botón no era lo que hacía falta. */
+  /** Deja todo en blanco, para arrancar de nuevo si el botón no era lo que hacía falta. */
   const vaciarTodo = () => {
     itemsPendientes.forEach((_, index) => {
-      setValue(`items.${index}.cantidad`, 0, { shouldValidate: true });
+      setValue(`items.${index}.cantidad`, CAMPO_NUMERICO_VACIO, { shouldValidate: true });
     });
     setBarras({});
     setCompletoTodo(false);
@@ -163,7 +166,7 @@ export function EntregaForm({
                     type="number"
                     step="1"
                     min="0"
-                    placeholder="Barras"
+                    placeholder="—"
                     value={barras[index] ?? ""}
                     onChange={(e) => {
                       const raw = e.target.value;
@@ -189,7 +192,8 @@ export function EntregaForm({
                   step="1"
                   min="0"
                   max={info.restante}
-                  {...register(`items.${index}.cantidad`, { valueAsNumber: true })}
+                  placeholder="—"
+                  {...register(`items.${index}.cantidad`, campoNumerico)}
                 />
                 {errors.items?.[index]?.cantidad && (
                   <p className="mt-1 text-xs text-error">

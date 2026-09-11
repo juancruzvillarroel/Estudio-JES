@@ -132,6 +132,7 @@ export function UnidadProyectoDialog({
               type="number"
               step="0.01"
               min="0"
+              placeholder="—"
               value={m2}
               onChange={(e) => setM2(e.target.value)}
             />
