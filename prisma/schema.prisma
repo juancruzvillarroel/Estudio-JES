@@ -292,6 +292,14 @@ model DocumentoTipo {
   // en la lista de pisos/sub-tipos esperada (evita "resucitar" algo que se
   // borró a propósito la próxima vez que se guarda el proyecto).
   excluido    Boolean            @default(false)
+  // Si tiene valor, este tipo es la versión propia de un proyecto que
+  // reemplaza a uno del catálogo compartido: mientras exista, el original
+  // no se lista en ese proyecto. Es lo que permite renombrar o reordenar un
+  // documento compartido sin pisárselo a las demás obras; borrar la copia
+  // devuelve el compartido, sin dejar rastro.
+  reemplazaTipoId String?
+  reemplaza       DocumentoTipo?  @relation("DocumentoTipoReemplazo", fields: [reemplazaTipoId], references: [id])
+  reemplazadoPor  DocumentoTipo[] @relation("DocumentoTipoReemplazo")
   createdAt   DateTime           @default(now())
 
   documentos Documento[]
@@ -302,6 +310,7 @@ model DocumentoTipo {
   @@index([categoriaId])
   @@index([proyectoId])
   @@index([parentId])
+  @@index([reemplazaTipoId])
 }
 
 // Instancia por proyecto de cada tipo de documento del catálogo: se crea la

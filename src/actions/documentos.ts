@@ -273,6 +273,271 @@ export async function eliminarTipoDocumento(proyectoId: string, tipoId: string) 
   return { success: true };
 }
 
+// Las tres funciones de reordenar tocan muchas filas de a una: si se cortan por
+// la mitad la pantalla tiene que poder volver el listado a como estaba.
+const ERROR_ORDEN = "No se pudo guardar el orden nuevo.";
+
+/**
+ * Devuelve la versión de este tipo que le pertenece al proyecto, sacándole una
+ * copia si todavía era del catálogo compartido.
+ *
+ * Los documentos de las categorías que no son "por piso" viven en un catálogo
+ * único: la misma fila se lista en todas las obras. Renombrar o mover uno ahí
+ * adentro les cambiaría el listado a todas, así que en vez de editarlo se saca
+ * una copia propia del proyecto que lo tapa (`reemplazaTipoId`), y el original
+ * sigue intacto para el resto.
+ *
+ * La copia se lleva lo que ya estaba cargado en esta obra —el tilde, las notas,
+ * el archivo— y también a los subitems que colgaban de él: si quedaran
+ * apuntando al original desaparecerían de la pantalla junto con él.
+ */
+async function versionPropia(proyectoId: string, tipoId: string) {
+  const tipo = await prisma.documentoTipo.findUnique({ where: { id: tipoId } });
+  if (!tipo) return null;
+  if (tipo.proyectoId === proyectoId) return tipo;
+
+  const copiaPrevia = await prisma.documentoTipo.findFirst({
+    where: { proyectoId, reemplazaTipoId: tipoId },
+  });
+  if (copiaPrevia) return copiaPrevia;
+
+  const copia = await prisma.documentoTipo.create({
+    data: {
+      categoriaId: tipo.categoriaId,
+      proyectoId,
+      nombre: tipo.nombre,
+      descripcion: tipo.descripcion,
+      subSeccion: tipo.subSeccion,
+      parentId: tipo.parentId,
+      orden: tipo.orden,
+      reemplazaTipoId: tipo.id,
+    },
+  });
+
+  await prisma.documento.updateMany({
+    where: { proyectoId, tipoId: tipo.id },
+    data: { tipoId: copia.id },
+  });
+
+  const hijos = await prisma.documentoTipo.findMany({
+    where: { parentId: tipo.id, activo: true, OR: [{ proyectoId: null }, { proyectoId }] },
+  });
+  for (const hijo of hijos) {
+    const hijoPropio = await versionPropia(proyectoId, hijo.id);
+    if (hijoPropio) {
+      await prisma.documentoTipo.update({
+        where: { id: hijoPropio.id },
+        data: { parentId: copia.id },
+      });
+    }
+  }
+
+  return copia;
+}
+
+export async function renombrarTipoDocumento(
+  proyectoId: string,
+  tipoId: string,
+  nombre: string,
+  descripcion?: string | null
+) {
+  await requireSeccion("proyectos");
+
+  const nombreTrim = nombre.trim();
+  if (!nombreTrim) return { error: "El nombre no puede quedar vacío." };
+
+  const propio = await versionPropia(proyectoId, tipoId);
+  if (!propio) return { error: "Ese documento ya no existe." };
+
+  await prisma.documentoTipo.update({
+    where: { id: propio.id },
+    data: {
+      nombre: nombreTrim,
+      // Sin el campo en la llamada la descripción no se toca: el lápiz del
+      // listado renombra nomás, y no tiene por qué borrar lo que haya escrito.
+      ...(descripcion === undefined ? {} : { descripcion: descripcion?.trim() || null }),
+    },
+  });
+  revalidatePath(`/proyectos/${proyectoId}`);
+  return { success: true };
+}
+
+/**
+ * Deja los documentos de un mismo nivel en el orden que llegan.
+ *
+ * Se reparten los mismos lugares que el grupo ya ocupaba en vez de renumerar
+ * desde cero: las subsecciones se ordenan con bloques de mil (ver abajo), y
+ * volver a numerar 0, 1, 2 acá adentro le desarmaría el bloque a la subsección
+ * y la mandaría al principio de la categoría de rebote.
+ *
+ * Los compartidos que ya estaban en el lugar que les toca se dejan como están:
+ * despegarlos del catálogo sin necesidad los desengancharía de las mejoras que
+ * se le hagan al listado global más adelante, a cambio de nada.
+ */
+export async function reordenarTiposDocumento(proyectoId: string, idsEnOrden: string[]) {
+  await requireSeccion("proyectos");
+
+  const actuales = await prisma.documentoTipo.findMany({ where: { id: { in: idsEnOrden } } });
+  const porId = new Map(actuales.map((t) => [t.id, t]));
+
+  // Los lugares del grupo, ordenados y sin empates: si dos documentos tenían el
+  // mismo número, repartirlos tal cual dejaría el arrastre sin efecto.
+  let anterior = -1;
+  const lugares = idsEnOrden
+    .flatMap((id) => {
+      const tipo = porId.get(id);
+      return tipo ? [tipo.orden] : [];
+    })
+    .sort((a, b) => a - b)
+    .map((orden) => {
+      anterior = orden > anterior ? orden : anterior + 1;
+      return anterior;
+    });
+
+  try {
+    let i = 0;
+    for (const id of idsEnOrden) {
+      const actual = porId.get(id);
+      if (!actual) continue;
+      const orden = lugares[i++];
+      if (actual.proyectoId !== proyectoId && actual.orden === orden) continue;
+
+      const propio = await versionPropia(proyectoId, id);
+      if (propio && propio.orden !== orden) {
+        await prisma.documentoTipo.update({ where: { id: propio.id }, data: { orden } });
+      }
+    }
+  } catch {
+    return { error: ERROR_ORDEN };
+  }
+  revalidatePath(`/proyectos/${proyectoId}`);
+  return { success: true };
+}
+
+/**
+ * La subsección no es una fila: es un texto repetido en cada documento que
+ * cuelga de ella, así que renombrarla es reescribir ese texto en todos (y
+ * despegar del catálogo a los que hiciera falta).
+ */
+export async function renombrarSubSeccionDocumento(
+  proyectoId: string,
+  categoriaId: string,
+  anterior: string,
+  nombre: string
+) {
+  await requireSeccion("proyectos");
+
+  const nombreTrim = nombre.trim();
+  if (!nombreTrim) return { error: "El nombre no puede quedar vacío." };
+  if (nombreTrim === anterior) return { success: true };
+
+  const afectados = await prisma.documentoTipo.findMany({
+    where: {
+      categoriaId,
+      subSeccion: anterior,
+      activo: true,
+      OR: [{ proyectoId: null }, { proyectoId }],
+    },
+  });
+
+  for (const tipo of afectados) {
+    const propio = await versionPropia(proyectoId, tipo.id);
+    if (propio) {
+      await prisma.documentoTipo.update({
+        where: { id: propio.id },
+        data: { subSeccion: nombreTrim },
+      });
+    }
+  }
+  revalidatePath(`/proyectos/${proyectoId}`);
+  return { success: true };
+}
+
+/**
+ * Las subsecciones se ordenan por el orden del primer documento que tienen
+ * adentro, así que moverlas es renumerar a sus documentos. A cada una se le da
+ * un bloque de mil lugares, que alcanza de sobra y deja intacto el orden que
+ * tengan entre ellos adentro del bloque.
+ */
+export async function reordenarSubSeccionesDocumento(
+  proyectoId: string,
+  categoriaId: string,
+  nombresEnOrden: string[]
+) {
+  await requireSeccion("proyectos");
+
+  const raices = await prisma.documentoTipo.findMany({
+    where: {
+      categoriaId,
+      parentId: null,
+      activo: true,
+      OR: [{ proyectoId: null }, { proyectoId }],
+    },
+    orderBy: { orden: "asc" },
+  });
+
+  try {
+    for (let bloque = 0; bloque < nombresEnOrden.length; bloque++) {
+      const miembros = raices.filter((t) => t.subSeccion === nombresEnOrden[bloque]);
+      for (let i = 0; i < miembros.length; i++) {
+        const orden = bloque * 1000 + i;
+        if (miembros[i].proyectoId !== proyectoId && miembros[i].orden === orden) continue;
+
+        const propio = await versionPropia(proyectoId, miembros[i].id);
+        if (propio && propio.orden !== orden) {
+          await prisma.documentoTipo.update({ where: { id: propio.id }, data: { orden } });
+        }
+      }
+    }
+  } catch {
+    return { error: ERROR_ORDEN };
+  }
+  revalidatePath(`/proyectos/${proyectoId}`);
+  return { success: true };
+}
+
+// Las categorías son una sola fila compartida por todas las obras y de ellas
+// cuelga la generación de planos por piso, así que no se despegan por proyecto:
+// renombrar o mover una le cambia el listado a todos. La pantalla lo avisa.
+export async function renombrarCategoriaDocumento(
+  proyectoId: string,
+  categoriaId: string,
+  nombre: string
+) {
+  await requireSeccion("proyectos");
+
+  const nombreTrim = nombre.trim();
+  if (!nombreTrim) return { error: "El nombre no puede quedar vacío." };
+
+  const chocan = await prisma.documentoCategoria.findFirst({
+    where: { nombre: nombreTrim, id: { not: categoriaId } },
+  });
+  if (chocan) return { error: `Ya hay una categoría que se llama "${nombreTrim}".` };
+
+  await prisma.documentoCategoria.update({
+    where: { id: categoriaId },
+    data: { nombre: nombreTrim },
+  });
+  revalidatePath(`/proyectos/${proyectoId}`);
+  return { success: true };
+}
+
+export async function reordenarCategoriasDocumento(proyectoId: string, idsEnOrden: string[]) {
+  await requireSeccion("proyectos");
+
+  try {
+    await prisma.$transaction(
+      idsEnOrden.map((id, index) =>
+        prisma.documentoCategoria.update({ where: { id }, data: { orden: index } })
+      )
+    );
+  } catch {
+    return { error: ERROR_ORDEN };
+  }
+  revalidatePath(`/proyectos/${proyectoId}`);
+  return { success: true };
+}
+
 async function getOrCreateDocumento(proyectoId: string, tipoId: string) {
   return prisma.documento.upsert({
     where: { proyectoId_tipoId: { proyectoId, tipoId } },

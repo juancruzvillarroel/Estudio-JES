@@ -208,7 +208,13 @@ export default async function ProyectoDetallePage({
       prisma.tramiteMunicipalTipo.count({ where: { activo: true } }),
       prisma.documento.count({ where: { proyectoId: id, estado: "PRESENTADO" } }),
       prisma.documentoTipo.count({
-        where: { activo: true, OR: [{ proyectoId: null }, { proyectoId: id }] },
+        where: {
+          activo: true,
+          OR: [{ proyectoId: null }, { proyectoId: id }],
+          // El compartido y la copia propia son el mismo documento: si se
+          // contaran los dos, el total del resumen subiría solo con renombrar.
+          NOT: { reemplazadoPor: { some: { proyectoId: id } } },
+        },
       }),
     ]);
 
