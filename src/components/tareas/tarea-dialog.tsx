@@ -54,8 +54,11 @@ const SIN_RUBRO = "";
  * (para no perder si estaba tildado). `key` es el key de React: los ítems
  * nuevos todavía no tienen id y el índice no sirve porque se reordenan al
  * borrar uno del medio.
+ *
+ * `completado` no se edita acá —los tildes se ponen desde la lista, no desde
+ * el formulario—, pero hace falta para poder esconder lo que ya está hecho.
  */
-type ItemBorrador = { key: string; id?: string; texto: string };
+type ItemBorrador = { key: string; id?: string; texto: string; completado: boolean };
 
 /** Un bloque de sub ítems mientras se lo edita. */
 type SeccionBorrador = { key: string; id?: string; titulo: string; items: ItemBorrador[] };
@@ -63,8 +66,11 @@ type SeccionBorrador = { key: string; id?: string; titulo: string; items: ItemBo
 let proximaKey = 0;
 const nuevaKey = () => `nuevo-${proximaKey++}`;
 
+/** Un renglón recién agregado: siempre vacío y sin tildar. */
+const itemVacio = (): ItemBorrador => ({ key: nuevaKey(), texto: "", completado: false });
+
 const aBorradores = (items: TareaOpcion["items"] | undefined): ItemBorrador[] =>
-  items?.map((i) => ({ key: i.id, id: i.id, texto: i.texto })) ?? [];
+  items?.map((i) => ({ key: i.id, id: i.id, texto: i.texto, completado: i.completado })) ?? [];
 
 const aSecciones = (secciones: TareaOpcion["secciones"] | undefined): SeccionBorrador[] =>
   secciones?.map((s) => ({
@@ -81,14 +87,20 @@ const aItemsValidos = (items: ItemBorrador[]) =>
 /**
  * Renglones de sub ítems. Se usa tanto para los sueltos como para los de cada
  * sección: lo único que cambia es de qué lista salen.
+ *
+ * `items` ya viene filtrado por quien la usa: acá sólo se dibuja lo que hay.
+ * `escondidos` es cuántos quedaron afuera por estar hechos, para poder avisar
+ * cuando la lista queda vacía y parece que se borró todo.
  */
 function ListaItems({
   items,
+  escondidos = 0,
   onCambiar,
   onQuitar,
   onAgregar,
 }: {
   items: ItemBorrador[];
+  escondidos?: number;
   onCambiar: (key: string, texto: string) => void;
   onQuitar: (key: string) => void;
   onAgregar: () => void;
@@ -104,6 +116,10 @@ function ListaItems({
             value={sub.texto}
             onChange={(e) => onCambiar(sub.key, e.target.value)}
             placeholder="Ej. Pedir cotización a tres proveedores"
+            // Tachado igual que en la lista, para que se note de un vistazo
+            // cuál de los renglones que se están viendo ya está hecho. Se
+            // sigue pudiendo corregir el texto: el tilde no lo congela.
+            className={cn(sub.completado && "text-muted-foreground line-through")}
             // Enter agrega otro renglón en vez de mandar el formulario: se
             // cargan varios seguidos.
             onKeyDown={(e) => {
@@ -124,6 +140,13 @@ function ListaItems({
           </Button>
         </div>
       ))}
+      {/* Sólo cuando no quedó ningún renglón a la vista: si hay alguno, el
+          contador de arriba ya explica que falta ver el resto. */}
+      {items.length === 0 && escondidos > 0 && (
+        <p className="pl-7 text-xs text-muted-foreground">
+          {escondidos === 1 ? "El único sub ítem ya está hecho." : `Los ${escondidos} sub ítems ya están hechos.`}
+        </p>
+      )}
     </>
   );
 }
@@ -139,6 +162,7 @@ function ListaItems({
 function SeccionBloque({
   seccion,
   arrastrable,
+  verHechos,
   onCambiarTitulo,
   onQuitar,
   onCambiarItem,
@@ -147,6 +171,8 @@ function SeccionBloque({
 }: {
   seccion: SeccionBorrador;
   arrastrable: boolean;
+  /** Si está en false, los sub ítems ya tildados no se dibujan. */
+  verHechos: boolean;
   onCambiarTitulo: (titulo: string) => void;
   onQuitar: () => void;
   onCambiarItem: (itemKey: string, texto: string) => void;
@@ -157,6 +183,10 @@ function SeccionBloque({
     id: seccion.key,
     disabled: !arrastrable,
   });
+
+  // La sección se dibuja siempre, aunque no le quede nada a la vista: el
+  // título y el botón de agregar son justamente lo que se viene a usar acá.
+  const visibles = verHechos ? seccion.items : seccion.items.filter((i) => !i.completado);
 
   return (
     <div
@@ -196,7 +226,8 @@ function SeccionBloque({
         </Button>
       </div>
       <ListaItems
-        items={seccion.items}
+        items={visibles}
+        escondidos={seccion.items.length - visibles.length}
         onCambiar={onCambiarItem}
         onQuitar={onQuitarItem}
         onAgregar={onAgregarItem}
@@ -250,6 +281,15 @@ export function TareaDialog({
   );
   const [items, setItems] = useState<ItemBorrador[]>(() => aBorradores(item?.items));
   const [secciones, setSecciones] = useState<SeccionBorrador[]>(() => aSecciones(item?.secciones));
+  /**
+   * Si se muestran también los sub ítems ya tildados. Arranca apagado, igual
+   * que en la lista: al abrir una tarea a medio hacer lo que se viene a tocar
+   * es lo que falta, y los hechos sólo estiran el formulario.
+   *
+   * Esconderlos es sólo de la vista: siguen en `items` / `secciones` con su id,
+   * así que se guardan igual y no se pierde ni el texto ni el tilde.
+   */
+  const [verHechos, setVerHechos] = useState(false);
 
   const handleOpenChange = (next: boolean) => {
     setOpen(next);
@@ -263,10 +303,11 @@ export function TareaDialog({
       setAsignados(item?.asignados.map((a) => a.id) ?? []);
       setItems(aBorradores(item?.items));
       setSecciones(aSecciones(item?.secciones));
+      setVerHechos(false);
     }
   };
 
-  const agregarItem = () => setItems((prev) => [...prev, { key: nuevaKey(), texto: "" }]);
+  const agregarItem = () => setItems((prev) => [...prev, itemVacio()]);
   const quitarItem = (key: string) => setItems((prev) => prev.filter((i) => i.key !== key));
   const cambiarItem = (key: string, texto: string) =>
     setItems((prev) => prev.map((i) => (i.key === key ? { ...i, texto } : i)));
@@ -278,17 +319,20 @@ export function TareaDialog({
 
   // Una sección nueva arranca con un renglón vacío: nadie crea una sección para
   // dejarla sin nada adentro.
+  //
+  // Va arriba de todo y no al final: el botón que la crea está justo encima de
+  // la lista, así que apareciendo primera queda a la vista y con el cursor
+  // cerca. Al final, en una tarea con varias secciones, nacía fuera de
+  // pantalla y había que ir a buscarla. El orden en que quedan es el que se
+  // guarda, así que además es la manera de poner una sección adelante.
   const agregarSeccion = () =>
-    setSecciones((prev) => [
-      ...prev,
-      { key: nuevaKey(), titulo: "", items: [{ key: nuevaKey(), texto: "" }] },
-    ]);
+    setSecciones((prev) => [{ key: nuevaKey(), titulo: "", items: [itemVacio()] }, ...prev]);
   const quitarSeccion = (key: string) =>
     setSecciones((prev) => prev.filter((s) => s.key !== key));
   const cambiarTituloSeccion = (key: string, titulo: string) =>
     mapearSeccion(key, (s) => ({ ...s, titulo }));
   const agregarItemSeccion = (key: string) =>
-    mapearSeccion(key, (s) => ({ ...s, items: [...s.items, { key: nuevaKey(), texto: "" }] }));
+    mapearSeccion(key, (s) => ({ ...s, items: [...s.items, itemVacio()] }));
   const quitarItemSeccion = (key: string, itemKey: string) =>
     mapearSeccion(key, (s) => ({ ...s, items: s.items.filter((i) => i.key !== itemKey) }));
   const cambiarItemSeccion = (key: string, itemKey: string, texto: string) =>
@@ -319,6 +363,13 @@ export function TareaDialog({
       prev.includes(userId) ? prev.filter((u) => u !== userId) : [...prev, userId]
     );
   };
+
+  // Cuántos sub ítems ya están tildados, contando sueltos y de secciones: es
+  // lo que se esconde, y el número que muestra el botón.
+  const hechos = [...items, ...secciones.flatMap((s) => s.items)].filter(
+    (i) => i.completado
+  ).length;
+  const sueltosVisibles = verHechos ? items : items.filter((i) => !i.completado);
 
   // El <Select> de Base UI necesita el mapa value → label para mostrar el
   // texto del valor elegido en el trigger.
@@ -437,11 +488,28 @@ export function TareaDialog({
               opcionales: una tarea corta se resuelve con sueltos nomás. */}
           <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-2">
-              <Label>Sub ítems (opcional)</Label>
+              {/* El interruptor va pegado al título del bloque porque manda
+                  sobre todo el checklist, sueltos y secciones por igual. */}
+              <div className="flex items-center justify-between gap-2">
+                <Label>Sub ítems (opcional)</Label>
+                {hechos > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setVerHechos((prev) => !prev)}
+                    aria-expanded={verHechos}
+                    className="rounded-md px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+                  >
+                    {verHechos
+                      ? "Ocultar hechos"
+                      : `Ver ${hechos} hecho${hechos === 1 ? "" : "s"}`}
+                  </button>
+                )}
+              </div>
               {items.length > 0 && (
                 <div className="flex flex-col gap-1.5">
                   <ListaItems
-                    items={items}
+                    items={sueltosVisibles}
+                    escondidos={items.length - sueltosVisibles.length}
                     onCambiar={cambiarItem}
                     onQuitar={quitarItem}
                     onAgregar={agregarItem}
@@ -479,6 +547,7 @@ export function TareaDialog({
                         key={seccion.key}
                         seccion={seccion}
                         arrastrable={secciones.length > 1}
+                        verHechos={verHechos}
                         onCambiarTitulo={(titulo) => cambiarTituloSeccion(seccion.key, titulo)}
                         onQuitar={() => quitarSeccion(seccion.key)}
                         onCambiarItem={(itemKey, texto) =>
