@@ -196,6 +196,47 @@
 }
 
 /**
+ * Salida de un sub ítem del checklist recién tildado (ver tareas-lista.tsx).
+ *
+ * Misma idea que la de la tarea entera pero más corta y más corta de recorrido:
+ * es un renglón dentro de una lista, no una fila de la pantalla. Arranca quieta
+ * el tiempo que tarda el ganchito en dibujarse (ver `.tilde-item`), porque
+ * justamente eso es lo que hay que llegar a ver antes de que el renglón se vaya.
+ *
+ * El margen negativo del final se come el gap-1 de la lista del checklist.
+ *
+ * Si cambiás la duración, actualizá MS_SALIDA_ITEM en tareas-lista.tsx.
+ */
+.item-saliendo {
+  animation: item-saliendo 460ms ease-in forwards;
+  overflow: hidden;
+}
+
+@keyframes item-saliendo {
+  0% {
+    opacity: 1;
+    transform: none;
+    max-height: 12rem;
+  }
+  45% {
+    opacity: 1;
+    transform: none;
+    max-height: 12rem;
+  }
+  75% {
+    opacity: 0;
+    transform: translateX(1rem);
+    max-height: 12rem;
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(1rem);
+    max-height: 0;
+    margin-bottom: -0.25rem; /* == gap-1 de la lista */
+  }
+}
+
+/**
  * Tilde de un sub ítem del checklist (ver tareas-lista.tsx).
  *
  * El relleno del cuadrado ya lo hace el `transition-colors` del Checkbox; lo
@@ -232,6 +273,20 @@
 @media (prefers-reduced-motion: reduce) {
   .tarea-saliendo {
     animation-duration: 120ms;
+  }
+  .item-saliendo {
+    animation-duration: 120ms;
+  }
+  @keyframes item-saliendo {
+    0% {
+      opacity: 1;
+      max-height: 12rem;
+    }
+    100% {
+      opacity: 0;
+      max-height: 0;
+      margin-bottom: -0.25rem; /* == gap-1 de la lista */
+    }
   }
   /* El ganchito aparece sin gesto: sólo se funde. */
   .tilde-item [data-slot="checkbox-indicator"] {

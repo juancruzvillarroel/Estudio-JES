@@ -10,7 +10,8 @@
  *
  * Es a propósito un papel corto: obra, tarea y checklist. Prioridad, rubro,
  * asignados y avance son datos de seguimiento interno, no le dicen nada a quien
- * recibe la hoja para ir tildando.
+ * recibe la hoja para ir tildando. Y del checklist sale sólo lo pendiente: es
+ * una hoja de trabajo, no un historial.
  */
 
 import type { TareaItemOpcion, TareaOpcion } from "@/lib/tareas";
@@ -43,37 +44,54 @@ function urlLogo() {
   return `${origen}/logo-jes.png`;
 }
 
-/** Un renglón del checklist, con el casillero tildado o vacío. */
+/** Un renglón del checklist, siempre con el casillero vacío para ir tildando. */
 function filaItem(item: TareaItemOpcion) {
   return `
-    <li class="${item.completado ? "hecho" : ""}">
-      <span class="casilla">${item.completado ? "&#10003;" : ""}</span>
+    <li>
+      <span class="casilla"></span>
       <span>${esc(item.texto)}</span>
     </li>`;
 }
 
+/**
+ * El checklist del papel lista únicamente lo que falta hacer.
+ *
+ * La hoja se imprime para que alguien la vaya tildando, así que lo que ya está
+ * hecho sólo ocupa renglones. Por eso se saltean enteras las secciones que ya
+ * están terminadas: dejarlas con un "Sin sub ítems" haría pensar que quedaron
+ * vacías cuando en realidad están completas.
+ */
 function seccionChecklist(tarea: TareaOpcion) {
   if (tarea.items.length === 0 && tarea.secciones.length === 0) {
     return `<p class="vacio">La tarea no tiene sub ítems cargados.</p>`;
   }
 
+  const pendientes = (items: TareaItemOpcion[]) => items.filter((i) => !i.completado);
+
+  const sueltosPendientes = pendientes(tarea.items);
+  const seccionesPendientes = tarea.secciones
+    .map((s) => ({ titulo: s.titulo, items: pendientes(s.items) }))
+    .filter((s) => s.items.length > 0);
+
+  if (sueltosPendientes.length === 0 && seccionesPendientes.length === 0) {
+    return `<p class="vacio">No queda ningún sub ítem pendiente.</p>`;
+  }
+
   const sueltos =
-    tarea.items.length > 0 ? `<ul class="items">${tarea.items.map(filaItem).join("")}</ul>` : "";
+    sueltosPendientes.length > 0
+      ? `<ul class="items">${sueltosPendientes.map(filaItem).join("")}</ul>`
+      : "";
 
   // Sin `break-inside: avoid` en el grupo: una sección más larga que la hoja
   // no entra a la fuerza en ninguna página y el texto termina cortado. Se
   // dejan quebrar y se cuida solo que ningún renglón se parta al medio y que
   // el título no quede solo al pie (ver el CSS).
-  const secciones = tarea.secciones
+  const secciones = seccionesPendientes
     .map(
       (s) => `
       <div class="grupo">
         <div class="grupo-titulo">${esc(s.titulo)}</div>
-        ${
-          s.items.length > 0
-            ? `<ul class="items">${s.items.map(filaItem).join("")}</ul>`
-            : `<p class="vacio">Sin sub ítems.</p>`
-        }
+        <ul class="items">${s.items.map(filaItem).join("")}</ul>
       </div>`
     )
     .join("");
@@ -95,7 +113,6 @@ function construirHtml(tarea: TareaOpcion) {
       --gris: #6f6f6f;
       --linea: #e4e4e4;
       --oscuro: #2b2b2b;
-      --verde: #177245;
     }
     * { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; }
@@ -174,7 +191,8 @@ function construirHtml(tarea: TareaOpcion) {
       page-break-inside: avoid;
     }
     ul.items li:last-child { border-bottom: none; }
-    ul.items li.hecho { color: var(--gris); text-decoration: line-through; }
+    /* Siempre vacío: el papel lista sólo lo pendiente, así que el casillero
+       está para que lo tilde a mano quien recibe la hoja. */
     .casilla {
       flex: 0 0 auto;
       width: 12px;
@@ -182,11 +200,6 @@ function construirHtml(tarea: TareaOpcion) {
       margin-top: 1px;
       border: 1.4px solid #9a9a9a;
       border-radius: 3px;
-      text-align: center;
-      line-height: 10px;
-      font-size: 10px;
-      color: var(--verde);
-      text-decoration: none;
     }
 
     .grupo { margin-top: 14px; }

@@ -44,6 +44,7 @@ import {
 function ItemCheck({
   item,
   checked,
+  saliendo,
   onToggle,
 }: {
   item: TareaItemOpcion;
@@ -52,10 +53,14 @@ function ItemCheck({
    * apenas se hace clic se pinta el nuevo sin esperar la respuesta.
    */
   checked: boolean;
+  /** El ítem se acaba de tildar y está terminando de irse de la lista. */
+  saliendo: boolean;
   onToggle: (itemId: string, completado: boolean) => void;
 }) {
   return (
-    <li>
+    // Sin pointer-events el renglón se sigue pudiendo tocar mientras se
+    // desvanece, y se destildaría algo que ya no está a la vista.
+    <li className={cn(saliendo && "item-saliendo pointer-events-none")}>
       <label className="flex cursor-default items-start gap-2 rounded-md px-1 py-0.5 text-sm hover:bg-accent hover:text-accent-foreground">
         {/* Sin `disabled`: antes se apagaba todo el checklist mientras se
             guardaba y el tilde recién clickeado se veía a media luz justo en el
@@ -81,6 +86,12 @@ function ItemCheck({
  * termine antes de avisarle al padre, que es quien la saca de la lista.
  */
 const MS_SALIDA = 520;
+
+/**
+ * Lo mismo para un sub ítem del checklist, contra `.item-saliendo`. Es más
+ * corta que la de la tarea porque el renglón recorre menos camino.
+ */
+const MS_SALIDA_ITEM = 460;
 
 /**
  * Lista de tareas compartida por la pestaña de un proyecto y la vista global
@@ -143,6 +154,19 @@ export function TareasLista({
    * corrige solo si el guardado falla.
    */
   const [tildando, setTildando] = useState<Record<string, boolean>>({});
+  /**
+   * Sub ítems tildados que están terminando de irse del checklist.
+   *
+   * Un sub ítem tildado se esconde, así que sin esto desaparecería en el mismo
+   * instante del clic. Acá se lo retiene montado el tiempo de la animación,
+   * aunque el servidor ya haya contestado y el ítem figure como completado.
+   */
+  const [itemsSaliendo, setItemsSaliendo] = useState<Record<string, boolean>>({});
+  /**
+   * Checklists a los que se les pidió mostrar también lo ya hecho, por tarea.
+   * Arranca apagado: lo normal es querer ver lo que falta.
+   */
+  const [verCompletos, setVerCompletos] = useState<Record<string, boolean>>({});
 
   const dejarDeSalir = (id: string) =>
     setSaliendo((prev) => {
@@ -154,8 +178,19 @@ export function TareasLista({
       return resto;
     });
 
+  const dejarDeSalirItem = (itemId: string) =>
+    setItemsSaliendo((prev) => {
+      if (!(itemId in prev)) return prev;
+      const resto = { ...prev };
+      delete resto[itemId];
+      return resto;
+    });
+
   const toggleAbierta = (id: string) =>
     setAbiertas((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+
+  const toggleCompletos = (id: string) =>
+    setVerCompletos((prev) => ({ ...prev, [id]: !prev[id] }));
 
   /**
    * Saca la tarea de la lista con la animación de salida y recién después le
@@ -241,17 +276,26 @@ export function TareasLista({
 
   const handleToggleItem = (tarea: TareaOpcion, itemId: string, completado: boolean) => {
     setTildando((prev) => ({ ...prev, [itemId]: completado }));
+    // Tildar esconde el renglón, salvo que el checklist esté mostrando también
+    // lo hecho: ahí se queda donde está, tachado, y no hay nada que animar.
+    const seVaAIr = completado && !verCompletos[tarea.id];
+    if (seVaAIr) setItemsSaliendo((prev) => ({ ...prev, [itemId]: true }));
 
     startTransition(async () => {
       const result = await cambiarEstadoItemTarea(itemId, completado);
       if (!result.success) {
         toast.error(result.error);
-        // No se guardó: el cuadrado vuelve a como estaba.
+        // No se guardó: el cuadrado vuelve a como estaba y el renglón se queda.
         soltarTilde(itemId, completado);
+        dejarDeSalirItem(itemId);
         return;
       }
       onSaved(result.item);
       soltarTilde(itemId, completado);
+      // El renglón ya figura completado, así que lo único que lo mantiene a la
+      // vista es `itemsSaliendo`: se suelta cuando la animación terminó. Igual
+      // que en `moverTarea`, la espera va afuera de la transición.
+      if (seVaAIr) setTimeout(() => dejarDeSalirItem(itemId), MS_SALIDA_ITEM);
       // Tildar el último paso es dar la tarea por hecha, así que hace la misma
       // pregunta que tildar la tarea entera. El servidor ya no la completa
       // solo: si lo hiciera, el paso por revisión se saltearía justo en el caso
@@ -371,6 +415,24 @@ export function TareasLista({
         // algo que desplegar: si no, el usuario la carga y parece que se perdió.
         const tieneChecklist = avance !== null || tarea.secciones.length > 0;
         const abierta = abiertas.includes(tarea.id);
+        const mostrarCompletos = verCompletos[tarea.id] === true;
+        /**
+         * Qué sub ítems se dibujan. Por defecto sólo lo que falta: tildar algo
+         * es sacarlo del camino. Los que se están yendo siguen contando como
+         * visibles hasta que la animación termina.
+         */
+        const visible = (item: TareaItemOpcion) =>
+          !item.completado || mostrarCompletos || itemsSaliendo[item.id] === true;
+        const sueltosVisibles = tarea.items.filter(visible);
+        // Una sección sin nada para mostrar se esconde entera, título incluido:
+        // dejar el encabezado colgado de una lista vacía no dice nada. La que
+        // todavía no tiene sub ítems cargados sí se queda, para que se vea que
+        // está.
+        const seccionesVisibles = tarea.secciones
+          .map((seccion) => ({ seccion, items: seccion.items.filter(visible) }))
+          .filter(({ seccion, items }) => items.length > 0 || seccion.items.length === 0);
+        const hayVisibles =
+          sueltosVisibles.length > 0 || seccionesVisibles.some(({ items }) => items.length > 0);
         // Mientras se va, el tilde muestra el estado nuevo aunque la tarea que
         // llega por props siga siendo la vieja: es justamente lo que se quiere
         // ver antes de que la fila se vaya.
@@ -485,24 +547,28 @@ export function TareasLista({
                   el mismo orden en que se cargaron en el formulario. */}
               {tieneChecklist && abierta && (
                 <div className="mt-1 flex flex-col gap-2 border-l pl-3 sm:col-start-1">
-                  {tarea.items.length > 0 && (
+                  {sueltosVisibles.length > 0 && (
                     <ul className="flex flex-col gap-1">
-                      {tarea.items.map((sub) => (
+                      {sueltosVisibles.map((sub) => (
                         <ItemCheck
                           key={sub.id}
                           item={sub}
                           checked={tildando[sub.id] ?? sub.completado}
+                          saliendo={itemsSaliendo[sub.id] === true}
                           onToggle={(itemId, hecho) => handleToggleItem(tarea, itemId, hecho)}
                         />
                       ))}
                     </ul>
                   )}
-                  {tarea.secciones.map((seccion) => (
+                  {seccionesVisibles.map(({ seccion, items }) => (
                     <div key={seccion.id} className="flex flex-col gap-1">
                       <div className="flex items-baseline gap-2 px-1">
                         <span className="text-xs font-semibold tracking-wide uppercase">
                           {seccion.titulo}
                         </span>
+                        {/* El contador cuenta todo lo cargado, se esté viendo o
+                            no: es el avance de la sección, no de lo que hay en
+                            pantalla. */}
                         {seccion.items.length > 0 && (
                           <span className="text-xs tabular-nums text-muted-foreground">
                             {seccion.items.filter((i) => i.completado).length}/
@@ -511,17 +577,41 @@ export function TareasLista({
                         )}
                       </div>
                       <ul className="flex flex-col gap-1">
-                        {seccion.items.map((sub) => (
+                        {items.map((sub) => (
                           <ItemCheck
                             key={sub.id}
                             item={sub}
                             checked={tildando[sub.id] ?? sub.completado}
+                            saliendo={itemsSaliendo[sub.id] === true}
                             onToggle={(itemId, hecho) => handleToggleItem(tarea, itemId, hecho)}
                           />
                         ))}
                       </ul>
                     </div>
                   ))}
+
+                  {/* Se tildó todo y lo hecho está escondido: sin esto el
+                      checklist abierto queda en blanco y parece roto. */}
+                  {!hayVisibles && avance !== null && (
+                    <p className="px-1 text-xs text-muted-foreground">
+                      No queda nada pendiente.
+                    </p>
+                  )}
+
+                  {/* La puerta para volver a ver lo tildado. Sólo aparece
+                      cuando hay algo escondido que mirar. */}
+                  {avance !== null && avance.hechos > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => toggleCompletos(tarea.id)}
+                      aria-expanded={mostrarCompletos}
+                      className="w-fit rounded-md px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+                    >
+                      {mostrarCompletos
+                        ? "Ocultar completos"
+                        : `Ver ${avance.hechos} completo${avance.hechos === 1 ? "" : "s"}`}
+                    </button>
+                  )}
                 </div>
               )}
 
