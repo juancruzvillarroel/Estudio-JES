@@ -8,6 +8,7 @@ import {
   FileText,
   Landmark,
   ListChecks,
+  Ruler,
   Wallet,
   type LucideIcon,
 } from "lucide-react";
@@ -37,11 +38,18 @@ export type ResumenProyecto = {
   tareas: ResumenSeccion;
   municipal: ResumenSeccion;
   documentacion: ResumenSeccion;
+  computo: ResumenSeccion;
   /** Null cuando el usuario no tiene permiso de Flujo de fondos. */
   flujoFondos: ResumenSeccion | null;
 };
 
-type ClaveSeccion = "movimientos" | "tareas" | "municipal" | "documentacion" | "flujo-fondos";
+type ClaveSeccion =
+  | "movimientos"
+  | "tareas"
+  | "municipal"
+  | "documentacion"
+  | "computo"
+  | "flujo-fondos";
 
 const TONO_TEXTO = {
   neutral: "text-foreground",
@@ -75,10 +83,11 @@ const RELIEVE = "bg-gradient-to-br from-foreground/[0.07] via-transparent to-tra
  * Cuántas de las 6 columnas de la grilla ocupa cada tarjeta, elegido para que
  * ninguna fila quede a medio llenar.
  *
- * Las secciones son 5, o 4 cuando el usuario no tiene permiso de Flujo de
+ * Las secciones son 6, o 5 cuando el usuario no tiene permiso de Flujo de
  * fondos. Con la grilla de 3 columnas que había antes, 5 tarjetas dejaban la
  * segunda fila con dos y un hueco al costado. Ahora:
  *
+ *   6 → dos filas de 3 (2 columnas cada una)
  *   5 → 3 arriba (2 columnas cada una) y 2 abajo más anchas (3 columnas)
  *   4 → dos filas de 2, todas iguales
  *
@@ -89,7 +98,13 @@ const RELIEVE = "bg-gradient-to-br from-foreground/[0.07] via-transparent to-tra
 function spanTarjeta(indice: number, total: number) {
   const enDosColumnas = total % 2 === 1 && indice === total - 1 ? "sm:col-span-2" : "";
   const enSeisColumnas =
-    total === 5 ? (indice < 3 ? "lg:col-span-2" : "lg:col-span-3") : "lg:col-span-3";
+    total === 6
+      ? "lg:col-span-2"
+      : total === 5
+        ? indice < 3
+          ? "lg:col-span-2"
+          : "lg:col-span-3"
+        : "lg:col-span-3";
   return cn(enDosColumnas, enSeisColumnas);
 }
 
@@ -201,6 +216,7 @@ export function ProyectoSecciones({
   tareas,
   municipal,
   documentacion,
+  computo,
   flujoFondos,
 }: {
   resumen: ResumenProyecto;
@@ -208,6 +224,7 @@ export function ProyectoSecciones({
   tareas: React.ReactNode;
   municipal: React.ReactNode;
   documentacion: React.ReactNode;
+  computo: React.ReactNode;
   /** Null cuando el usuario no tiene permiso de Flujo de fondos. */
   flujoFondos: React.ReactNode | null;
 }) {
@@ -218,6 +235,7 @@ export function ProyectoSecciones({
     tareas: { titulo: "Tareas", nodo: tareas },
     municipal: { titulo: "Municipal", nodo: municipal },
     documentacion: { titulo: "Documentación", nodo: documentacion },
+    computo: { titulo: "Cómputo", nodo: computo },
     "flujo-fondos": { titulo: "Flujo de fondos", nodo: flujoFondos },
   };
 
@@ -237,12 +255,12 @@ export function ProyectoSecciones({
     );
   }
 
-  // Se arma como lista y no como cinco tarjetas escritas a mano porque el ancho
+  // Se arma como lista y no como seis tarjetas escritas a mano porque el ancho
   // de cada una depende de cuántas haya en total (ver `spanTarjeta`), y eso solo
   // se sabe después de descartar la de Flujo de fondos cuando no hay permiso.
   // El orden es el de la portada: arriba lo que se consulta seguido
-  // (documentación, tareas, trámites) y abajo, juntas y más anchas, las dos que
-  // hablan de plata y materiales.
+  // (documentación, tareas, trámites) y abajo las tres que siguen la obra en sí,
+  // en el orden en que se encadenan: se computa, se compra, se paga.
   const tarjetas: {
     clave: ClaveSeccion;
     titulo: string;
@@ -270,6 +288,13 @@ export function ProyectoSecciones({
       descripcion: "Trámites y presentaciones",
       icono: Landmark,
       resumen: resumen.municipal,
+    },
+    {
+      clave: "computo",
+      titulo: "Cómputo",
+      descripcion: "Partidas y mediciones de la obra",
+      icono: Ruler,
+      resumen: resumen.computo,
     },
     {
       clave: "movimientos",

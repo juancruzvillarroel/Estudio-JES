@@ -20,7 +20,9 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { NivelesPanel } from "@/components/proyectos/niveles-panel";
 import { createProyecto, updateProyecto } from "@/actions/proyectos";
+import type { NivelOpcion } from "@/lib/niveles";
 
 type Proyecto = {
   id: string;
@@ -32,7 +34,6 @@ type Proyecto = {
   imagenUrl: string | null;
   brochureUrl: string | null;
   brochureNombre: string | null;
-  cantidadPisos: number;
 };
 
 const ESTADO_LABELS: Record<Proyecto["estado"], string> = {
@@ -43,9 +44,12 @@ const ESTADO_LABELS: Record<Proyecto["estado"], string> = {
 
 export function ProyectoDialog({
   proyecto,
+  niveles = [],
   trigger,
 }: {
   proyecto?: Proyecto;
+  /** Los niveles de la obra, de abajo hacia arriba. Vacío al crear una nueva. */
+  niveles?: NivelOpcion[];
   trigger: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
@@ -68,7 +72,10 @@ export function ProyectoDialog({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger render={trigger as React.ReactElement} />
-      <DialogContent>
+      {/* Con los niveles adentro el formulario pasa el alto de la pantalla, así
+          que scrollea en vez de desbordarse, igual que los demás diálogos
+          largos (venta, factura, tarea). */}
+      <DialogContent className="max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{proyecto ? "Editar proyecto" : "Nuevo proyecto"}</DialogTitle>
         </DialogHeader>
@@ -100,24 +107,12 @@ export function ProyectoDialog({
               </SelectContent>
             </Select>
           </div>
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="cantidadPisos">Cantidad de pisos (además de planta baja)</Label>
-            <Input
-              id="cantidadPisos"
-              name="cantidadPisos"
-              type="number"
-              min={0}
-              step={1}
-              placeholder="—"
-              // Con `||` y no `??`: un proyecto guardado con 0 pisos también
-              // muestra el campo vacío. El servidor lee el vacío como 0.
-              defaultValue={proyecto?.cantidadPisos || ""}
-            />
-            <p className="text-xs text-muted-foreground">
-              Se usa para generar automáticamente los planos por piso en Documentación
-              (Planta baja, Piso 1, Piso 2, ..., Azotea).
-            </p>
-          </div>
+          {/*
+            Los niveles sólo aparecen al editar: se guardan de a uno, contra el
+            servidor, y un proyecto que todavía no existe no tiene dónde
+            colgarlos. Se cargan apenas se crea la obra.
+          */}
+          {proyecto && <NivelesPanel proyectoId={proyecto.id} niveles={niveles} />}
           <div className="flex flex-col gap-2">
             <Label htmlFor="descripcion">Descripción</Label>
             <Textarea id="descripcion" name="descripcion" defaultValue={proyecto?.descripcion ?? ""} />

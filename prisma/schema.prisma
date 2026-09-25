@@ -95,9 +95,15 @@ model Proyecto {
   // sufijo aleatorio pegado).
   brochureUrl          String?
   brochureNombre       String?
-  // Pisos por encima de planta baja. Se usa para generar automáticamente un
-  // documento (plano) por piso en las categorías de Documentación marcadas
-  // como "por piso" (ver DocumentoCategoria.porPiso).
+  // EN DESUSO. Era la cantidad de pisos por encima de planta baja, y con eso
+  // Documentación generaba los planos numerados ("Planta baja", "Piso 1", ...).
+  // Contar pisos nunca alcanzó: una obra real tiene "PLANTA TIPO" (varios pisos
+  // iguales que se computan una sola vez), subsuelos y azoteas, nombres que no
+  // salen de contar. Ahora esos nombres se cargan a mano en NivelProyecto y de
+  // ahí sale el corte por planta del cómputo.
+  //
+  // La columna queda por los valores viejos, que son lo único que sobrevive de
+  // cómo estaba cargada cada obra antes del cambio. No la lee nadie.
   cantidadPisos        Int            @default(0)
   // Metros cuadrados vendibles totales de la obra. Es el divisor de los
   // costos por m² del resumen de Flujo de fondos (incidencia del terreno y
@@ -137,10 +143,13 @@ model Proyecto {
   // que después se van a poder vincular con las ventas del proyecto.
   mediosPago       MedioPago[]
   unidades         UnidadProyecto[]
+  niveles          NivelProyecto[]
   ventas           Venta[]
   tareas           Tarea[]
   presupuesto      PresupuestoItem[]
   facturas         Factura[]
+  computo          ComputoItem[]
+  computoSecciones ComputoSeccion[]
 }
 
 // Catálogo de categorías de la pestaña "Municipal": igual que
@@ -236,18 +245,23 @@ model DocumentoCategoria {
   nombre      String   @unique
   orden       Int      @default(0)
   activo      Boolean  @default(true)
-  // Si es true, esta categoría no tiene un catálogo de tipos compartido:
-  // en cada proyecto se genera automáticamente un tipo de documento por
-  // piso ("Planta baja", "Piso 1", ...) según Proyecto.cantidadPisos (ver
-  // sincronizarDocumentosPorPiso en src/actions/documentos.ts).
+  // Si es true, esta categoría no tiene un catálogo de tipos compartido: sus
+  // documentos son propios de cada obra (DocumentoTipo.proyectoId con valor),
+  // porque las plantas de una obra no son las de otra.
+  //
+  // Hubo una versión que además los generaba sola, un plano por nivel cargado
+  // en NivelProyecto. Se sacó: el árbol está cargado a mano, con nombres
+  // propios por subsección y con dibujos que no son plantas (FUNDACIONES,
+  // CORTE LONGITUDINAL), y generar encima duplicaba y barría. Hoy la bandera
+  // sólo decide de quién son los documentos, no quién los escribe.
   porPiso     Boolean  @default(false)
-  // Si tiene valor (ej. "S/"), los planos por piso de esta categoría se
-  // nombran con ese prefijo + el código corto del piso (S/PB, S/1°, ...,
-  // S/Azotea) en vez del nombre largo (Planta baja, Piso 1, ...).
+  // EN DESUSO, junto con la generación automática. Era el prefijo con el que
+  // se nombraban los planos de esta categoría (ej. "S/" -> S/PLANTA BAJA).
   prefijoPiso String?
-  // Si tiene elementos (ej. instalaciones: sanitaria, gas, ...), cada
-  // elemento se convierte en una subsección propia (DocumentoTipo.subSeccion)
-  // con un documento por piso adentro, en vez de un solo documento por piso.
+  // EN DESUSO, junto con la generación automática. Era la lista de
+  // subsecciones a generar (ej. instalaciones: sanitaria, gas, ...). Las
+  // subsecciones que hoy existen se escribieron a mano, en
+  // DocumentoTipo.subSeccion, y no salen de acá.
   subTipos    String[] @default([])
   createdAt   DateTime @default(now())
 
@@ -260,20 +274,20 @@ model DocumentoCategoria {
 // proyectos. Los tipos con proyectoId asignado son generados
 // automáticamente para ese proyecto puntual (categorías "por piso").
 model DocumentoTipo {
-  id          String             @id @default(cuid())
-  categoriaId String
-  categoria   DocumentoCategoria @relation(fields: [categoriaId], references: [id])
+  id              String             @id @default(cuid())
+  categoriaId     String
+  categoria       DocumentoCategoria @relation(fields: [categoriaId], references: [id])
   // Null = tipo global (compartido). Con valor = generado para ese
   // proyecto puntual (planos por piso).
-  proyectoId  String?
-  proyecto    Proyecto?          @relation("DocumentoTipoProyecto", fields: [proyectoId], references: [id])
-  nombre      String
-  descripcion String?
+  proyectoId      String?
+  proyecto        Proyecto?          @relation("DocumentoTipoProyecto", fields: [proyectoId], references: [id])
+  nombre          String
+  descripcion     String?
   // Si tiene valor, agrupa este tipo dentro de una subsección dentro de su
   // categoría (ej. "Instalación sanitaria" dentro de "Instalaciones"), cada
   // una con su propio acordeón y barra de progreso. Null si la categoría no
   // se subdivide.
-  subSeccion  String?
+  subSeccion      String?
   // Un nivel más de anidamiento, ya dentro de la subsección: si tiene
   // valor, este tipo es un subitem del tipo apuntado (ej. "Cañerías"
   // adentro de "Caldera", que a su vez está en la subsección "Instalación
@@ -282,25 +296,35 @@ model DocumentoTipo {
   //
   // Un tipo con hijos hace de carpeta y no se presenta él mismo: lo que se
   // marca presentado son los hijos, y su progreso es el de ellos.
-  parentId    String?
-  parent      DocumentoTipo?     @relation("DocumentoTipoHijos", fields: [parentId], references: [id])
-  hijos       DocumentoTipo[]    @relation("DocumentoTipoHijos")
-  orden       Int                @default(0)
-  activo      Boolean            @default(true)
+  parentId        String?
+  parent          DocumentoTipo?     @relation("DocumentoTipoHijos", fields: [parentId], references: [id])
+  hijos           DocumentoTipo[]    @relation("DocumentoTipoHijos")
+  orden           Int                @default(0)
+  activo          Boolean            @default(true)
   // Si es true, el usuario lo eliminó a mano para este proyecto puntual:
   // sincronizarDocumentosPorPiso no lo vuelve a crear/reactivar aunque siga
   // en la lista de pisos/sub-tipos esperada (evita "resucitar" algo que se
   // borró a propósito la próxima vez que se guarda el proyecto).
-  excluido    Boolean            @default(false)
+  excluido        Boolean            @default(false)
+  // True = lo creó un generador automático. False = lo escribió una persona.
+  //
+  // Hoy está en false en todas las filas, porque la generación de planos por
+  // nivel se sacó. Queda como la marca que haría falta si se retoma: es lo
+  // único que separa "plano de una planta que ya no existe" de "dibujo que
+  // alguien cargó y que nunca fue una planta". Sin ella, limpiar lo viejo se
+  // hacía por descarte —lo que no está en la lista de niveles sobra— y se
+  // llevaba puestos FUNDACIONES, CORTE LONGITUDINAL y DETALLE VIGA VOLADIZO,
+  // que viven dentro de una categoría por piso sin ser pisos.
+  generado        Boolean            @default(false)
   // Si tiene valor, este tipo es la versión propia de un proyecto que
   // reemplaza a uno del catálogo compartido: mientras exista, el original
   // no se lista en ese proyecto. Es lo que permite renombrar o reordenar un
   // documento compartido sin pisárselo a las demás obras; borrar la copia
   // devuelve el compartido, sin dejar rastro.
   reemplazaTipoId String?
-  reemplaza       DocumentoTipo?  @relation("DocumentoTipoReemplazo", fields: [reemplazaTipoId], references: [id])
-  reemplazadoPor  DocumentoTipo[] @relation("DocumentoTipoReemplazo")
-  createdAt   DateTime           @default(now())
+  reemplaza       DocumentoTipo?     @relation("DocumentoTipoReemplazo", fields: [reemplazaTipoId], references: [id])
+  reemplazadoPor  DocumentoTipo[]    @relation("DocumentoTipoReemplazo")
+  createdAt       DateTime           @default(now())
 
   documentos Documento[]
 
@@ -379,6 +403,19 @@ model Rubro {
   pagaHonorarios Boolean @default(true)
   esHonorarios   Boolean @default(false)
 
+  // Si este rubro aparece en la pantalla de Cómputos. Están marcados los de
+  // obra, de ESTRUCTURA H°A a REVESTIMIENTOS: son los que se miden en plano y
+  // se mandan a cotizar por cantidad.
+  //
+  // Quedan afuera los que no se computan: el terreno, los gastos municipales,
+  // la gestoría y los gastos fijos no tienen m² ni unidades que contar, y los
+  // honorarios salen de un porcentaje sobre el resto.
+  //
+  // Es una marca y no un rango de posiciones (del 5 al 23) a propósito: el
+  // rango se rompe solo la primera vez que alguien arrastra un rubro o carga
+  // uno nuevo en el medio, y lo haría en silencio.
+  seComputa Boolean @default(false)
+
   proveedores Proveedor[]
   materiales  Material[]
   subrubros   Subrubro[]
@@ -387,6 +424,100 @@ model Rubro {
   tareas           Tarea[]
   presupuesto      PresupuestoItem[]
   facturas         Factura[]
+  itemTipos        ComputoItemTipo[]
+  computo          ComputoItem[]
+  computoSecciones ComputoSeccion[]
+}
+
+// De qué lado de la obra es un cómputo: lo que se compra, o lo que se paga por
+// hacerlo.
+//
+// Son dos cómputos distintos y no dos columnas del mismo, porque no se miden
+// las mismas cosas. Del lado del material se computan m³ de hormigón y kilos de
+// hierro; del lado de la mano de obra se computan m² de encofrado armado y
+// jornales. Se contratan aparte, se cotizan aparte y se pagan aparte.
+enum TipoComputo {
+  MATERIALES
+  MANO_DE_OBRA
+}
+
+// El corte del cómputo adentro de un rubro: MUROS, REVOQUES, CONTRAPISOS e
+// IMPERMEABILIZACIONES adentro de ALBAÑILERÍA, de un lado o del otro del
+// switch (ver TipoComputo).
+//
+// Es una tabla propia y no Subrubro a propósito, aunque ahora los dos partan
+// por materiales y mano de obra. Subrubro es del lado de la plata: con él están
+// clasificados cientos de movimientos de fondo y de facturas, y meter ahí
+// adentro las secciones de albañilería ensuciaría ese desplegable para siempre.
+// Acá el nombre es de la obra y se escribe obra por obra; allá es de la
+// contabilidad y es fijo.
+//
+// Va por proyecto y no por rubro global: las secciones se arman obra por obra,
+// mirando esa obra, y después se copian a las demás cuando se decide que
+// sirven. Una plantilla compartida obligaría a acertarle a todas las obras de
+// una, que es justo lo que no se puede al empezar.
+model ComputoSeccion {
+  id         String      @id @default(cuid())
+  proyectoId String
+  proyecto   Proyecto    @relation(fields: [proyectoId], references: [id], onDelete: Cascade)
+  rubroId    String
+  rubro      Rubro       @relation(fields: [rubroId], references: [id], onDelete: Cascade)
+  // De qué lado del switch vive. Default MATERIALES porque es el lado con el
+  // que se arranca a computar y porque es lo que eran todas las secciones
+  // cargadas antes de que el switch existiera.
+  tipo       TipoComputo @default(MATERIALES)
+  nombre     String
+  orden      Int         @default(0)
+  createdAt  DateTime    @default(now())
+  // En qué orden se leen las filas de ESTA grilla: ["nivel:abc", "extra:def"].
+  //
+  // Va acá y no en el orden de los niveles porque las dos clases de fila se
+  // mezclan: SALA DE MÁQUINAS tiene que poder quedar entre el 4TO PISO y la
+  // AZOTEA, y niveles y filas extra viven en tablas distintas, así que ningún
+  // número propio de cada una las puede intercalar.
+  //
+  // Es una lista de claves y no una tabla de relaciones a propósito: es un
+  // orden de pantalla, no un vínculo. Lo que se borró queda como clave muerta y
+  // se ignora al dibujar, y lo que se creó después no está en la lista y cae al
+  // final, que es donde uno espera encontrar lo recién agregado. Vacío quiere
+  // decir "sin tocar": los niveles en el orden de la obra y las filas extra
+  // atrás.
+  ordenFilas String[]    @default([])
+
+  items      ComputoItem[]
+  filasExtra ComputoFilaExtra[]
+
+  // El tipo entra en la clave: "HORMIGÓN" puede existir de los dos lados, y son
+  // dos secciones distintas con sus propias columnas y su propio total. Lo que
+  // se sigue prohibiendo es repetir el nombre del mismo lado.
+  @@unique([proyectoId, rubroId, tipo, nombre])
+  @@index([proyectoId])
+  @@index([rubroId])
+}
+
+// Una fila de la grilla que no es un nivel de la obra: "SALA DE MÁQUINAS"
+// adentro de MUROS, "TANQUE" adentro de IMPERMEABILIZACIONES.
+//
+// Los niveles son la estructura de la obra y valen para todo el cómputo: si
+// hay un 4° piso, hay 4° piso en muros, en revoques y en pisos. Por eso al
+// crear un ítem aparecen solos, en todas las grillas.
+//
+// Esto es lo otro: el caso puntual que existe en una sección y en ninguna más.
+// Va colgado de la sección y no del proyecto justamente para eso — agregarlo en
+// MUROS no tiene por qué ensuciar la grilla de REVOQUES, donde esa fila estaría
+// siempre vacía. Si en REVOQUES también hace falta, se agrega de nuevo ahí.
+model ComputoFilaExtra {
+  id        String         @id @default(cuid())
+  seccionId String
+  seccion   ComputoSeccion @relation(fields: [seccionId], references: [id], onDelete: Cascade)
+  nombre    String
+  orden     Int            @default(0)
+  createdAt DateTime       @default(now())
+
+  mediciones ComputoMedicion[]
+
+  @@unique([seccionId, nombre])
+  @@index([seccionId])
 }
 
 // Subcategoría dentro de un Rubro, usada para clasificar con más detalle los
@@ -403,6 +534,8 @@ model Subrubro {
   movimientosFondo MovimientoFondo[]
   presupuesto      PresupuestoItem[]
   facturas         Factura[]
+  itemTipos        ComputoItemTipo[]
+  computo          ComputoItem[]
 
   @@unique([rubroId, nombre])
   @@index([rubroId])
@@ -460,6 +593,38 @@ model UnidadProyecto {
   createdAt  DateTime     @default(now())
 
   venta Venta?
+
+  @@unique([proyectoId, nombre])
+  @@index([proyectoId])
+}
+
+// Un nivel de la obra: "PLANTA BAJA", "PLANTA TIPO", "4TO PISO", "AZOTEA".
+//
+// Es una tabla y no una lista derivada de Proyecto.cantidadPisos porque los
+// niveles reales de una obra no salen de contar. "Planta tipo" son cuatro pisos
+// iguales que se computan una sola vez; un subsuelo o una sala de máquinas no
+// son un piso más; y el nombre con el que se los llama en la obra es el que
+// tiene que aparecer en el cómputo y en el papel que se manda a cotizar.
+// Generarlos automáticamente obligaba a renombrarlos siempre a mano, así que se
+// cargan a mano desde el principio, en "Editar datos" de la portada.
+//
+// Es la única fuente de los niveles, y hoy su único lector es el cómputo: de
+// acá sale el corte por planta de cada ítem. Documentación no los usa.
+//
+// `orden` es de abajo hacia arriba y lo decide el usuario arrastrando: no se
+// puede deducir del nombre, y el cómputo se lee subiendo por la obra.
+//
+// No hay ningún nivel obligatorio ni creado por defecto. Una obra sin niveles
+// cargados no está rota: el cómputo cae en "Toda la obra" hasta que se carguen.
+model NivelProyecto {
+  id         String   @id @default(cuid())
+  proyectoId String
+  proyecto   Proyecto @relation(fields: [proyectoId], references: [id], onDelete: Cascade)
+  nombre     String
+  orden      Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  mediciones ComputoMedicion[]
 
   @@unique([proyectoId, nombre])
   @@index([proyectoId])
@@ -586,23 +751,23 @@ model MovimientoFondo {
 /// tener pedido detrás (honorarios, un servicio) y porque es lo que el pago
 /// hereda al generarse.
 model Factura {
-  id          String    @id @default(cuid())
-  proyectoId  String
-  proyecto    Proyecto  @relation(fields: [proyectoId], references: [id], onDelete: Cascade)
-  proveedorId String
-  proveedor   Proveedor @relation(fields: [proveedorId], references: [id])
+  id               String    @id @default(cuid())
+  proyectoId       String
+  proyecto         Proyecto  @relation(fields: [proyectoId], references: [id], onDelete: Cascade)
+  proveedorId      String
+  proveedor        Proveedor @relation(fields: [proveedorId], references: [id])
   /// Número tal como figura en el papel (ej. "A-0001-00012345").
-  numero      String
-  fecha       DateTime
+  numero           String
+  fecha            DateTime
   /// Cuándo vence. Opcional: muchas facturas llegan sin fecha pactada y se
   /// pagan cuando se puede. Las que no la tienen quedan en su propio grupo,
   /// sin ensuciar el orden de las que sí vencen.
   fechaVencimiento DateTime?
   /// El total que dice la factura, con IVA y descuentos ya aplicados. Se carga
   /// a mano: los precios del pedido no incluyen ninguna de esas dos cosas.
-  monto       Decimal   @db.Decimal(14, 2)
-  moneda      Moneda
-  tipoCambio  Decimal?  @db.Decimal(10, 4)
+  monto            Decimal   @db.Decimal(14, 2)
+  moneda           Moneda
+  tipoCambio       Decimal?  @db.Decimal(10, 4)
 
   rubroId    String
   rubro      Rubro     @relation(fields: [rubroId], references: [id])
@@ -611,8 +776,8 @@ model Factura {
 
   archivoUrl String?
   notas      String?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   /// Los pedidos que esta factura respalda. Puede ser ninguno.
   pedidos Pedido[]
@@ -956,4 +1121,254 @@ model TareaAsignado {
 
   @@id([tareaId, userId])
   @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Cómputos
+// ---------------------------------------------------------------------------
+
+// Unidad en la que se mide un ítem del cómputo.
+//
+// Es un enum y no un String libre (como Material.unidad) porque acá la unidad
+// no es una etiqueta: decide qué se le pide al usuario al cargar una medición.
+// Si el ítem es M2 la pantalla pide largo y ancho; si es M3 suma el alto; si
+// es ML pide un largo solo. Con texto libre ("m2", "M2", "m²") esa decisión se
+// vuelve una adivinanza y la carga deja de ser guiada.
+//
+// GLOBAL es la salida para lo que no se mide sino que se cuenta entero ("cartel
+// de obra", "conexión de agua"): la medición queda con la cantidad y nada más.
+enum UnidadComputo {
+  M2
+  M3
+  ML
+  UN
+  KG
+  GLOBAL
+}
+
+// Catálogo compartido de ítems: el repertorio de cosas que el estudio computa
+// una y otra vez ("Contrapiso sobre terreno natural", "Mampostería de ladrillo
+// hueco 12"). No pertenece a ninguna obra.
+//
+// Existe para que empezar el cómputo de una obra nueva no sea empezar de cero:
+// se eligen los ítems del catálogo y se traen. Al traerlos se COPIAN (ver
+// ComputoItem.tipoId), no se referencian, igual que los tipos de documento: si
+// en esta obra el contrapiso va con otro espesor, se corrige acá sin ensuciar
+// el catálogo ni las demás obras.
+model ComputoItemTipo {
+  id         String        @id @default(cuid())
+  nombre     String
+  unidad     UnidadComputo
+  rubroId    String
+  rubro      Rubro         @relation(fields: [rubroId], references: [id], onDelete: Cascade)
+  // DORMIDO. El cómputo dejó de clasificar por Subrubro cuando se separó del
+  // flujo de fondos (ver ComputoSeccion). La columna queda por si se vuelve a
+  // atar la medición a la clasificación de la plata; hoy no la escribe nadie.
+  //
+  // El catálogo no tiene sección: las secciones son de cada obra, y un tipo del
+  // catálogo se trae a la obra y ahí recién cae en una.
+  subrubroId String?
+  subrubro   Subrubro?     @relation(fields: [subrubroId], references: [id], onDelete: SetNull)
+  orden      Int           @default(0)
+  activo     Boolean       @default(true)
+  createdAt  DateTime      @default(now())
+
+  items ComputoItem[]
+
+  @@unique([rubroId, nombre])
+  @@index([rubroId])
+  @@index([subrubroId])
+}
+
+// Un ítem del cómputo de una obra: qué se va a hacer o a comprar, en qué unidad
+// se mide, y (por sus mediciones) cuánto.
+//
+// El cómputo se organiza como lo organiza el estudio: rubro → subrubro → ítems.
+// El subrubro es el corte que ya existe en el gasto real (MANO DE OBRA /
+// MATERIALES) y también el que separa las dos etapas de trabajo: primero se
+// computa la mano de obra para que el contratista presupueste, y después, a
+// medida que avanza la obra, los materiales. Que el cómputo caiga en los mismos
+// dos baldes que el presupuesto y el flujo de fondos es lo que permite
+// comparar lo computado con lo gastado sin traducir nada.
+//
+// La cantidad total NO se guarda: se deriva sumando las mediciones (ver
+// src/lib/computos.ts), misma decisión que los montos mensuales de
+// PresupuestoItem. Guardarla obligaría a recalcularla y reescribirla en cada
+// alta, edición o borrado de una medición, y bastaría un error para que el
+// cómputo mostrara un número que sus propias filas no justifican. Derivándola,
+// el total siempre se puede defender: está a la vista de dónde sale.
+//
+// El rubro se copia en el ítem y no se lee del tipo de catálogo porque el ítem
+// puede no venir del catálogo (tipoId en null) y porque el rubro es lo que lo
+// ata al presupuesto y al flujo de fondos: tiene que estar siempre.
+model ComputoItem {
+  id          String           @id @default(cuid())
+  proyectoId  String
+  proyecto    Proyecto         @relation(fields: [proyectoId], references: [id], onDelete: Cascade)
+  rubroId     String
+  rubro       Rubro            @relation(fields: [rubroId], references: [id], onDelete: Cascade)
+  // La sección de obra dentro del rubro: MUROS, REVOQUES, CONTRAPISOS. Es la
+  // grilla donde vive este ítem, y es una columna de esa grilla.
+  //
+  // Cascade y no SetNull: un ítem es una columna de su sección, no algo que
+  // exista por su cuenta. Si se borra MUROS, "ladrillo hueco 12 de muros" no
+  // queda flotando en ningún lado, se va con ella.
+  //
+  // Nullable por los ítems que se cargaron antes de que existieran las
+  // secciones.
+  seccionId   String?
+  seccion     ComputoSeccion?  @relation(fields: [seccionId], references: [id], onDelete: Cascade)
+  // DORMIDO, igual que en ComputoItemTipo: el cómputo se separó del flujo de
+  // fondos y ya no clasifica por Subrubro. No la escribe nadie.
+  subrubroId  String?
+  subrubro    Subrubro?        @relation(fields: [subrubroId], references: [id], onDelete: SetNull)
+  // De dónde salió este ítem. Null = es propio de esta obra, no está en el
+  // catálogo. Es sólo procedencia: cambiar el nombre acá no cambia el del
+  // catálogo, y borrar el tipo no borra el ítem (SetNull).
+  tipoId      String?
+  tipo        ComputoItemTipo? @relation(fields: [tipoId], references: [id], onDelete: SetNull)
+  nombre      String
+  unidad      UnidadComputo
+  // Porcentaje de desperdicio del ítem (ej. 10.00 = +10%). Se carga una vez, al
+  // crear el ítem, junto con la unidad: el desperdicio es una propiedad del
+  // material y de cómo se trabaja —un ladrillo se rompe siempre igual—, no de
+  // la pared que se está midiendo. La grilla muestra las dos columnas, lo
+  // medido y lo medido con el desperdicio aplicado.
+  //
+  // Null = sin desperdicio. No es lo mismo que 0: 0 es "lo pensé y no lleva".
+  desperdicio Decimal?         @db.Decimal(5, 2)
+
+  // ── Conversión a material ────────────────────────────────────────────────
+  //
+  // Hay ítems que se miden en una unidad y se compran en otra. Una pared se
+  // mide en metros de pared, pero al corralón se le piden ladrillos, y el
+  // corralón los entrega por palet. Son tres lecturas del mismo trabajo, y
+  // antes de esto la segunda y la tercera se sacaban a mano en un papel aparte
+  // —que es exactamente donde se cuelan los errores de pedido—.
+  //
+  // Se guarda acá y no como un ítem derivado aparte (ver ComputoMedicion.
+  // origenId) porque no es otro trabajo: es la MISMA medición leída en otra
+  // unidad. Un derivado tiene sus propias filas, su propio total y se puede
+  // medir a mano; esto no, esto es una columna que se recalcula sola y que no
+  // se puede escribir. Hacerlo derivado obligaría a crear un ítem "Ladrillos"
+  // por cada pared y a mantener las dos columnas en sincronía a mano.
+  //
+  // Cuántas unidades de material entran por cada unidad medida: 15 ladrillos
+  // por metro de pared, 8 kg de cemento por m² de revoque. Null = el ítem se
+  // pide en la misma unidad en la que se mide y no hay nada que convertir.
+  rinde       Decimal?         @db.Decimal(12, 4)
+  // En qué queda la cuenta: UN para los ladrillos, KG para el cemento. Sólo
+  // tiene sentido junto con `rinde`.
+  rindeUnidad UnidadComputo?
+  // Cuántas unidades de material vienen por bulto: 198 ladrillos por palet, 25
+  // kg por bolsa. Null = se compra suelto y no hay bultos que contar.
+  porBulto    Decimal?         @db.Decimal(12, 4)
+  // Cómo se llama el bulto en la obra: "palet", "bolsa", "caja". Es la etiqueta
+  // de la fila del pie; sin esto diría "bultos", que no lo dice nadie.
+  bultoNombre String?
+
+  notas       String?
+  orden       Int              @default(0)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  mediciones ComputoMedicion[]
+  // Filas de otros ítems que salen de la cantidad de éste (ver
+  // ComputoMedicion.origenId). Está declarada para que borrar un ítem que
+  // alimenta a otros sea una decisión explícita y no una sorpresa.
+  derivadas  ComputoMedicion[] @relation("MedicionOrigen")
+
+  @@index([proyectoId])
+  @@index([rubroId])
+  @@index([seccionId])
+  @@index([subrubroId])
+  @@index([tipoId])
+}
+
+// Un renglón dentro de un ítem. Hay dos clases, y las dos son la misma fila
+// porque las dos suman al mismo total:
+//
+//   MEDIDA   "Living — 1 × 5,20 × 4,30"      → origenId en null
+//   DERIVADA "Sale de Mampostería × 15 +5%"  → origenId apunta al ítem de origen
+//
+// La fila medida es la razón de ser del módulo. El cómputo no es un número, es
+// la lista de dónde sale ese número: quién lo revisa tiene que poder leer
+// ambiente por ambiente y entender por qué el contrapiso da 148 m².
+//
+// La fila derivada es la segunda etapa: el material no se vuelve a medir, se
+// calcula sobre lo ya computado. 1.240 m² de mampostería × 15 ladrillos = 18.600.
+// Se modela como una fila más, y no como una "receta" aparte, porque en la obra
+// real un material viene de VARIOS trabajos a la vez — el cemento sale de la
+// mampostería, del revoque y del contrapiso — y con una fila por origen eso se
+// suma solo, se lee en la misma tabla y se corrige renglón por renglón.
+//
+// Las tres dimensiones son opcionales porque cuáles se usan lo decide la unidad
+// del ítem (ver UnidadComputo): M2 usa largo y ancho, M3 suma alto, ML usa
+// largo solo, y UN/KG/GLOBAL ninguna. El parcial de la fila es la cantidad por
+// las dimensiones que correspondan, y también se deriva.
+//
+// `deduccion` invierte el signo del parcial: es la forma de descontar los vanos
+// sin obligar a cargar números negativos. Un revoque se computa como la pared
+// entera y abajo se le restan las ventanas, que es exactamente como se mide en
+// obra y deja el descuento a la vista en vez de escondido en una resta ya hecha.
+model ComputoMedicion {
+  id          String            @id @default(cuid())
+  itemId      String
+  item        ComputoItem       @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  // Dónde se midió ("Living", "Eje 3 entre A y B"), o de qué sale si es
+  // derivada. Es lo que hace legible el cómputo, pero no se exige: a veces el
+  // ítem es una sola fila sin lugar.
+  descripcion String?
+  // En qué nivel de la obra va esta fila. El cómputo se mira y se paga por
+  // planta, así que el renglón tiene que saber a cuál pertenece: el ítem se
+  // computa una sola vez y adentro se abre por nivel.
+  //
+  // Null es válido y quiere decir "no es de una planta": la excavación, el
+  // obrador o el cerco son de toda la obra. Las filas derivadas también van en
+  // null, porque salen del TOTAL de otro ítem y ese total ya cruza los niveles.
+  //
+  // Restrict y no SetNull: borrar un nivel que tiene filas computadas no puede
+  // mandarlas calladas a "Toda la obra". El total quedaría igual y el detalle
+  // por planta se perdería sin que nadie se entere. Se bloquea y se avisa
+  // cuántas filas hay que mover primero (ver src/actions/niveles-proyecto.ts).
+  nivelId     String?
+  nivel       NivelProyecto?    @relation(fields: [nivelId], references: [id], onDelete: Restrict)
+  // La otra clase de fila de la grilla: una que existe sólo en esta sección
+  // ("SALA DE MÁQUINAS" adentro de MUROS). Ver ComputoFilaExtra.
+  //
+  // Es excluyente con nivelId: una medida está en una planta de la obra o en
+  // una fila puntual de esta grilla, nunca en las dos. Con los dos en null la
+  // fila es de toda la obra.
+  //
+  // Cascade y no Restrict, al revés que el nivel: la fila extra es de esta
+  // grilla y de nadie más, así que al borrarla no hay ningún otro lado donde
+  // esas medidas sigan queriendo decir algo. Igual la acción que la borra
+  // bloquea si tiene algo cargado, para que la pérdida no pase de costado.
+  filaExtraId String?
+  filaExtra   ComputoFilaExtra? @relation(fields: [filaExtraId], references: [id], onDelete: Cascade)
+  // En una fila medida: cuántas veces se repite esta medida (2 baños iguales,
+  // 8 columnas), default 1 para que cargar una medida suelta sea escribir sólo
+  // las dimensiones. En una fila derivada: el coeficiente por unidad del origen
+  // (15 ladrillos por m² de mampostería).
+  cantidad    Decimal           @default(1) @db.Decimal(12, 3)
+  largo       Decimal?          @db.Decimal(12, 3)
+  ancho       Decimal?          @db.Decimal(12, 3)
+  alto        Decimal?          @db.Decimal(12, 3)
+  deduccion   Boolean           @default(false)
+  // Sólo en filas derivadas: el ítem del que sale la cantidad. Cascade y no
+  // SetNull porque una fila derivada sin origen no es una fila incompleta, es
+  // una fila sin sentido: su número entero salía de ahí.
+  origenId    String?
+  origen      ComputoItem?      @relation("MedicionOrigen", fields: [origenId], references: [id], onDelete: Cascade)
+  // Porcentaje que se le suma a la cantidad derivada por roturas, recortes y
+  // sobrantes. Va acá y no metido en el coeficiente para que en el papel que se
+  // manda a cotizar se lea "18.600 + 5%" y no un 15,75 que nadie puede discutir.
+  desperdicio Decimal?          @db.Decimal(5, 2)
+  orden       Int               @default(0)
+  createdAt   DateTime          @default(now())
+
+  @@index([itemId])
+  @@index([origenId])
+  @@index([nivelId])
+  @@index([filaExtraId])
 }

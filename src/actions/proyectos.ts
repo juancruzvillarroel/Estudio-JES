@@ -13,7 +13,6 @@ import {
   type ProyectoPorcentajeHonorariosInput,
   type ProyectoFechaObraInput,
 } from "@/lib/validations/proyecto";
-import { sincronizarDocumentosPorPiso } from "@/actions/documentos";
 
 export type ActionState = { error?: string; success?: boolean } | undefined;
 
@@ -24,7 +23,6 @@ function parseForm(formData: FormData) {
     direccion: formData.get("direccion") || undefined,
     estado: formData.get("estado") || undefined,
     descripcion: formData.get("descripcion") || undefined,
-    cantidadPisos: formData.get("cantidadPisos") || undefined,
   });
 }
 
@@ -65,10 +63,9 @@ export async function createProyecto(_prevState: ActionState, formData: FormData
 
   const imagenUrl = await subirImagen(formData);
   const brochure = await subirBrochure(formData);
-  const proyecto = await prisma.proyecto.create({
+  await prisma.proyecto.create({
     data: { ...validated.data, imagenUrl, ...brochure },
   });
-  await sincronizarDocumentosPorPiso(proyecto.id, validated.data.cantidadPisos);
   revalidatePath("/proyectos");
   revalidatePath("/dashboard");
   return { success: true };
@@ -101,7 +98,6 @@ export async function updateProyecto(id: string, _prevState: ActionState, formDa
           : {}),
     },
   });
-  await sincronizarDocumentosPorPiso(id, validated.data.cantidadPisos);
   revalidatePath("/proyectos");
   revalidatePath(`/proyectos/${id}`);
   revalidatePath("/dashboard");

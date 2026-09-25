@@ -13,6 +13,7 @@ import {
 } from "@/components/proyectos/proyecto-secciones";
 import { TipoMovimientoBadge } from "@/components/movimientos/tipo-movimiento-badge";
 import { MunicipalSection } from "@/components/municipal/municipal-section";
+import { ComputoSection } from "@/components/computos/computo-section";
 import { DocumentacionSection } from "@/components/documentacion/documentacion-section";
 import { TareasSection } from "@/components/tareas/tareas-section";
 import { FlujoFondosSection } from "@/components/flujo-fondos/flujo-fondos-section";
@@ -23,6 +24,7 @@ import {
   mapMedioPago,
   mapUnidadProyecto,
 } from "@/lib/flujo-fondos";
+import { mapNivel } from "@/lib/niveles";
 import { ventaInclude, mapVenta } from "@/lib/ventas";
 import { facturaInclude, mapFactura, diaHoyArgentina } from "@/lib/facturas";
 import { mapPresupuestoItem } from "@/lib/presupuesto";
@@ -121,6 +123,7 @@ export default async function ProyectoDetallePage({
     movimientosRaw,
     mediosPagoRaw,
     unidadesRaw,
+    nivelesRaw,
     ventasRaw,
     presupuestoRaw,
     facturasRaw,
@@ -133,6 +136,8 @@ export default async function ProyectoDetallePage({
     tramitesTotal,
     documentosPresentados,
     documentosTotal,
+    itemsComputo,
+    itemsComputados,
   ] = await Promise.all([
       prisma.proyecto.findUnique({ where: { id } }),
       prisma.pedido.findMany({
@@ -174,6 +179,10 @@ export default async function ProyectoDetallePage({
       tieneFlujoFondos
         ? prisma.unidadProyecto.findMany({ where: { proyectoId: id }, orderBy: { nombre: "asc" } })
         : Promise.resolve([]),
+      // Los niveles de la obra, cargados a mano desde "Editar datos". Sin
+      // guardia de permisos: son un dato del proyecto, como el nombre o la
+      // dirección, y los ve cualquiera que pueda ver la portada.
+      prisma.nivelProyecto.findMany({ where: { proyectoId: id }, orderBy: { orden: "asc" } }),
       tieneFlujoFondos
         ? prisma.venta.findMany({
             where: { proyectoId: id },
@@ -216,11 +225,23 @@ export default async function ProyectoDetallePage({
           NOT: { reemplazadoPor: { some: { proyectoId: id } } },
         },
       }),
+      prisma.computoItem.count({ where: { proyectoId: id } }),
+      // Los que ya tienen al menos una fila cargada. No se suma ninguna
+      // cantidad: un cómputo mezcla m², m³, kg y unidades, y sumarlos daría un
+      // número que no significa nada. Lo que sí mide el avance es cuántas
+      // ítems están computados sobre cuántos hay.
+      prisma.computoItem.count({
+        where: { proyectoId: id, mediciones: { some: {} } },
+      }),
     ]);
 
   if (!proyecto) {
     notFound();
   }
+
+  // Los niveles de la obra se editan desde el mismo diálogo, así que se mapean
+  // antes que él.
+  const niveles = nivelesRaw.map(mapNivel);
 
   // El diálogo de edición es un client component, así que le pasamos solo los
   // campos que usa: `m2Vendibles` es un Decimal de Prisma y React no puede
@@ -235,7 +256,6 @@ export default async function ProyectoDetallePage({
     imagenUrl: proyecto.imagenUrl,
     brochureUrl: proyecto.brochureUrl,
     brochureNombre: proyecto.brochureNombre,
-    cantidadPisos: proyecto.cantidadPisos,
   };
 
   /**
@@ -263,6 +283,7 @@ export default async function ProyectoDetallePage({
       )}
       <ProyectoDialog
         proyecto={proyectoEditable}
+        niveles={niveles}
         trigger={<Button variant="outline">Editar datos</Button>}
       />
     </div>
@@ -381,6 +402,16 @@ export default async function ProyectoDetallePage({
       chips: [
         { etiqueta: "Faltan", valor: String(Math.max(0, documentosTotal - documentosPresentados)) },
       ],
+    },
+    computo: {
+      valor: itemsComputo === 0 ? "—" : `${itemsComputados}/${itemsComputo}`,
+      detalle: itemsComputo === 0 ? "sin ítems cargados" : "ítems computados",
+      progreso: itemsComputo > 0 ? { hechos: itemsComputados, total: itemsComputo } : null,
+      tono: itemsComputo > 0 && itemsComputados === itemsComputo ? "ok" : "neutral",
+      chips:
+        itemsComputo > 0
+          ? [{ etiqueta: "Faltan computar", valor: String(itemsComputo - itemsComputados) }]
+          : [],
     },
     flujoFondos: tieneFlujoFondos
       ? {
@@ -527,6 +558,9 @@ export default async function ProyectoDetallePage({
         tareas={<TareasSection proyectoId={proyecto.id} />}
         municipal={<MunicipalSection proyectoId={proyecto.id} />}
         documentacion={<DocumentacionSection proyectoId={proyecto.id} />}
+        computo={
+          <ComputoSection proyectoId={proyecto.id} proyectoNombre={proyecto.nombre} />
+        }
         flujoFondos={
           tieneFlujoFondos ? (
             <FlujoFondosSection

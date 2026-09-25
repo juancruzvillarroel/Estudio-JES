@@ -17,124 +17,25 @@ export async function crearCategoriaDocumento(
 
   const ultima = await prisma.documentoCategoria.findFirst({ orderBy: { orden: "desc" } });
 
-  const categoria = await prisma.documentoCategoria.upsert({
+  await prisma.documentoCategoria.upsert({
     where: { nombre: nombreTrim },
     update: { activo: true },
     create: { nombre: nombreTrim, orden: (ultima?.orden ?? 0) + 1, porPiso: !!porPiso },
   });
 
-  // Si la categoría es "por piso", generar de una los tipos para este
-  // proyecto (Planta baja + pisos ya cargados).
-  if (categoria.porPiso) {
-    const proyecto = await prisma.proyecto.findUnique({ where: { id: proyectoId } });
-    if (proyecto) {
-      await sincronizarDocumentosPorPiso(proyectoId, proyecto.cantidadPisos);
-    }
-  }
   revalidatePath(`/proyectos/${proyectoId}`);
 }
 
-// Códigos cortos de piso (para nombres con prefijo, ej. "S/PB") y sus
-// nombres largos equivalentes (ej. "Planta baja"), en orden.
-function pisosDelProyecto(cantidadPisos: number) {
-  return [
-    { codigo: "PB", nombreLargo: "Planta baja" },
-    ...Array.from({ length: cantidadPisos }, (_, i) => ({
-      codigo: `${i + 1}°`,
-      nombreLargo: `Piso ${i + 1}`,
-    })),
-    { codigo: "Azotea", nombreLargo: "Azotea" },
-  ];
-}
-
-type TipoDeseado = { subSeccion: string | null; nombre: string };
-
-// Tipos de documento a generar para una categoría "por piso", según su
-// configuración: un documento por piso (con o sin prefijo) o, si tiene
-// subTipos cargados (ej. instalaciones: sanitaria, gas, ...), cada sub-tipo
-// se convierte en su propia subsección (DocumentoTipo.subSeccion), con un
-// documento por piso (código corto: PB, 1°, 2°, ..., Azotea) adentro.
-function nombresPorPiso(
-  categoria: { prefijoPiso: string | null; subTipos: string[] },
-  cantidadPisos: number
-): TipoDeseado[] {
-  const pisos = pisosDelProyecto(cantidadPisos);
-
-  if (categoria.subTipos.length > 0) {
-    return categoria.subTipos.flatMap((sub) =>
-      pisos.map((p) => ({ subSeccion: sub, nombre: p.codigo }))
-    );
-  }
-
-  const nombrePiso = (p: { codigo: string; nombreLargo: string }) =>
-    categoria.prefijoPiso ? `${categoria.prefijoPiso}${p.codigo}` : p.nombreLargo;
-  return pisos.map((p) => ({ subSeccion: null, nombre: nombrePiso(p) }));
-}
-
-// Genera (o ajusta) un tipo de documento por piso (y por sub-tipo, si la
-// categoría los tiene) para cada categoría marcada como porPiso, scopeados
-// a este proyecto puntual (DocumentoTipo.proyectoId). Se llama al
-// crear/editar el proyecto (cuando cambia la cantidad de pisos) y al crear
-// una categoría por piso nueva. Es idempotente.
-export async function sincronizarDocumentosPorPiso(proyectoId: string, cantidadPisos: number) {
-  const categoriasPorPiso = await prisma.documentoCategoria.findMany({
-    where: { porPiso: true, activo: true },
-  });
-  if (categoriasPorPiso.length === 0) return;
-
-  const clave = (t: { subSeccion: string | null; nombre: string }) => `${t.subSeccion ?? ""}::${t.nombre}`;
-
-  for (const categoria of categoriasPorPiso) {
-    const deseados = nombresPorPiso(categoria, cantidadPisos);
-    // Solo los de primer nivel: esta función genera pisos, nunca subitems.
-    // Los subitems que el usuario haya agregado a mano adentro de un piso
-    // (parentId con valor) no están en `deseados`, así que sin este filtro
-    // caerían en la lista de "sobrantes" de más abajo y se borrarían solos
-    // la próxima vez que se guarde el proyecto.
-    const existentes = await prisma.documentoTipo.findMany({
-      where: { categoriaId: categoria.id, proyectoId, parentId: null },
-    });
-    const existentesPorClave = new Map(existentes.map((t) => [clave(t), t]));
-
-    for (let i = 0; i < deseados.length; i++) {
-      const deseado = deseados[i];
-      const existente = existentesPorClave.get(clave(deseado));
-      if (existente) {
-        // El usuario lo eliminó a mano: no se regenera solo.
-        if (existente.excluido) continue;
-        if (!existente.activo || existente.orden !== i) {
-          await prisma.documentoTipo.update({
-            where: { id: existente.id },
-            data: { activo: true, orden: i },
-          });
-        }
-      } else {
-        await prisma.documentoTipo.create({
-          data: {
-            categoriaId: categoria.id,
-            proyectoId,
-            subSeccion: deseado.subSeccion,
-            nombre: deseado.nombre,
-            orden: i,
-          },
-        });
-      }
-    }
-
-    // Los pisos que sobran (se redujo la cantidad de pisos, o cambió la
-    // config de subTipos) se ocultan, o se borran si todavía no tienen
-    // ningún documento cargado.
-    const clavesDeseadas = new Set(deseados.map(clave));
-    const sobrantes = existentes.filter((t) => !clavesDeseadas.has(clave(t)));
-    for (const tipo of sobrantes) {
-      try {
-        await prisma.documentoTipo.delete({ where: { id: tipo.id } });
-      } catch {
-        await prisma.documentoTipo.update({ where: { id: tipo.id }, data: { activo: false } });
-      }
-    }
-  }
-}
+// Las categorías "por piso" (DocumentoCategoria.porPiso) ya no generan nada
+// solas. Hubo una versión que armaba un plano por nivel de la obra y ocultaba
+// los que sobraban, pero el árbol de Documentación está cargado a mano, con
+// nombres propios por subsección y con dibujos que no son plantas
+// (FUNDACIONES, CORTE LONGITUDINAL, DETALLE VIGA VOLADIZO): generar sobre eso
+// duplicaba lo que ya estaba y barría lo que no reconocía.
+//
+// Los niveles quedan donde sirven, que es el cómputo. Los planos se cargan y
+// se ordenan a mano, como el resto del árbol. La marca DocumentoTipo.generado
+// queda para distinguir lo generado de lo escrito si esto se retoma.
 
 // Si la categoría ya tiene tipos de documento cargados no se puede borrar
 // (rompería esos tipos), así que en ese caso se la oculta del listado.
@@ -236,9 +137,9 @@ export async function crearTipoDocumento(
   return { id };
 }
 
-// Si el tipo es "de proyecto" (generado automáticamente por piso) se lo
-// marca como excluido en vez de borrarlo, para que sincronizarDocumentosPorPiso
-// no lo regenere solo la próxima vez que se guarde el proyecto. Si es del
+// Si el tipo es "de proyecto" (proyectoId con valor) se lo marca como excluido
+// en vez de borrarlo: la marca sobrevive a cualquier regeneración futura, así
+// que lo que se borró a mano no vuelve solo. Si es del
 // catálogo global y ya tiene instancias cargadas en algún otro proyecto no
 // se puede borrar (rompería esos registros), así que en ese caso se lo
 // oculta del listado en vez de eliminarlo.

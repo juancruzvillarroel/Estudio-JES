@@ -370,7 +370,8 @@ function AgregarCategoriaTile({ proyectoId }: { proyectoId: string }) {
       </div>
       <label className="flex items-center gap-2 text-xs text-muted-foreground">
         <Checkbox checked={porPiso} onCheckedChange={(checked) => setPorPiso(checked === true)} />
-        Varía por piso (se genera un documento por cada piso del proyecto)
+        Varía por piso (sus documentos son propios de esta obra, no del catálogo
+        compartido)
       </label>
     </div>
   );
