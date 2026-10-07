@@ -2,7 +2,7 @@ import { prisma } from "@/lib/db";
 import { DocumentacionBoard } from "./documentacion-board";
 
 export async function DocumentacionSection({ proyectoId }: { proyectoId: string }) {
-  const [categorias, tipos, reemplazos, documentos] = await Promise.all([
+  const [categorias, tipos, reemplazos, documentos, rubros, usuarios] = await Promise.all([
     prisma.documentoCategoria.findMany({
       where: { activo: true },
       orderBy: { orden: "asc" },
@@ -21,6 +21,10 @@ export async function DocumentacionSection({ proyectoId }: { proyectoId: string 
     prisma.documento.findMany({
       where: { proyectoId },
     }),
+    // Para el selector de rubro por categoría y para crear tareas desde un
+    // plano (ver botón "Nueva tarea" en DocumentoItemCard).
+    prisma.rubro.findMany({ orderBy: { orden: "asc" }, select: { id: true, nombre: true } }),
+    prisma.user.findMany({ orderBy: { nombre: "asc" }, select: { id: true, nombre: true } }),
   ]);
 
   // De cada documento compartido que esta obra se despegó se lista la copia
@@ -33,6 +37,8 @@ export async function DocumentacionSection({ proyectoId }: { proyectoId: string 
       categorias={categorias}
       tipos={tipos.filter((t) => !reemplazados.has(t.id))}
       documentos={documentos}
+      rubros={rubros}
+      usuarios={usuarios}
     />
   );
 }

@@ -15,23 +15,28 @@ export default async function TareasPage() {
     prisma.user.findMany({ orderBy: { nombre: "asc" }, select: { id: true, nombre: true } }),
   ]);
 
+  // El encabezado se le pasa a `TareasGlobal` en vez de dibujarse acá porque el
+  // botón de "Nueva tarea" va en ese mismo renglón, y ese botón necesita el
+  // `onSaved` que vive adentro del componente cliente. Igual que en Pedidos, la
+  // acción principal de la pantalla va arriba a la derecha.
+  //
+  // El título va con el mismo marcado de siempre y no con <PageHeader />: ese
+  // componente le mide el ancho al <h1> y le recorta el subtítulo a esa medida,
+  // que acá dejaba el encabezado irreconocible.
   return (
-    <div>
-      <div className="border-b border-neutral-800 pb-4">
-        <h1 className="text-3xl font-semibold tracking-tight">Tareas</h1>
-        <p className="text-sm text-muted-foreground">
-          Pendientes de todas las obras. Filtrá por obra, rubro o persona asignada.
-        </p>
-      </div>
-
-      <div className="mt-6">
-        <TareasGlobal
-          tareas={tareasRaw.map(mapTarea)}
-          proyectos={proyectos}
-          rubros={rubros}
-          usuarios={usuarios}
-        />
-      </div>
-    </div>
+    <TareasGlobal
+      encabezado={
+        <div>
+          <h1 className="text-3xl font-semibold tracking-tight">Tareas</h1>
+          <p className="text-sm text-muted-foreground">
+            Pendientes de todas las obras. Filtrá por obra, rubro o persona asignada.
+          </p>
+        </div>
+      }
+      tareas={tareasRaw.map(mapTarea)}
+      proyectos={proyectos}
+      rubros={rubros}
+      usuarios={usuarios}
+    />
   );
 }

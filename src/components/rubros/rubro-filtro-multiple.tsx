@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 
 type RubroOpcion = { id: string; nombre: string };
 
@@ -24,6 +25,7 @@ export function RubroFiltroMultiple({
   value,
   onChange,
   incluirSinRubro = false,
+  className = "w-40 shrink-0",
 }: {
   id: string;
   label?: string;
@@ -32,6 +34,13 @@ export function RubroFiltroMultiple({
   onChange: (ids: string[]) => void;
   /** Agrega una opción extra "Sin rubro" identificada con SIN_RUBRO. */
   incluirSinRubro?: boolean;
+  /**
+   * Ancho del filtro. El botón mide siempre el 100% de esta caja, así que basta
+   * con cambiar esto para que el filtro ocupe todo el renglón en un celular.
+   * El valor por omisión es el ancho fijo de siempre, para no mover de lugar a
+   * las pantallas que no piden nada.
+   */
+  className?: string;
 }) {
   const toggle = (rubroId: string) => {
     onChange(value.includes(rubroId) ? value.filter((v) => v !== rubroId) : [...value, rubroId]);
@@ -51,7 +60,7 @@ export function RubroFiltroMultiple({
         : `${value.length} rubros`;
 
   return (
-    <div className="flex shrink-0 flex-col gap-2">
+    <div className={cn("flex flex-col gap-2", className)}>
       <Label htmlFor={id}>{label}</Label>
       <Popover>
         <PopoverTrigger
@@ -61,7 +70,7 @@ export function RubroFiltroMultiple({
               type="button"
               variant="outline"
               size="sm"
-              className="w-40 justify-between gap-1.5 font-normal"
+              className="w-full justify-between gap-1.5 font-normal"
             >
               <span className="min-w-0 flex-1 truncate text-left">{etiqueta}</span>
               <ChevronDownIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />

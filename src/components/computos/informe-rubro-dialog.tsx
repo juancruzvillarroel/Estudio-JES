@@ -20,12 +20,14 @@ import {
 } from "@/components/computos/informe-rubro";
 import {
   claveFilaKey,
+  fechaDeComputo,
   ordenarFilas,
   simboloUnidad,
   tieneMedidoEnFila,
   TIPOS_COMPUTO,
   TIPO_COMPUTO_LABEL,
   type ClaveFila,
+  type FechaComputoOpcion,
   type FilaExtraOpcion,
   type ItemOpcion,
   type SeccionOpcion,
@@ -131,14 +133,17 @@ function Grupo({
  */
 export function InformeRubroDialog({
   proyectoNombre,
+  rubroId,
   rubroNombre,
   niveles,
   secciones,
   filasExtra,
   items,
   totales,
+  fechas,
 }: {
   proyectoNombre: string;
+  rubroId: string;
   rubroNombre: string;
   niveles: NivelOpcion[];
   /** Las secciones de ESTE rubro, de los dos lados. */
@@ -149,6 +154,8 @@ export function InformeRubroDialog({
   items: ItemOpcion[];
   /** Los totales de toda la obra, para resolver las filas derivadas. */
   totales: Map<string, number>;
+  /** Cuándo se tocó por última vez cada lado de este rubro. */
+  fechas: FechaComputoOpcion[];
 }) {
   const [open, setOpen] = useState(false);
 
@@ -308,7 +315,12 @@ export function InformeRubroDialog({
           (conVacias || itemsSeccion.some((i) => tieneMedidoEnFila(i, f.clave)))
       );
 
-      return { seccion, filas, items: itemsSeccion };
+      return {
+        seccion,
+        filas,
+        items: itemsSeccion,
+        modificadoEl: fechaDeComputo(fechas, rubroId, seccion.tipo),
+      };
     });
 
   const listo = armarSecciones();

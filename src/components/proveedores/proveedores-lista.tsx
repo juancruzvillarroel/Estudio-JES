@@ -56,14 +56,18 @@ export function ProveedoresLista({
 
   return (
     <div>
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="flex flex-wrap items-end gap-3">
+      {/* En móvil el buscador, el filtro y el botón van uno debajo del otro y
+          cada uno ocupa el renglón entero: sueltos quedaban tres cajas angostas
+          de anchos distintos con huecos en el medio. De `sm` para arriba vuelven
+          a la fila de siempre, con el botón contra el borde derecho. */}
+      <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
+        <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-end">
           <div className="flex flex-col gap-1.5">
             <Input
               placeholder="Buscar proveedor o código..."
               value={busqueda}
               onChange={(e) => setBusqueda(e.target.value)}
-              className="w-56"
+              className="w-full sm:w-56"
             />
           </div>
           <RubroFiltroMultiple
@@ -71,6 +75,7 @@ export function ProveedoresLista({
             rubros={rubros}
             value={rubroIds}
             onChange={setRubroIds}
+            className="w-full sm:w-40 sm:shrink-0"
           />
         </div>
         {nuevoProveedor}

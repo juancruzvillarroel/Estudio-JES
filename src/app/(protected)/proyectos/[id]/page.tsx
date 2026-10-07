@@ -267,11 +267,28 @@ export default async function ProyectoDetallePage({
    * El de brochure aparece solo si hay uno cargado: un botón que abre la nada
    * no dice qué falta hacer. Se sube desde "Editar datos".
    */
+
+  /**
+   * El fondo de los dos botones va translúcido y con desenfoque detrás.
+   *
+   * Sobre la foto, un fondo opaco es un parche rectangular tapando justo la
+   * esquina de arriba, que es donde suele estar el cielo o la fachada. Así la
+   * imagen se sigue viendo debajo, y el desenfoque es lo que mantiene el texto
+   * legible aunque abajo haya una zona clara.
+   *
+   * En la portada sin foto no se nota nada: `bg-background/60` sobre el fondo
+   * de la página es el mismo color, sólo que el borde y el hover quedan un
+   * poco más suaves.
+   */
+  const botonVidrio =
+    "border-white/25 bg-background/60 backdrop-blur-sm hover:bg-background/80";
+
   const acciones = (
     <div className="flex shrink-0 flex-col items-end gap-2">
       {proyecto.brochureUrl && (
         <Button
           variant="outline"
+          className={botonVidrio}
           nativeButton={false}
           render={
             <a href={proyecto.brochureUrl} target="_blank" rel="noopener noreferrer">
@@ -284,7 +301,11 @@ export default async function ProyectoDetallePage({
       <ProyectoDialog
         proyecto={proyectoEditable}
         niveles={niveles}
-        trigger={<Button variant="outline">Editar datos</Button>}
+        trigger={
+          <Button variant="outline" className={botonVidrio}>
+            Editar datos
+          </Button>
+        }
       />
     </div>
   );
@@ -442,22 +463,26 @@ export default async function ProyectoDetallePage({
               className="absolute inset-0 h-full w-full object-cover"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/15 to-transparent" />
-            <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 p-4 sm:p-6">
-              <div>
-                <div className="flex items-center gap-2">
-                  <h1 className="text-3xl font-semibold tracking-tight text-white">{proyecto.nombre}</h1>
-                  <Badge variant={proyecto.estado === "ACTIVO" ? "secondary" : "outline"}>
-                    {ESTADO_LABELS[proyecto.estado]}
-                  </Badge>
-                </div>
-                {proyecto.barrio && (
-                  <p className="text-sm text-white/80">{capitalizarOracion(proyecto.barrio)}</p>
-                )}
-                <p className="text-sm text-white/80">
-                  {proyecto.direccion ? capitalizarOracion(proyecto.direccion) : "Sin dirección"}
-                </p>
+            {/* Los botones arriba a la derecha, en su propia caja. Antes
+                compartían el renglón de abajo con el nombre de la obra y en un
+                celular se lo comían: el título quedaba en una tira de dos
+                palabras por renglón al lado de dos botones que no se achican.
+                Arriba tienen la esquina para ellos solos y el nombre recupera
+                todo el ancho. */}
+            <div className="absolute top-0 right-0 p-4 sm:p-6">{acciones}</div>
+            <div className="absolute inset-x-0 bottom-0 p-4 sm:p-6">
+              <div className="flex items-center gap-2">
+                <h1 className="text-3xl font-semibold tracking-tight text-white">{proyecto.nombre}</h1>
+                <Badge variant={proyecto.estado === "ACTIVO" ? "secondary" : "outline"}>
+                  {ESTADO_LABELS[proyecto.estado]}
+                </Badge>
               </div>
-              {acciones}
+              {proyecto.barrio && (
+                <p className="text-sm text-white/80">{capitalizarOracion(proyecto.barrio)}</p>
+              )}
+              <p className="text-sm text-white/80">
+                {proyecto.direccion ? capitalizarOracion(proyecto.direccion) : "Sin dirección"}
+              </p>
             </div>
           </div>
         ) : (

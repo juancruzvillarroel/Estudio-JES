@@ -1,5 +1,5 @@
 import { ComputoBoard } from "@/components/computos/computo-board";
-import { mapFilaExtra, mapItem, mapSeccion } from "@/lib/computos";
+import { mapFechaComputo, mapFilaExtra, mapItem, mapSeccion } from "@/lib/computos";
 import { mapNivel } from "@/lib/niveles";
 import { prisma } from "@/lib/db";
 
@@ -10,7 +10,7 @@ export async function ComputoSection({
   proyectoId: string;
   proyectoNombre: string;
 }) {
-  const [niveles, rubros, secciones, filasExtra, items] = await Promise.all([
+  const [niveles, rubros, secciones, filasExtra, items, fechas] = await Promise.all([
     // Las filas de cada grilla: se cargan a mano en "Editar datos", con el
     // nombre que tienen en la obra ("PLANTA TIPO", "4TO PISO").
     prisma.nivelProyecto.findMany({
@@ -48,6 +48,9 @@ export async function ComputoSection({
       orderBy: { orden: "asc" },
       include: { mediciones: { orderBy: { orden: "asc" } } },
     }),
+    // Cuándo se tocó por última vez cada cómputo (rubro + lado) de esta obra.
+    // Sin fila todavía para el rubro que no se empezó a cargar.
+    prisma.computoFecha.findMany({ where: { proyectoId } }),
   ]);
 
   return (
@@ -59,6 +62,7 @@ export async function ComputoSection({
       secciones={secciones.map(mapSeccion)}
       filasExtra={filasExtra.map(mapFilaExtra)}
       items={items.map(mapItem)}
+      fechas={fechas.map(mapFechaComputo)}
     />
   );
 }

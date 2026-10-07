@@ -89,11 +89,23 @@ const TIPO_ITEMS: Record<Tipo, string> = {
   ENTREGA: "Entrega",
 };
 
-const COL_PEDIDO = "w-20 px-1.5 sm:w-24 sm:px-2";
+// Los anchos de la tabla, que es `table-fixed`: lo que no tiene ancho se
+// reparte lo que sobra en partes iguales.
+//
+// Acá `Proyecto` es la única sin ancho, así que se queda con todo el sobrante.
+// Para ensancharla hay dos movimientos, y los dos hacen falta:
+//
+//   1. Apretar `Pedido` y `Estado`, que son cortos y de ancho previsible: el
+//      número es "#0012" y el estado, en un pedido, es un puntito de color.
+//   2. Ponerle ancho fijo a `Proveedor`. Sin esto no alcanzaba con apretar las
+//      otras dos, porque `Proveedor` tampoco tenía ancho y se llevaba la mitad
+//      de cada centímetro liberado. Clavada en 224px, todo lo demás va a parar
+//      a `Proyecto`, que es la columna por la que se busca una fila.
+const COL_PEDIDO = "w-14 px-1 sm:w-[4.5rem] sm:px-2";
 const COL_TIPO = "hidden sm:table-cell sm:w-28";
-const COL_PROVEEDOR = "hidden sm:table-cell";
+const COL_PROVEEDOR = "hidden sm:table-cell sm:w-56";
 const COL_FECHA = "hidden sm:table-cell sm:w-28";
-const COL_ULTIMA = "w-16 px-1.5 sm:w-28 sm:px-2";
+const COL_ULTIMA = "w-10 px-1 sm:w-16 sm:px-2";
 // Más ancha que antes: los pedidos abiertos suman una cuarta acción —registrar
 // la entrega— y con el ancho viejo el cuarto ícono se salía de la celda.
 const COL_ACCIONES = "w-32 px-1 sm:w-36 sm:px-2";

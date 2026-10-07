@@ -177,6 +177,52 @@ export const TIPO_COMPUTO_LABEL: Record<TipoComputo, string> = {
 };
 
 /**
+ * Cuándo se tocó por última vez un número del cómputo de un rubro y lado en
+ * una obra (ver ComputoFecha en el esquema). Una por rubro y lado: no hay
+ * fila para el rubro que todavía no se empezó a cargar.
+ */
+export type FechaComputoOpcion = {
+  proyectoId: string;
+  rubroId: string;
+  tipo: TipoComputo;
+  modificadoEl: Date;
+};
+
+export function mapFechaComputo(f: {
+  proyectoId: string;
+  rubroId: string;
+  tipo: string;
+  modificadoEl: Date;
+}): FechaComputoOpcion {
+  return {
+    proyectoId: f.proyectoId,
+    rubroId: f.rubroId,
+    tipo: f.tipo as TipoComputo,
+    modificadoEl: f.modificadoEl,
+  };
+}
+
+/**
+ * La fecha de modificación de un rubro y lado puntual, o null si ese cómputo
+ * todavía no tiene nada tocado.
+ */
+export function fechaDeComputo(
+  fechas: FechaComputoOpcion[],
+  rubroId: string,
+  tipo: TipoComputo
+): Date | null {
+  return (
+    fechas.find((f) => f.rubroId === rubroId && f.tipo === tipo)?.modificadoEl ?? null
+  );
+}
+
+/** Cómo se muestra arriba a la derecha de una grilla: "Modificado el 6/10/2026". */
+export function formatFechaModificacion(fecha: Date | null): string {
+  if (!fecha) return "Sin modificaciones";
+  return `Modificado el ${fecha.toLocaleDateString("es-AR")}`;
+}
+
+/**
  * Una sección del cómputo: MUROS, REVOQUES, CONTRAPISOS adentro de ALBAÑILERÍA.
  *
  * Es la grilla que se ve en pantalla. Las filas son los niveles de la obra y
@@ -527,6 +573,8 @@ export type ItemOpcion = {
   porBulto: number | null;
   /** Cómo se llama el bulto: "palet", "bolsa". */
   bultoNombre: string | null;
+  /** Marca y modelo, cuando corresponde: "FV Siena blanco". No entra en ninguna cuenta. */
+  modelo: string | null;
   notas: string | null;
   orden: number;
   mediciones: MedicionOpcion[];
@@ -589,6 +637,7 @@ export function mapItem(p: {
   rindeUnidad?: string | null;
   porBulto?: unknown;
   bultoNombre?: string | null;
+  modelo?: string | null;
   notas: string | null;
   orden: number;
   mediciones?: Parameters<typeof mapMedicion>[0][];
@@ -607,6 +656,7 @@ export function mapItem(p: {
     rindeUnidad: (p.rindeUnidad as UnidadComputo | null) ?? null,
     porBulto: aNumero(p.porBulto),
     bultoNombre: p.bultoNombre ?? null,
+    modelo: p.modelo ?? null,
     notas: p.notas,
     orden: p.orden,
     mediciones: (p.mediciones ?? []).map(mapMedicion),
@@ -847,3 +897,30 @@ export function resumirComputo(items: ItemOpcion[]): ResumenComputo {
 
 /** Nombre del subrubro cuando un ítem no tiene ninguno asignado. */
 export const SIN_SUBRUBRO = "General";
+
+/**
+ * ¿Este ítem es hierro, que se mide en metros lineales y se compra en barras
+ * comerciales de 12 m?
+ *
+ * No hay un campo dedicado para esto: se reconoce por cómo quedó armada su
+ * conversión (metros → kg, agrupada como "barra"), que es justo lo que deja
+ * el modo simplificado del diálogo del ítem (ver ItemSeccionDialog). Así no
+ * hace falta una migración, y un ítem de otro rubro que también se mida en ML
+ * —un zócalo, una cañería— y no se haya armado así no entra en esta regla: la
+ * grilla de hierro es un caso puntual, no "todo lo que se mida en metros".
+ */
+export function esHierro(item: {
+  unidad: UnidadComputo;
+  rinde: number | null;
+  rindeUnidad: UnidadComputo | null;
+  porBulto: number | null;
+  bultoNombre: string | null;
+}): boolean {
+  return (
+    item.unidad === "ML" &&
+    item.rinde !== null &&
+    item.rindeUnidad === "KG" &&
+    item.porBulto !== null &&
+    (item.bultoNombre ?? "").trim().toLowerCase() === "barra"
+  );
+}

@@ -1,6 +1,9 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { ListPlus } from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DeleteButton } from "@/components/ui/delete-button";
 import {
@@ -9,6 +12,8 @@ import {
   renombrarTipoDocumento,
 } from "@/actions/documentos";
 import { cn } from "@/lib/utils";
+import type { OpcionSimple } from "@/lib/tareas";
+import { TareaDialog } from "@/components/tareas/tarea-dialog";
 import { BotonRenombrar, RenombrarFila } from "./renombrar-fila";
 
 export function DocumentoItemCard({
@@ -19,6 +24,9 @@ export function DocumentoItemCard({
   estado,
   compartido,
   dragHandle,
+  rubroIdInicial,
+  rubros,
+  usuarios,
 }: {
   proyectoId: string;
   tipoId: string;
@@ -28,6 +36,10 @@ export function DocumentoItemCard({
   /** Si viene del catálogo global, para avisar que al renombrarlo se despega. */
   compartido?: boolean;
   dragHandle?: React.ReactNode;
+  /** Rubro configurado en la categoría de este plano, para el botón "Nueva tarea". */
+  rubroIdInicial: string | null;
+  rubros: OpcionSimple[];
+  usuarios: OpcionSimple[];
 }) {
   const [pending, startTransition] = useTransition();
   const [editando, setEditando] = useState(false);
@@ -67,6 +79,24 @@ export function DocumentoItemCard({
         <p className="text-sm font-medium">{nombre}</p>
         {descripcion && <p className="truncate text-xs text-muted-foreground">{descripcion}</p>}
       </div>
+      <TareaDialog
+        proyectoId={proyectoId}
+        rubros={rubros}
+        usuarios={usuarios}
+        rubroIdInicial={rubroIdInicial}
+        contexto={nombre}
+        onSaved={(tarea) => toast.success(`Tarea creada: "${tarea.titulo}"`)}
+        trigger={
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label={`Crear tarea para "${nombre}"`}
+          >
+            <ListPlus className="h-3.5 w-3.5" />
+          </Button>
+        }
+      />
       <BotonRenombrar nombre={nombre} onClick={() => setEditando(true)} />
       <DeleteButton
         iconOnly

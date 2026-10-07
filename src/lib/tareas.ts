@@ -104,13 +104,24 @@ export type TareaSeccionOpcion = {
  * El paso por revisión es opcional: al tildar una tarea se elige si va a
  * revisión o si se da por terminada ahí mismo. Desde revisión se aprueba
  * (COMPLETADA) o se devuelve, y volver a PENDIENTE no es un estado nuevo sino
- * el mismo de siempre con `aCorregir` prendido: la tarea tiene que reaparecer
- * entre las pendientes, no en una cuarta lista aparte.
+ * el mismo de siempre con `aCorregir` prendido. Ver `VistaTarea` para cómo se
+ * separa eso en la UI.
  */
 export type EstadoTarea = "PENDIENTE" | "EN_REVISION" | "COMPLETADA";
 
-export const ESTADO_TAREA_LABELS: Record<EstadoTarea, string> = {
+/**
+ * Las cuatro solapas de la UI. No es el estado real de la tarea: "A corregir"
+ * sigue siendo PENDIENTE por dentro (ver `aCorregir`), sólo que la pantalla la
+ * separa de las pendientes comunes para no mezclar lo que volvió rebotado de
+ * una revisión con lo que todavía no se tocó. Apenas se vuelve a mandar
+ * —aprobada o de nuevo a revisión— sale de esta solapa y no vuelve a
+ * Pendientes por su cuenta.
+ */
+export type VistaTarea = "PENDIENTE" | "A_CORREGIR" | "EN_REVISION" | "COMPLETADA";
+
+export const VISTA_TAREA_LABELS: Record<VistaTarea, string> = {
   PENDIENTE: "Pendientes",
+  A_CORREGIR: "A corregir",
   EN_REVISION: "En revisión",
   COMPLETADA: "Completadas",
 };
@@ -188,11 +199,19 @@ export function avanceItems(tarea: TareaOpcion): { hechos: number; total: number
   };
 }
 
-const ORDEN_ESTADO: Record<EstadoTarea, number> = {
-  PENDIENTE: 0,
-  EN_REVISION: 1,
-  COMPLETADA: 2,
-};
+/**
+ * Qué tareas le corresponden a cada solapa.
+ *
+ * "A corregir" y "Pendientes" parten el mismo estado real (PENDIENTE) según
+ * `aCorregir`; las otras dos solapas son el estado tal cual. Separado en una
+ * función porque tanto la vista de una obra como la global necesitan el mismo
+ * corte, para los conteos de cada solapa y para la lista que se muestra.
+ */
+export function tareasDeVista(tareas: TareaOpcion[], vista: VistaTarea): TareaOpcion[] {
+  if (vista === "A_CORREGIR") return tareas.filter((t) => t.estado === "PENDIENTE" && t.aCorregir);
+  if (vista === "PENDIENTE") return tareas.filter((t) => t.estado === "PENDIENTE" && !t.aCorregir);
+  return tareas.filter((t) => t.estado === vista);
+}
 
 /**
  * Orden de la lista: por fecha de creación, de la más nueva a la más vieja.
@@ -203,28 +222,22 @@ const ORDEN_ESTADO: Record<EstadoTarea, number> = {
  * cargaste está siempre arriba. La prioridad sigue a la vista en el badge y se
  * puede filtrar por ella.
  *
- * Antes que la fecha se miran dos cosas:
+ * Las que están en revisión son la excepción y se ordenan al revés, de la que
+ * hace más tiempo que espera a la más reciente: ahí lo que interesa es
+ * destrabar lo más viejo.
  *
- * - El estado, que las agrupa en el orden del circuito. Ahora cada estado tiene
- *   su propia solapa, así que casi nunca conviven en la misma lista, pero el
- *   orden queda igual por si alguna vista las junta.
- * - Lo que volvió de la revisión, que va arriba de todo entre las pendientes:
- *   es trabajo que alguien ya dio por hecho y quedó frenado esperando el
- *   arreglo, así que es lo primero que hay que ver.
- *
- * Las que están en revisión se ordenan al revés, de la que hace más tiempo que
- * espera a la más reciente: ahí lo que interesa es destrabar lo más viejo.
+ * No hay que distinguir por estado acá: quien llama ya filtró a una sola
+ * solapa con `tareasDeVista`, así que todas las que llegan juntas comparten
+ * estado (y, entre las pendientes, el mismo `aCorregir`).
  */
 export function ordenarTareas(tareas: TareaOpcion[]): TareaOpcion[] {
   return [...tareas].sort((a, b) => {
-    if (a.estado !== b.estado) return ORDEN_ESTADO[a.estado] - ORDEN_ESTADO[b.estado];
     if (a.estado === "EN_REVISION") {
       // `?? createdAt`: las que ya estaban en la base antes de que existiera la
       // revisión no tienen fecha, y sin este respaldo caerían todas juntas.
       const espera = (t: TareaOpcion) => t.enRevisionEl ?? t.createdAt;
       return espera(a).localeCompare(espera(b));
     }
-    if (a.aCorregir !== b.aCorregir) return a.aCorregir ? -1 : 1;
     return b.createdAt.localeCompare(a.createdAt);
   });
 }

@@ -1,24 +1,25 @@
 "use client";
 
 import { Tabs, TabsList, TabsTrigger, TabsIndicator, TabsContent } from "@/components/ui/tabs";
-import { ESTADO_TAREA_LABELS, type EstadoTarea } from "@/lib/tareas";
+import { VISTA_TAREA_LABELS, type VistaTarea } from "@/lib/tareas";
 
-/** El orden del circuito: se hace, se revisa, se cierra. */
-const ESTADOS: EstadoTarea[] = ["PENDIENTE", "EN_REVISION", "COMPLETADA"];
+/** El orden del circuito: se hace, y si vuelve rebotada se corrige antes de
+ * reintentar; de ahí se revisa y se cierra. */
+const VISTAS: VistaTarea[] = ["PENDIENTE", "A_CORREGIR", "EN_REVISION", "COMPLETADA"];
 
 /**
- * Las tres solapas de tareas, iguales en la pestaña de una obra y en la vista
+ * Las cuatro solapas de tareas, iguales en la pestaña de una obra y en la vista
  * de todas juntas.
  *
  * Reemplazan al tilde de "Ver completadas", que servía cuando había dos listas
- * pero se queda corto con tres: había que adivinar dónde fue a parar una tarea
- * que se mandó a revisar. Acá los tres destinos están siempre a la vista, cada
- * uno con cuántas tiene, así se ve de un vistazo si hay algo esperando que lo
- * miren sin tener que entrar a buscarlo.
+ * pero se queda corto con más: había que adivinar dónde fue a parar una tarea
+ * que se mandó a revisar o que volvió para corregir. Acá los cuatro destinos
+ * están siempre a la vista, cada uno con cuántas tiene, así se ve de un
+ * vistazo si hay algo esperando que lo miren sin tener que entrar a buscarlo.
  *
  * El contenido va adentro de la solapa activa y no debajo: así el panel queda
  * asociado a su solapa para el lector de pantalla. Se dibuja una sola —la
- * elegida— porque las tres muestran lo mismo con otra lista, y el `key` la
+ * elegida— porque las cuatro muestran lo mismo con otra lista, y el `key` la
  * hace montar de nuevo en cada cambio, que es lo que dispara la animación de
  * entrada.
  */
@@ -28,15 +29,15 @@ export function EstadoTareasTabs({
   conteos,
   children,
 }: {
-  value: EstadoTarea;
-  onChange: (estado: EstadoTarea) => void;
-  conteos: Record<EstadoTarea, number>;
+  value: VistaTarea;
+  onChange: (vista: VistaTarea) => void;
+  conteos: Record<VistaTarea, number>;
   children: React.ReactNode;
 }) {
   return (
-    <Tabs value={value} onValueChange={(v) => onChange(v as EstadoTarea)}>
+    <Tabs value={value} onValueChange={(v) => onChange(v as VistaTarea)}>
       {/* Mismo criterio que las solapas de Flujo de fondos: ocupan todo el
-          ancho y se reparten en partes iguales. En móvil los tres nombres con
+          ancho y se reparten en partes iguales. En móvil los cuatro nombres con
           su número no entran en un renglón, así que envuelven y cada una vuelve
           a medir lo que dice, en vez de quedar cortadas contra el borde.
 
@@ -49,12 +50,12 @@ export function EstadoTareasTabs({
         className="w-full max-sm:h-auto! max-sm:flex-wrap max-sm:gap-1 max-sm:[&_[data-slot=tabs-trigger]]:h-7 max-sm:[&_[data-slot=tabs-trigger]]:flex-none"
       >
         <TabsIndicator />
-        {ESTADOS.map((estado) => (
-          <TabsTrigger key={estado} value={estado}>
-            {ESTADO_TAREA_LABELS[estado]}
+        {VISTAS.map((vista) => (
+          <TabsTrigger key={vista} value={vista}>
+            {VISTA_TAREA_LABELS[vista]}
             {/* El número va aparte y en tabular para que no baile de ancho al
                 pasar de 9 a 10 y mueva el nombre de lugar. */}
-            <span className="tabular-nums opacity-70">{conteos[estado]}</span>
+            <span className="tabular-nums opacity-70">{conteos[vista]}</span>
           </TabsTrigger>
         ))}
       </TabsList>

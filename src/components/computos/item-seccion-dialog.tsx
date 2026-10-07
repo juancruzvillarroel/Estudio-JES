@@ -11,6 +11,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -27,6 +28,7 @@ import {
   eliminarItem,
 } from "@/actions/computos";
 import {
+  esHierro,
   formatCantidad,
   UNIDADES,
   UNIDAD_INFO,
@@ -116,6 +118,17 @@ export function ItemSeccionDialog({
   );
   const [porBulto, setPorBulto] = useState(aTexto(item?.porBulto));
   const [bultoNombre, setBultoNombre] = useState(item?.bultoNombre ?? "");
+  const [modelo, setModelo] = useState(item?.modelo ?? "");
+  // Este interruptor es sólo para el hierro: un ítem medido en ML no es hierro
+  // por el solo hecho de medirse en metros (un zócalo, una cañería, también se
+  // miden así y no vienen en barras de 12 m). Arranca marcado sólo si el ítem
+  // ya se había armado así.
+  const [esBarraHierro, setEsBarraHierro] = useState(item ? esHierro(item) : false);
+  // Las barras de hierro son siempre de 12 m: no hay rinde que elegir ni bulto
+  // que nombrar, sólo cuánto pesa cada barra. Ver bloque de abajo.
+  const [pesoBarra, setPesoBarra] = useState(
+    item && esHierro(item) ? aTexto(item.porBulto) : ""
+  );
 
   const handleOpenChange = (abierto: boolean) => {
     setOpen(abierto);
@@ -130,6 +143,9 @@ export function ItemSeccionDialog({
     setRindeUnidad(item?.rindeUnidad ?? "UN");
     setPorBulto(aTexto(item?.porBulto));
     setBultoNombre(item?.bultoNombre ?? "");
+    setModelo(item?.modelo ?? "");
+    setEsBarraHierro(item ? esHierro(item) : false);
+    setPesoBarra(item && esHierro(item) ? aTexto(item.porBulto) : "");
   };
 
   // El <Select> de Base UI necesita el mapa value → label para mostrar el texto
@@ -152,25 +168,55 @@ export function ItemSeccionDialog({
       return;
     }
 
-    const cuanto = parsePositivo(rinde);
-    if (!cuanto.ok) {
-      setError("El rinde tiene que ser un número mayor a 0.");
-      return;
-    }
-    const bulto = parsePositivo(porBulto);
-    if (!bulto.ok) {
-      setError("Lo que viene por bulto tiene que ser un número mayor a 0.");
-      return;
+    // El hierro no tiene rinde para elegir: va siempre en barras de 12 m, así
+    // que lo único que hace falta es cuánto pesa cada una. De ahí sale todo lo
+    // demás (ver handleSubmit más abajo, rama "ML").
+    let conversion: {
+      rinde: number | null;
+      rindeUnidad: UnidadComputo | null;
+      porBulto: number | null;
+      bultoNombre: string | null;
+    };
+    if (unidad === "ML" && esBarraHierro) {
+      const peso = parsePositivo(pesoBarra);
+      if (!peso.ok) {
+        setError("El peso de la barra tiene que ser un número mayor a 0.");
+        return;
+      }
+      conversion =
+        peso.valor === null
+          ? { rinde: null, rindeUnidad: null, porBulto: null, bultoNombre: null }
+          : {
+              rinde: peso.valor / 12,
+              rindeUnidad: "KG",
+              porBulto: peso.valor,
+              bultoNombre: "barra",
+            };
+    } else {
+      const cuanto = parsePositivo(rinde);
+      if (!cuanto.ok) {
+        setError("El rinde tiene que ser un número mayor a 0.");
+        return;
+      }
+      const bulto = parsePositivo(porBulto);
+      if (!bulto.ok) {
+        setError("Lo que viene por bulto tiene que ser un número mayor a 0.");
+        return;
+      }
+      conversion = {
+        rinde: cuanto.valor,
+        rindeUnidad: cuanto.valor === null ? null : rindeUnidad,
+        porBulto: bulto.valor,
+        bultoNombre,
+      };
     }
 
     const datos = {
       nombre,
       unidad,
       desperdicio: merma.valor,
-      rinde: cuanto.valor,
-      rindeUnidad,
-      porBulto: bulto.valor,
-      bultoNombre,
+      ...conversion,
+      modelo: modelo.trim() || null,
     };
 
     startTransition(async () => {
@@ -213,6 +259,20 @@ export function ItemSeccionDialog({
             <p className="text-xs text-muted-foreground">
               Va a aparecer como una columna de {seccionNombre}, con una celda por
               nivel.
+            </p>
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="itemSeccionModelo">Modelo</Label>
+            <Input
+              id="itemSeccionModelo"
+              value={modelo}
+              onChange={(e) => setModelo(e.target.value)}
+              placeholder="FV Siena blanco"
+            />
+            <p className="text-xs text-muted-foreground">
+              La marca y el modelo elegidos, si ya se sabe. No entra en ninguna
+              cuenta, es sólo para tenerlo anotado.
             </p>
           </div>
 
@@ -263,97 +323,144 @@ export function ItemSeccionDialog({
             </p>
           </div>
 
-          {/* La conversión a material. Está escrita como una frase y no como
-              cuatro campos con etiqueta porque es una sola idea partida en
-              pedazos —"cada m² rinde 15 unidades, y vienen 198 por palet"— y
-              leída de corrido se entiende sin explicación.
-              La aclaración de arriba da ejemplos de rubros distintos a propósito:
-              esto no es una función para ladrillos, es para cualquier material
-              que se mida en una unidad y se compre en otra, que en obra son casi
-              todos. Con un solo ejemplo parecía hecho para mampostería. */}
-          <div className="flex flex-col gap-3 rounded-md border bg-muted/30 p-3">
-            <div className="flex flex-col gap-1">
-              <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
-                Se compra en otra unidad
-              </p>
-              <p className="text-xs text-muted-foreground">
-                Para todo material que se mide de una forma y se compra de otra: la
-                pared se mide en m² y se piden ladrillos por palet, el contrapiso se
-                mide en m³ y se piden bolsas de cemento, el hierro se calcula en kg y
-                se pide en barras. Se carga cuánto material entra en cada{" "}
-                {info.simbolo} y, si viene agrupado, cuánto trae cada bulto. Vacío es
-                que se pide igual que se mide.
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2 text-sm">
-              <span className="text-muted-foreground">Cada {info.simbolo} rinde</span>
-              <Input
-                aria-label="Rinde"
-                value={rinde}
-                onChange={(e) => setRinde(e.target.value)}
-                placeholder="15"
-                inputMode="decimal"
-                className="w-20"
+          {/* Sólo para hierro: medirse en ML no alcanza, un zócalo o una
+              cañería también se miden así y no vienen en barras de 12 m. Por
+              eso es un interruptor aparte y no algo que se prenda solo con la
+              unidad. */}
+          {unidad === "ML" && (
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox
+                checked={esBarraHierro}
+                onCheckedChange={(checked) => setEsBarraHierro(checked === true)}
               />
-              <Select
-                value={rindeUnidad}
-                onValueChange={(v) => setRindeUnidad(v as UnidadComputo)}
-                items={unidadItems}
-              >
-                <SelectTrigger aria-label="Unidad del material" className="w-44">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {UNIDADES.map((u) => (
-                    <SelectItem key={u} value={u}>
-                      {UNIDAD_INFO[u].nombre} ({UNIDAD_INFO[u].simbolo})
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+              Es hierro: viene en barras de 12 m
+            </label>
+          )}
 
-            {/* El bulto sin rinde no significa nada: un palet de qué. Por eso la
-                segunda línea aparece recién cuando hay de qué contar palets. */}
-            {rinde.trim() !== "" && (
-              <div className="flex flex-wrap items-center gap-2 text-sm duration-200 animate-in fade-in slide-in-from-top-1">
-                <span className="text-muted-foreground">Vienen</span>
+          {unidad === "ML" && esBarraHierro ? (
+            // El hierro no necesita el bloque genérico de abajo: la barra
+            // comercial es siempre de 12 m, así que no hay rinde que elegir ni
+            // bulto que nombrar. Lo único que hace falta saber es cuánto pesa
+            // cada barra, y de ahí se derivan las otras dos columnas de la
+            // grilla (cantidad de barras y kilos).
+            <div className="flex flex-col gap-3 rounded-md border bg-muted/30 p-3">
+              <div className="flex flex-col gap-1">
+                <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                  Viene en barras de 12 m
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Cada diámetro pesa distinto. Con el peso de la barra, la
+                  grilla calcula sola, por nivel, cuántas barras hacen falta
+                  (los metros cargados ÷ 12) y cuántos kilos son. Vacío es que
+                  no se convierte: la columna queda sólo en metros.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="text-muted-foreground">Cada barra pesa</span>
                 <Input
-                  aria-label="Por bulto"
-                  value={porBulto}
-                  onChange={(e) => setPorBulto(e.target.value)}
-                  placeholder="198"
+                  aria-label="Peso de la barra"
+                  value={pesoBarra}
+                  onChange={(e) => setPesoBarra(e.target.value)}
+                  placeholder="4,74"
                   inputMode="decimal"
                   className="w-24"
                 />
-                <span className="text-muted-foreground">por</span>
-                <Input
-                  aria-label="Nombre del bulto"
-                  value={bultoNombre}
-                  onChange={(e) => setBultoNombre(e.target.value)}
-                  placeholder="palet"
-                  className="w-32"
-                />
+                <span className="text-muted-foreground">kg</span>
               </div>
-            )}
+            </div>
+          ) : (
+            /* La conversión a material. Está escrita como una frase y no como
+               cuatro campos con etiqueta porque es una sola idea partida en
+               pedazos —"cada m² rinde 15 unidades, y vienen 198 por palet"— y
+               leída de corrido se entiende sin explicación.
+               La aclaración de arriba da ejemplos de rubros distintos a propósito:
+               esto no es una función para ladrillos, es para cualquier material
+               que se mida en una unidad y se compre en otra, que en obra son casi
+               todos. Con un solo ejemplo parecía hecho para mampostería. */
+            <div className="flex flex-col gap-3 rounded-md border bg-muted/30 p-3">
+              <div className="flex flex-col gap-1">
+                <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+                  Se compra en otra unidad
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Para todo material que se mide de una forma y se compra de otra: la
+                  pared se mide en m² y se piden ladrillos por palet, el contrapiso se
+                  mide en m³ y se piden bolsas de cemento. Se carga cuánto material
+                  entra en cada {info.simbolo} y, si viene agrupado, cuánto trae cada
+                  bulto. Vacío es que se pide igual que se mide.
+                </p>
+              </div>
 
-            {rinde.trim() !== "" && (
-              <p className="text-xs text-muted-foreground">
-                La grilla suma una columna con el material por nivel
-                {porBulto.trim() !== "" && (
-                  <>
-                    , y el pie una fila con los {bultoNombre.trim() || "bultos"} que
-                    hay que pedir
-                  </>
-                )}
-                .{" "}
-                {desperdicio.trim() !== "" && desperdicio.trim() !== "0" && (
-                  <>La cuenta arranca de lo medido con el desperdicio ya aplicado.</>
-                )}
-              </p>
-            )}
-          </div>
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <span className="text-muted-foreground">Cada {info.simbolo} rinde</span>
+                <Input
+                  aria-label="Rinde"
+                  value={rinde}
+                  onChange={(e) => setRinde(e.target.value)}
+                  placeholder="15"
+                  inputMode="decimal"
+                  className="w-20"
+                />
+                <Select
+                  value={rindeUnidad}
+                  onValueChange={(v) => setRindeUnidad(v as UnidadComputo)}
+                  items={unidadItems}
+                >
+                  <SelectTrigger aria-label="Unidad del material" className="w-44">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {UNIDADES.map((u) => (
+                      <SelectItem key={u} value={u}>
+                        {UNIDAD_INFO[u].nombre} ({UNIDAD_INFO[u].simbolo})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* El bulto sin rinde no significa nada: un palet de qué. Por eso la
+                  segunda línea aparece recién cuando hay de qué contar palets. */}
+              {rinde.trim() !== "" && (
+                <div className="flex flex-wrap items-center gap-2 text-sm duration-200 animate-in fade-in slide-in-from-top-1">
+                  <span className="text-muted-foreground">Vienen</span>
+                  <Input
+                    aria-label="Por bulto"
+                    value={porBulto}
+                    onChange={(e) => setPorBulto(e.target.value)}
+                    placeholder="198"
+                    inputMode="decimal"
+                    className="w-24"
+                  />
+                  <span className="text-muted-foreground">por</span>
+                  <Input
+                    aria-label="Nombre del bulto"
+                    value={bultoNombre}
+                    onChange={(e) => setBultoNombre(e.target.value)}
+                    placeholder="palet"
+                    className="w-32"
+                  />
+                </div>
+              )}
+
+              {rinde.trim() !== "" && (
+                <p className="text-xs text-muted-foreground">
+                  La grilla suma una columna con el material por nivel
+                  {porBulto.trim() !== "" && (
+                    <>
+                      , y el pie una fila con los {bultoNombre.trim() || "bultos"} que
+                      hay que pedir
+                    </>
+                  )}
+                  .{" "}
+                  {desperdicio.trim() !== "" && desperdicio.trim() !== "0" && (
+                    <>La cuenta arranca de lo medido con el desperdicio ya aplicado.</>
+                  )}
+                </p>
+              )}
+            </div>
+          )}
 
           {error && <p className="text-sm text-error">{error}</p>}
 

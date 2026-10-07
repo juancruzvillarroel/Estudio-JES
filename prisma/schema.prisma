@@ -150,6 +150,7 @@ model Proyecto {
   facturas         Factura[]
   computo          ComputoItem[]
   computoSecciones ComputoSeccion[]
+  computoFechas    ComputoFecha[]
 }
 
 // Catálogo de categorías de la pestaña "Municipal": igual que
@@ -264,6 +265,15 @@ model DocumentoCategoria {
   // DocumentoTipo.subSeccion, y no salen de acá.
   subTipos    String[] @default([])
   createdAt   DateTime @default(now())
+
+  // A qué rubro del catálogo pertenecen los planos de esta categoría (ej.
+  // "Instalaciones" -> Instalación sanitaria, o el rubro que corresponda).
+  // Se configura una sola vez desde la pantalla de documentación y de ahí
+  // en más cada plano de la categoría ya sabe con qué rubro crear una tarea,
+  // sin tener que elegirlo de nuevo cada vez. Null mientras no se configuró,
+  // o en categorías que no corresponden a ningún rubro (Pliegos, por ej.).
+  rubroId     String?
+  rubro       Rubro?   @relation(fields: [rubroId], references: [id])
 
   tipos DocumentoTipo[]
 }
@@ -427,6 +437,8 @@ model Rubro {
   itemTipos        ComputoItemTipo[]
   computo          ComputoItem[]
   computoSecciones ComputoSeccion[]
+  computoFechas    ComputoFecha[]
+  categoriasDocumento DocumentoCategoria[]
 }
 
 // De qué lado de la obra es un cómputo: lo que se compra, o lo que se paga por
@@ -439,6 +451,36 @@ model Rubro {
 enum TipoComputo {
   MATERIALES
   MANO_DE_OBRA
+}
+
+// Cuándo se tocó por última vez un número del cómputo de este rubro y lado
+// (ver TipoComputo) en esta obra: una celda medida, un renglón del detalle o
+// una fila derivada. Es lo que se muestra arriba a la derecha de la grilla y
+// lo que se imprime en el PDF — sin esto, quien lo recibe no tiene forma de
+// saber si lo que tiene en la mano es la última versión o una de hace un mes.
+//
+// Es UNA por rubro y lado, y no una por sección ni una por obra entera: un
+// cómputo (MUROS, REVOQUES, CONTRAPISOS...) son varias secciones a la vez, y
+// lo que importa es cuándo se tocó cualquiera de ellas, no cuál en particular.
+// Vive en su propia tabla y no como columna de ComputoSeccion porque la fecha
+// es del conjunto, no de una fila: así alcanza con una fila acá por cada
+// rubro y lado que se empezó a cargar, en vez de tener que mirar el máximo
+// entre varias secciones cada vez que hay que mostrarla.
+//
+// Nace recién cuando se toca el primer número: un rubro sin cómputo cargado no
+// tiene "última modificación", tiene nada, y una fila con la fecha de hoy
+// mentiría que ya se empezó.
+model ComputoFecha {
+  id           String      @id @default(cuid())
+  proyectoId   String
+  proyecto     Proyecto    @relation(fields: [proyectoId], references: [id], onDelete: Cascade)
+  rubroId      String
+  rubro        Rubro       @relation(fields: [rubroId], references: [id], onDelete: Cascade)
+  tipo         TipoComputo
+  modificadoEl DateTime    @default(now())
+
+  @@unique([proyectoId, rubroId, tipo])
+  @@index([proyectoId])
 }
 
 // El corte del cómputo adentro de un rubro: MUROS, REVOQUES, CONTRAPISOS e
@@ -1048,10 +1090,12 @@ model Tarea {
   // Desde cuándo está esperando que alguien la revise. Ordena la lista de
   // revisión: primero lo que hace más tiempo que está trabado.
   enRevisionEl   DateTime?
-  // La devolvieron de la revisión. Es un campo aparte y no un estado porque la
-  // tarea vuelve a estar pendiente igual que cualquier otra: tiene que
-  // aparecer en la lista de pendientes, no en una cuarta lista propia. Lo
-  // único que cambia es que se muestra con el cartelito "Corregir".
+  // La devolvieron de la revisión. Es un campo aparte y no un estado nuevo de
+  // `EstadoTarea`: por dentro la tarea sigue PENDIENTE, sólo que la UI separa
+  // estas en su propia solapa "A corregir" (ver `VistaTarea` en lib/tareas.ts)
+  // para no mezclar lo que volvió rebotado con lo que todavía no se tocó. Se
+  // apaga solo al volver a mandarla (`cambiarEstadoTarea`), así que de ahí no
+  // regresa a Pendientes por su cuenta.
   aCorregir      Boolean        @default(false)
   // Qué hay que corregir, según quien la revisó. Es opcional: se puede
   // devolver sin escribir nada.
@@ -1266,6 +1310,14 @@ model ComputoItem {
   // Cómo se llama el bulto en la obra: "palet", "bolsa", "caja". Es la etiqueta
   // de la fila del pie; sin esto diría "bultos", que no lo dice nadie.
   bultoNombre String?
+
+  // Marca y modelo del artefacto o grifería, cuando corresponde (ver rubro
+  // Artefactos y griferías: "FV Siena blanco", "Hidromet 1a línea"). Es un
+  // dato comercial y no entra en ninguna cuenta del cómputo; se imprime al
+  // lado del nombre del ítem para que la orden de compra diga qué pieza
+  // exacta es y no sólo "inodoro". Cualquier ítem lo puede tener, no sólo los
+  // de ese rubro: no hay forma de saber de antemano a quién más le sirve.
+  modelo      String?
 
   notas       String?
   orden       Int              @default(0)

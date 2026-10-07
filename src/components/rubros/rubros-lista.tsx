@@ -92,21 +92,25 @@ function RubroBlock({
         >
           {rubro.nombre}
         </button>
-        {/* Se avisa solo cuando el rubro se sale de lo normal, para no repetir
-            "paga honorarios" en los veintipico que sí pagan. */}
+        {/* De acá al lápiz, todo se esconde en móvil.
+            Eran tres cosas `shrink-0` peleando por el ancho con un nombre
+            `flex-1 min-w-0`: en una pantalla de celular ganaban ellas y el
+            nombre del rubro se encogía hasta desaparecer, que es justamente lo
+            único que hay que poder leer para elegir un rubro. Los contadores no
+            se pierden: bajan al panel que se abre al desplegarlo. */}
         {rubro.esHonorarios ? (
-          <span className="shrink-0 rounded border px-1.5 py-0.5 text-xs text-muted-foreground">
+          <span className="hidden shrink-0 rounded border px-1.5 py-0.5 text-xs text-muted-foreground sm:inline-block">
             Honorarios
           </span>
         ) : !rubro.pagaHonorarios ? (
-          <span className="shrink-0 rounded border px-1.5 py-0.5 text-xs text-muted-foreground">
+          <span className="hidden shrink-0 rounded border px-1.5 py-0.5 text-xs text-muted-foreground sm:inline-block">
             No paga honorarios
           </span>
         ) : null}
-        <span className="shrink-0 text-xs text-muted-foreground">
+        <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
           {rubro.subrubros.length} subrubros
         </span>
-        <span className="shrink-0 text-xs text-muted-foreground">
+        <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
           {rubro._count.proveedores} proveedores
         </span>
         <RubroDialog
@@ -120,7 +124,24 @@ function RubroBlock({
       </div>
 
       {expandido && (
-        <div className="border-t bg-muted/30 p-3 pl-14">
+        // El sangrado profundo alinea el panel con el nombre del rubro, pero en
+        // un celular esos 56px son casi un quinto de la pantalla. En móvil se
+        // reduce; de `sm` para arriba queda como estaba.
+        <div className="border-t bg-muted/30 p-3 pl-4 sm:pl-14">
+          {/* Los contadores que se esconden de la fila reaparecen acá, que es
+              donde el usuario los pidió: no en la previsualización, sí al
+              ampliar el rubro. De `sm` para arriba ya están arriba, así que acá
+              sobran. */}
+          <div className="mb-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground sm:hidden">
+            {rubro.esHonorarios ? (
+              <span className="rounded border px-1.5 py-0.5">Honorarios</span>
+            ) : !rubro.pagaHonorarios ? (
+              <span className="rounded border px-1.5 py-0.5">No paga honorarios</span>
+            ) : null}
+            <span>{rubro.subrubros.length} subrubros</span>
+            <span>·</span>
+            <span>{rubro._count.proveedores} proveedores</span>
+          </div>
           <div className="flex flex-col gap-2">
             {rubro.subrubros.length === 0 ? (
               <p className="text-xs text-muted-foreground">Sin subrubros todavía.</p>
@@ -227,12 +248,14 @@ export function RubrosLista({
 
   return (
     <div>
-      <div className="flex flex-wrap items-end justify-between gap-3">
+      {/* En móvil el buscador ocupa todo el ancho y el botón queda debajo; el
+          `w-56` fijo dejaba media pantalla vacía al lado de un campo angosto. */}
+      <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
         <Input
           placeholder="Buscar rubro, prefijo o subrubro..."
           value={busqueda}
           onChange={(e) => setBusqueda(e.target.value)}
-          className="w-56"
+          className="w-full sm:w-56"
         />
         {nuevoRubro}
       </div>

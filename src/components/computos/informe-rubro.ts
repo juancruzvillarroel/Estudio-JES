@@ -46,6 +46,8 @@ export type SeccionInforme = {
   filas: FilaInforme[];
   /** Las columnas, en orden. */
   items: ItemOpcion[];
+  /** Cuándo se tocó por última vez este rubro de este lado. Null = nunca. */
+  modificadoEl: Date | null;
 };
 
 export type DatosInformeRubro = {
@@ -75,6 +77,11 @@ function fechaLarga(iso: string) {
     month: "long",
     year: "numeric",
   });
+}
+
+/** Fecha corta, para repetir al lado de cada sección sin ocupar renglón: "6/10/2026". */
+function fechaCorta(fecha: Date) {
+  return fecha.toLocaleDateString("es-AR");
 }
 
 /** La ventana se abre en `about:blank`: el logo necesita la URL absoluta. */
@@ -291,8 +298,15 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
   return `
     <section class="bloque">
       <h2>
-        ${esc(seccion.seccion.nombre)}
-        <span class="lado">${esc(TIPO_COMPUTO_LABEL[seccion.seccion.tipo])}</span>
+        <span>
+          ${esc(seccion.seccion.nombre)}
+          <span class="lado">${esc(TIPO_COMPUTO_LABEL[seccion.seccion.tipo])}</span>
+        </span>
+        ${
+          seccion.modificadoEl
+            ? `<span class="modificado">Modificado el ${esc(fechaCorta(seccion.modificadoEl))}</span>`
+            : ""
+        }
       </h2>
       <table class="grilla">
         <thead>${encabezado}</thead>
@@ -371,6 +385,16 @@ function construirHtml(datos: DatosInformeRubro) {
       text-transform: none;
       letter-spacing: 0;
       opacity: 0.75;
+    }
+    /* La fecha va aparte del nombre y del lado, pegada al borde derecho: es un
+       dato de control y no del título, así que no entra en la misma frase. */
+    .bloque h2 .modificado {
+      font-weight: 400;
+      text-transform: none;
+      letter-spacing: 0;
+      font-size: 9px;
+      opacity: 0.75;
+      white-space: nowrap;
     }
 
     table.grilla { width: 100%; border-collapse: collapse; }

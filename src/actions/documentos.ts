@@ -439,6 +439,25 @@ export async function reordenarCategoriasDocumento(proyectoId: string, idsEnOrde
   return { success: true };
 }
 
+// El rubro de una categoría es, como el nombre, una sola fila compartida por
+// todas las obras: se configura una vez (ej. "Instalaciones" -> Instalación
+// sanitaria) y de ahí en más todos los planos de esa categoría, en cualquier
+// obra, ya saben con qué rubro crear una tarea sin preguntar de nuevo.
+export async function actualizarRubroCategoriaDocumento(
+  proyectoId: string,
+  categoriaId: string,
+  rubroId: string | null
+) {
+  await requireSeccion("proyectos");
+
+  await prisma.documentoCategoria.update({
+    where: { id: categoriaId },
+    data: { rubroId },
+  });
+  revalidatePath(`/proyectos/${proyectoId}`);
+  return { success: true };
+}
+
 async function getOrCreateDocumento(proyectoId: string, tipoId: string) {
   return prisma.documento.upsert({
     where: { proyectoId_tipoId: { proyectoId, tipoId } },

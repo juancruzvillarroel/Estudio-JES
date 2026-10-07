@@ -12,10 +12,13 @@ import { InformeRubroDialog } from "@/components/computos/informe-rubro-dialog";
 import { crearSeccion, eliminarItem } from "@/actions/computos";
 import {
   calcularTotales,
+  fechaDeComputo,
   formatCantidad,
+  formatFechaModificacion,
   simboloUnidad,
   TIPOS_COMPUTO,
   TIPO_COMPUTO_LABEL,
+  type FechaComputoOpcion,
   type FilaExtraOpcion,
   type ItemOpcion,
   type SeccionOpcion,
@@ -23,6 +26,22 @@ import {
 } from "@/lib/computos";
 import type { NivelOpcion } from "@/lib/niveles";
 import { cn } from "@/lib/utils";
+
+/**
+ * "Modificado el 6/10/2026", arriba a la derecha de la grilla.
+ *
+ * Es del rubro Y del lado que está abierto, no de la obra entera: materiales
+ * y mano de obra son dos cómputos distintos (ver SwitchTipo) y cada uno se
+ * edita en un momento distinto, así que comparten fecha sería mentir sobre
+ * cuál de los dos se tocó.
+ */
+function FechaModificacion({ fecha }: { fecha: Date | null }) {
+  return (
+    <p className="shrink-0 text-xs text-muted-foreground">
+      {formatFechaModificacion(fecha)}
+    </p>
+  );
+}
 
 export type RubroComputo = {
   id: string;
@@ -259,6 +278,7 @@ export function ComputoBoard({
   secciones: seccionesProp,
   filasExtra: filasExtraProp,
   items: itemsProp,
+  fechas: fechasProp,
 }: {
   proyectoId: string;
   proyectoNombre: string;
@@ -270,6 +290,8 @@ export function ComputoBoard({
   /** Las filas puntuales de cada sección, todas juntas: cada grilla toma las suyas. */
   filasExtra: FilaExtraOpcion[];
   items: ItemOpcion[];
+  /** Cuándo se tocó por última vez cada rubro y lado. Ver FechaModificacion. */
+  fechas: FechaComputoOpcion[];
 }) {
   const [items, setItems] = useState(itemsProp);
   const [prevItems, setPrevItems] = useState(itemsProp);
@@ -277,6 +299,8 @@ export function ComputoBoard({
   const [prevSecciones, setPrevSecciones] = useState(seccionesProp);
   const [filasExtra, setFilasExtra] = useState(filasExtraProp);
   const [prevFilasExtra, setPrevFilasExtra] = useState(filasExtraProp);
+  const [fechas, setFechas] = useState(fechasProp);
+  const [prevFechas, setPrevFechas] = useState(fechasProp);
   const [rubrosAbiertos, setRubrosAbiertos] = useState<Set<string>>(new Set());
   /**
    * De qué lado está parado cada rubro. Se guarda por rubro y no uno solo para
@@ -299,6 +323,10 @@ export function ComputoBoard({
   if (filasExtraProp !== prevFilasExtra) {
     setPrevFilasExtra(filasExtraProp);
     setFilasExtra(filasExtraProp);
+  }
+  if (fechasProp !== prevFechas) {
+    setPrevFechas(fechasProp);
+    setFechas(fechasProp);
   }
 
   const toggleRubro = (id: string) =>
@@ -409,6 +437,39 @@ export function ComputoBoard({
           const cuantos = items.filter((i) => i.rubroId === rubro.id).length;
           const abierto = rubrosAbiertos.has(rubro.id);
 
+          /**
+           * El nombre del rubro y, al lado, lo que tiene adentro.
+           *
+           * Está en una variable porque el encabezado se dibuja dos veces: como
+           * botón en escritorio y como texto pelado en celular (ver abajo).
+           *
+           * Los contadores se esconden en móvil por la misma razón que en la
+           * lista de Rubros: son `shrink-0` y le ganan el ancho a un nombre
+           * `flex-1 min-w-0`, que es lo único que hay que poder leer.
+           *
+           * Cerrado cuenta el rubro entero, los dos lados: es el resumen de lo
+           * que hay adentro, no el de la grilla que quedó abierta. Un rubro
+           * vacío no dice "0 secciones": dice nada, y el silencio ya significa
+           * que está sin empezar.
+           */
+          const tituloRubro = (
+            <>
+              {/* Escalón 1 de 3. El rubro es el techo de la pantalla, así que
+                  se lleva el cuerpo más grande, la negrita más pesada y la caja
+                  alta. Abajo suyo la sección y el ítem bajan de tamaño y de
+                  peso, para que se vea de dónde cuelga qué sin tener que leer. */}
+              <span className="min-w-0 truncate text-sm font-bold tracking-wide text-foreground uppercase">
+                {rubro.nombre}
+              </span>
+              {todas.length > 0 && (
+                <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">
+                  {todas.length} {todas.length === 1 ? "sección" : "secciones"}
+                  {cuantos > 0 && ` · ${cuantos} ${cuantos === 1 ? "ítem" : "ítems"}`}
+                </span>
+              )}
+            </>
+          );
+
           return (
             // Dónde termina un rubro y empieza el otro se lee por el fondo, no
             // por un marco: el rubro abierto se hunde en gris y las grillas
@@ -427,11 +488,12 @@ export function ComputoBoard({
                   abierto ? "border-b bg-muted/70" : "bg-muted/30 hover:bg-muted/50"
                 )}
               >
+                {/* De `sm` para arriba, el encabezado abre y cierra el rubro. */}
                 <button
                   type="button"
                   onClick={() => toggleRubro(rubro.id)}
                   aria-expanded={abierto}
-                  className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                  className="hidden min-w-0 flex-1 items-center gap-2 text-left sm:flex"
                 >
                   <ChevronRight
                     className={cn(
@@ -439,20 +501,19 @@ export function ComputoBoard({
                       abierto && "rotate-90"
                     )}
                   />
-                  <span className="min-w-0 truncate text-sm font-semibold text-foreground">
-                    {rubro.nombre}
-                  </span>
-                  {/* Cerrado cuenta el rubro entero, los dos lados: es el resumen
-                      de lo que hay adentro, no el de la grilla que quedó abierta.
-                      Un rubro vacío no dice "0 secciones": dice nada, y el
-                      silencio ya significa que está sin empezar. */}
-                  {todas.length > 0 && (
-                    <span className="shrink-0 text-xs text-muted-foreground">
-                      {todas.length} {todas.length === 1 ? "sección" : "secciones"}
-                      {cuantos > 0 && ` · ${cuantos} ${cuantos === 1 ? "ítem" : "ítems"}`}
-                    </span>
-                  )}
+                  {tituloRubro}
                 </button>
+
+                {/* En celular el rubro no se despliega y por eso acá no hay
+                    botón: es texto y nada más.
+                    La grilla son los niveles como filas y un ítem por columna,
+                    o sea una tabla que no entra ni de casualidad en una pantalla
+                    de teléfono; abrirla sólo dejaba una franja de números sin
+                    encabezado a la vista. Lo que sí sirve desde el teléfono es
+                    bajarse el cómputo del rubro, y ese botón queda al lado. */}
+                <div className="flex min-w-0 flex-1 items-center gap-2 sm:hidden">
+                  {tituloRubro}
+                </div>
 
                 {/* El botón de bajar el PDF va acá afuera y no adentro del que
                     abre: un botón dentro de otro botón no es HTML válido, y
@@ -460,24 +521,32 @@ export function ComputoBoard({
                 {todas.length > 0 && (
                   <InformeRubroDialog
                     proyectoNombre={proyectoNombre}
+                    rubroId={rubro.id}
                     rubroNombre={rubro.nombre}
                     niveles={niveles}
                     secciones={todas}
                     filasExtra={filasExtra}
                     items={items.filter((i) => i.rubroId === rubro.id)}
                     totales={totales}
+                    fechas={fechas}
                   />
                 )}
               </div>
 
+              {/* `max-sm:hidden` es el cinturón además de los tirantes: en
+                  celular no hay botón que lo abra, pero si alguien achica la
+                  ventana con un rubro ya abierto, la grilla no se cuela. */}
               {abierto && (
-                <div className="flex flex-col gap-3 p-2 duration-200 animate-in fade-in slide-in-from-top-1">
-                  <SwitchTipo
-                    valor={tipo}
-                    onCambio={(t) =>
-                      setTipoPorRubro((prev) => ({ ...prev, [rubro.id]: t }))
-                    }
-                  />
+                <div className="flex flex-col gap-3 p-2 duration-200 animate-in fade-in slide-in-from-top-1 max-sm:hidden">
+                  <div className="flex items-center justify-between gap-2">
+                    <SwitchTipo
+                      valor={tipo}
+                      onCambio={(t) =>
+                        setTipoPorRubro((prev) => ({ ...prev, [rubro.id]: t }))
+                      }
+                    />
+                    <FechaModificacion fecha={fechaDeComputo(fechas, rubro.id, tipo)} />
+                  </div>
 
                   {delRubro.map((seccion) => (
                     <SeccionGrilla

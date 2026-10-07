@@ -140,6 +140,38 @@ async function siguienteOrdenMedicion(itemId: string) {
   return (ultima?.orden ?? -1) + 1;
 }
 
+/**
+ * Marca como modificado el cómputo (rubro + lado) al que pertenece un ítem.
+ *
+ * Un "cómputo" es un rubro de un lado —materiales o mano de obra— y esta es
+ * la fecha que se ve arriba a la derecha de esa grilla y la que se imprime en
+ * el informe. Se llama desde cualquier acción que cambie un número: la celda,
+ * el detalle por ambiente o una cuenta derivada; no cuando sólo se edita el
+ * nombre o la unidad de un ítem.
+ *
+ * El lado sale de la sección del ítem. Sin sección (todavía no tiene grilla)
+ * se cuenta como materiales, la misma convención que usa la pantalla para
+ * mostrar esos ítems sueltos bajo ese switch.
+ *
+ * No hace falta que el ítem exista todavía con certeza acá: si no se
+ * encuentra, no hay nada que tocar y se vuelve en silencio. El que llama ya
+ * validó el ítem antes de escribir la medida.
+ */
+async function tocarFechaComputo(proyectoId: string, itemId: string) {
+  const item = await prisma.computoItem.findUnique({
+    where: { id: itemId },
+    select: { rubroId: true, seccion: { select: { tipo: true } } },
+  });
+  if (!item) return;
+
+  const tipo = item.seccion?.tipo ?? "MATERIALES";
+  await prisma.computoFecha.upsert({
+    where: { proyectoId_rubroId_tipo: { proyectoId, rubroId: item.rubroId, tipo } },
+    create: { proyectoId, rubroId: item.rubroId, tipo },
+    update: { modificadoEl: new Date() },
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Secciones
 // ---------------------------------------------------------------------------
@@ -536,6 +568,7 @@ export async function crearItemEnSeccion(
     nombre: string;
     unidad: string;
     desperdicio?: number | null;
+    modelo?: string | null;
   } & ConversionInput
 ): Promise<ResultItem> {
   await requireSeccion("proyectos");
@@ -565,6 +598,7 @@ export async function crearItemEnSeccion(
         nombre,
         unidad: input.unidad,
         desperdicio: desperdicio.valor,
+        modelo: input.modelo?.trim() || null,
         ...conversion.valor,
         orden: await siguienteOrdenItem(proyectoId),
       },
@@ -596,6 +630,7 @@ export async function actualizarItemSeccion(
     nombre: string;
     unidad: string;
     desperdicio?: number | null;
+    modelo?: string | null;
   } & ConversionInput
 ): Promise<ResultItem> {
   await requireSeccion("proyectos");
@@ -617,10 +652,16 @@ export async function actualizarItemSeccion(
         nombre,
         unidad: input.unidad,
         desperdicio: desperdicio.valor,
+        modelo: input.modelo?.trim() || null,
         ...conversion.valor,
       },
       include: incluirMediciones,
     });
+
+    // El desperdicio y la conversión a material son números que cambian el
+    // total que se compra, aunque no toquen ninguna celda: también cuentan
+    // como "se modificó un número" de este cómputo.
+    await tocarFechaComputo(proyectoId, itemId);
 
     revalidatePath(`/proyectos/${proyectoId}`);
     return { success: true, item: mapItem(item) };
@@ -710,6 +751,8 @@ export async function guardarCelda(
         },
       });
     }
+
+    await tocarFechaComputo(proyectoId, itemId);
 
     const item = await prisma.computoItem.findUniqueOrThrow({
       where: { id: itemId },
@@ -819,6 +862,8 @@ export async function agregarDetalle(
       },
     });
 
+    await tocarFechaComputo(proyectoId, itemId);
+
     revalidatePath(`/proyectos/${proyectoId}`);
     return { success: true, item: await itemConMediciones(itemId) };
   } catch (error) {
@@ -856,6 +901,8 @@ export async function guardarDetalle(
       data: { descripcion: limpio, cantidad: valor },
     });
 
+    await tocarFechaComputo(proyectoId, renglon.itemId);
+
     revalidatePath(`/proyectos/${proyectoId}`);
     return { success: true, item: await itemConMediciones(renglon.itemId) };
   } catch (error) {
@@ -875,6 +922,8 @@ export async function borrarDetalle(
     if (!renglon) return { success: false, error: "No se encontró el renglón." };
 
     await prisma.computoMedicion.delete({ where: { id: medicionId } });
+
+    await tocarFechaComputo(proyectoId, renglon.itemId);
 
     revalidatePath(`/proyectos/${proyectoId}`);
     return { success: true, item: await itemConMediciones(renglon.itemId) };
@@ -1084,6 +1133,8 @@ export async function crearMedicion(
       },
     });
 
+    await tocarFechaComputo(proyectoId, itemId);
+
     revalidatePath(`/proyectos/${proyectoId}`);
     return { success: true, medicion: mapMedicion(medicion) };
   } catch (error) {
@@ -1123,7 +1174,7 @@ export async function actualizarMedicion(
 
     const existente = await prisma.computoMedicion.findFirst({
       where: { id: medicionId, item: { proyectoId } },
-      select: { id: true },
+      select: { id: true, itemId: true },
     });
     if (!existente) return { success: false, error: "No se encontró la medición." };
 
@@ -1139,6 +1190,8 @@ export async function actualizarMedicion(
         deduccion: input.deduccion ?? false,
       },
     });
+
+    await tocarFechaComputo(proyectoId, existente.itemId);
 
     revalidatePath(`/proyectos/${proyectoId}`);
     return { success: true, medicion: mapMedicion(medicion) };
@@ -1157,11 +1210,12 @@ export async function eliminarMedicion(
   try {
     const existente = await prisma.computoMedicion.findFirst({
       where: { id: medicionId, item: { proyectoId } },
-      select: { id: true },
+      select: { id: true, itemId: true },
     });
     if (!existente) return { success: false, error: "No se encontró la fila." };
 
     await prisma.computoMedicion.delete({ where: { id: medicionId } });
+    await tocarFechaComputo(proyectoId, existente.itemId);
     revalidatePath(`/proyectos/${proyectoId}`);
     return { success: true };
   } catch (error) {
@@ -1276,6 +1330,8 @@ export async function crearDerivada(
       },
     });
 
+    await tocarFechaComputo(proyectoId, itemId);
+
     revalidatePath(`/proyectos/${proyectoId}`);
     return { success: true, medicion: mapMedicion(medicion) };
   } catch (error) {
@@ -1314,7 +1370,7 @@ export async function actualizarDerivada(
   try {
     const existente = await prisma.computoMedicion.findFirst({
       where: { id: medicionId, item: { proyectoId }, origenId: { not: null } },
-      select: { id: true },
+      select: { id: true, itemId: true },
     });
     if (!existente) return { success: false, error: "No se encontró la cuenta." };
 
@@ -1327,6 +1383,8 @@ export async function actualizarDerivada(
         deduccion: input.deduccion ?? false,
       },
     });
+
+    await tocarFechaComputo(proyectoId, existente.itemId);
 
     revalidatePath(`/proyectos/${proyectoId}`);
     return { success: true, medicion: mapMedicion(medicion) };

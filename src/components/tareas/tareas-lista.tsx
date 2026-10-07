@@ -415,6 +415,11 @@ export function TareasLista({
         // algo que desplegar: si no, el usuario la carga y parece que se perdió.
         const tieneChecklist = avance !== null || tarea.secciones.length > 0;
         const abierta = abiertas.includes(tarea.id);
+        // Todo lo que se guarda hasta que se toque la tarea: la descripción y
+        // el checklist. La descripción entra acá porque una tarea larga
+        // empujaba a las de abajo fuera de la pantalla y la lista dejaba de
+        // servir para barrerla de un vistazo, que es para lo que se abre.
+        const tieneDetalle = tieneChecklist || (tarea.descripcion?.trim() ?? "") !== "";
         const mostrarCompletos = verCompletos[tarea.id] === true;
         /**
          * Qué sub ítems se dibujan. Por defecto sólo lo que falta: tildar algo
@@ -480,15 +485,46 @@ export function TareasLista({
                   rubro lo ubican y por eso quedan en letra chica. */}
               <div className="flex min-w-0 flex-col sm:col-start-1">
                 {/* Tachado según `marcada` y no según el estado guardado: al
-                    tildarla se tacha en el acto, junto con el cuadrado. */}
-                <span
-                  className={cn(
-                    "text-base font-semibold transition-colors",
-                    marcada && "text-muted-foreground line-through"
-                  )}
-                >
-                  {tarea.titulo}
-                </span>
+                    tildarla se tacha en el acto, junto con el cuadrado.
+
+                    Cuando hay algo escondido, el título es el que lo despliega:
+                    en un celular es el blanco más grande de la fila y es lo que
+                    uno toca instintivamente para "entrar" a la tarea. El chevrón
+                    está para que se vea que hay algo abajo; sin él la fila
+                    parece muerta. Si no hay nada que mostrar sigue siendo texto
+                    pelado, para no ofrecer un botón que no hace nada. */}
+                {tieneDetalle ? (
+                  <button
+                    type="button"
+                    onClick={() => toggleAbierta(tarea.id)}
+                    aria-expanded={abierta}
+                    className="flex min-w-0 items-start gap-1 text-left focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
+                  >
+                    <ChevronRight
+                      className={cn(
+                        "mt-1 h-4 w-4 shrink-0 text-muted-foreground transition-transform",
+                        abierta && "rotate-90"
+                      )}
+                    />
+                    <span
+                      className={cn(
+                        "min-w-0 text-base font-semibold transition-colors",
+                        marcada && "text-muted-foreground line-through"
+                      )}
+                    >
+                      {tarea.titulo}
+                    </span>
+                  </button>
+                ) : (
+                  <span
+                    className={cn(
+                      "text-base font-semibold transition-colors",
+                      marcada && "text-muted-foreground line-through"
+                    )}
+                  >
+                    {tarea.titulo}
+                  </span>
+                )}
                 {/* La obra y, al lado, la prioridad. En la pestaña de una obra
                     el nombre no se repite y el badge queda solo en este
                     renglón, que es donde se lo busca en las dos vistas.
@@ -526,7 +562,11 @@ export function TareasLista({
                 </span>
               </div>
 
-              {tarea.descripcion && (
+              {/* Sólo con la tarea abierta. La nota de corrección de abajo no
+                  se esconde a propósito: esa es el motivo por el que la tarea
+                  volvió a la lista y taparla sería esconder justo lo que hay
+                  que leer. */}
+              {tarea.descripcion && abierta && (
                 <p className="text-sm whitespace-pre-line text-muted-foreground sm:col-start-1">
                   {tarea.descripcion}
                 </p>
@@ -655,6 +695,11 @@ export function TareasLista({
                       </Button>
                     </>
                   )}
+                  {/* El chevrón ahora vive en el título, que es quien abre y
+                      cierra; acá queda el avance, que es un dato y no una
+                      flecha más. Sigue siendo clickeable —es el atajo de
+                      siempre— pero sin repetir el mismo triángulo dos veces en
+                      la misma fila. */}
                   {tieneChecklist && (
                     <button
                       type="button"
@@ -662,9 +707,6 @@ export function TareasLista({
                       aria-expanded={abierta}
                       className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
                     >
-                      <ChevronRight
-                        className={cn("h-3.5 w-3.5 transition-transform", abierta && "rotate-90")}
-                      />
                       <span className="tabular-nums">
                         {avance ? `${avance.hechos}/${avance.total}` : "Ver checklist"}
                       </span>

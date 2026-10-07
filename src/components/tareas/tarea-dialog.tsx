@@ -255,6 +255,8 @@ export function TareaDialog({
   trigger,
   onSaved,
   onDeleted,
+  rubroIdInicial,
+  contexto,
 }: {
   /** Obra fija (pestaña de un proyecto). Si no viene, se elige con el <Select>. */
   proyectoId?: string;
@@ -266,6 +268,18 @@ export function TareaDialog({
   trigger: React.ReactNode;
   onSaved: (tarea: TareaOpcion) => void;
   onDeleted?: (id: string) => void;
+  /**
+   * Rubro con el que arranca el formulario al crear (ej. el configurado para
+   * la categoría del plano desde la que se abrió). Sólo se usa en modo
+   * creación: una tarea existente ya trae su propio rubro en `item`.
+   */
+  rubroIdInicial?: string | null;
+  /**
+   * De dónde salió esta tarea nueva (ej. el nombre del plano), para mostrarlo
+   * arriba del formulario sin mezclarlo con el título: lo que el usuario
+   * escribe ahí es el título tal cual, sin el nombre del plano pegado.
+   */
+  contexto?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | undefined>();
@@ -274,7 +288,7 @@ export function TareaDialog({
   const [proyecto, setProyecto] = useState(item?.proyectoId ?? proyectoId ?? "");
   const [titulo, setTitulo] = useState(item?.titulo ?? "");
   const [descripcion, setDescripcion] = useState(item?.descripcion ?? "");
-  const [rubro, setRubro] = useState(item?.rubroId ?? SIN_RUBRO);
+  const [rubro, setRubro] = useState(item?.rubroId ?? rubroIdInicial ?? SIN_RUBRO);
   const [prioridad, setPrioridad] = useState<Prioridad>(item?.prioridad ?? "MEDIA");
   const [asignados, setAsignados] = useState<string[]>(
     () => item?.asignados.map((a) => a.id) ?? []
@@ -298,7 +312,7 @@ export function TareaDialog({
       setProyecto(item?.proyectoId ?? proyectoId ?? "");
       setTitulo(item?.titulo ?? "");
       setDescripcion(item?.descripcion ?? "");
-      setRubro(item?.rubroId ?? SIN_RUBRO);
+      setRubro(item?.rubroId ?? rubroIdInicial ?? SIN_RUBRO);
       setPrioridad(item?.prioridad ?? "MEDIA");
       setAsignados(item?.asignados.map((a) => a.id) ?? []);
       setItems(aBorradores(item?.items));
@@ -456,6 +470,12 @@ export function TareaDialog({
               <Label>Obra</Label>
               <p className="text-sm font-medium">{item.proyectoNombre}</p>
             </div>
+          )}
+
+          {!item && contexto && (
+            <p className="text-xs text-muted-foreground">
+              Desde: <span className="font-medium">{contexto}</span>
+            </p>
           )}
 
           <div className="flex flex-col gap-2">

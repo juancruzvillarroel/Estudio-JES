@@ -56,19 +56,22 @@ export function MaterialesLista({
 
   return (
     <div>
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="flex flex-wrap items-end gap-3">
+      {/* Mismo criterio que en Proveedores: en móvil todo apilado y a ancho
+          completo, de `sm` para arriba la fila de siempre. */}
+      <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
+        <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-end">
           <Input
             placeholder="Buscar material o código..."
             value={busqueda}
             onChange={(e) => setBusqueda(e.target.value)}
-            className="w-56"
+            className="w-full sm:w-56"
           />
           <RubroFiltroMultiple
             id="filtroRubroMateriales"
             rubros={rubros}
             value={rubroIds}
             onChange={setRubroIds}
+            className="w-full sm:w-40 sm:shrink-0"
           />
         </div>
         {nuevoMaterial}

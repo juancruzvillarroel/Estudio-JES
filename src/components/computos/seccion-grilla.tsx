@@ -39,6 +39,7 @@ import {
   conDesperdicio,
   conversionDe,
   esDerivadaEnFila,
+  esHierro,
   etiquetaBultos,
   formatCantidad,
   materialDe,
@@ -50,6 +51,7 @@ import {
   parseMedida,
   simboloUnidad,
   tieneMedidoEnFila,
+  UNIDAD_INFO,
   type ClaveFila,
   type FilaExtraOpcion,
   type ItemOpcion,
@@ -87,6 +89,7 @@ function Celda({
   filaNombre,
   valor,
   onSaved,
+  vistaCalculada,
 }: {
   proyectoId: string;
   item: ItemOpcion;
@@ -95,11 +98,19 @@ function Celda({
   /** Lo medido, o null si esta celda todavía no tiene ninguna fila. */
   valor: number | null;
   onSaved: (item: ItemOpcion) => void;
+  /**
+   * Para el hierro: mientras no se está tocando la celda, se muestra esto en
+   * vez del número tipeado (la cantidad de barras, en vez de los metros). Al
+   * tocarla para corregir vuelve a verse lo que realmente se cargó, que son
+   * los metros: es lo único que se tipea, la barra sale sola.
+   */
+  vistaCalculada?: (valor: number) => string;
 }) {
   const inicial = valor === null ? "" : medidaATexto(valor);
   const [texto, setTexto] = useState(inicial);
   const [guardado, setGuardado] = useState(inicial);
   const [prev, setPrev] = useState(valor);
+  const [enfocado, setEnfocado] = useState(false);
   const [pending, startTransition] = useTransition();
 
   if (valor !== prev) {
@@ -132,11 +143,17 @@ function Celda({
     });
   };
 
+  const mostrarCalculado = !enfocado && vistaCalculada && valor !== null;
+
   return (
     <input
-      value={texto}
+      value={mostrarCalculado ? vistaCalculada(valor) : texto}
       onChange={(e) => setTexto(e.target.value)}
-      onBlur={guardar}
+      onFocus={() => setEnfocado(true)}
+      onBlur={() => {
+        setEnfocado(false);
+        guardar();
+      }}
       onKeyDown={(e) => {
         if (e.key === "Enter") {
           e.preventDefault();
@@ -149,6 +166,7 @@ function Celda({
       }}
       inputMode="decimal"
       placeholder="—"
+      title={mostrarCalculado ? `${item.nombre} en ${filaNombre}: tocá para ver y corregir los metros cargados` : undefined}
       aria-label={`${item.nombre} en ${filaNombre}`}
       disabled={pending}
       className={cn(
@@ -395,17 +413,38 @@ function FilaExtraNueva({
  */
 
 /**
+ * ¿Este ítem, además de convertirse a material, se compra agrupado en
+ * bultos (palets, bolsas, barras...)? Hace falta `rinde` para saber cuánto
+ * material hay, y `porBulto` para saber cuánto trae cada uno: sin lo primero
+ * lo segundo no tiene con qué dividir.
+ */
+function tieneBultos(item: ItemOpcion) {
+  return item.porBulto !== null && conversionDe(item) !== null;
+}
+
+/**
  * Cuántas columnas de la tabla ocupa un ítem.
  *
- * Una siempre —lo medido—, más la de la merma si tiene desperdicio, más la del
- * material si se compra en otra unidad. Se calcula en un solo lugar porque el
- * encabezado, cada fila, el pie y el colspan del detalle tienen que estar los
- * cuatro de acuerdo: si uno cuenta distinto, la tabla sale con las celdas
- * corridas y los números quedan abajo de la columna equivocada.
+ * El hierro es un caso aparte y va siempre en una sola: la grilla general no
+ * necesita ver los metros ni los kilos al lado de las barras, los tres
+ * números apretados en una fila de treinta no suman nada que la cantidad de
+ * barras sola no diga. El desglose de cada base, con las tres medidas, se ve
+ * adentro del detalle (ver DetalleCelda) y no acá.
+ *
+ * Para el resto: una siempre —lo medido—, más la de la merma si tiene
+ * desperdicio, más la de los bultos (palets, bolsas) si se compra agrupado,
+ * más la del material si se compra en otra unidad. Se calcula en un solo
+ * lugar porque el encabezado, cada fila, el pie y el colspan del detalle
+ * tienen que estar todos de acuerdo: si uno cuenta distinto, la tabla sale con
+ * las celdas corridas y los números quedan abajo de la columna equivocada.
  */
 function subcolumnas(item: ItemOpcion) {
+  if (esHierro(item)) return 1;
   return (
-    1 + (item.desperdicio !== null ? 1 : 0) + (conversionDe(item) !== null ? 1 : 0)
+    1 +
+    (item.desperdicio !== null ? 1 : 0) +
+    (tieneBultos(item) ? 1 : 0) +
+    (conversionDe(item) !== null ? 1 : 0)
   );
 }
 
@@ -542,12 +581,6 @@ export function SeccionGrilla({
    */
   const columnas = 1 + items.reduce((acc, i) => acc + subcolumnas(i), 0);
 
-  /** Los ítems que se compran por bulto, y cómo se titula la fila del pie. */
-  const conBulto = items.filter(
-    (i) => i.porBulto !== null && conversionDe(i) !== null
-  );
-  const etiquetaBulto = etiquetaBultos(conBulto);
-
   const soltar = (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
@@ -609,11 +642,15 @@ export function SeccionGrilla({
             }}
             aria-label="Nombre de la sección"
             autoFocus
-            className="min-w-0 flex-1 rounded-sm border border-input bg-background px-2 py-0.5 text-sm font-semibold tracking-wide uppercase focus:border-ring focus:outline-none"
+            className="min-w-0 flex-1 rounded-sm border border-input bg-background px-2 py-0.5 text-xs font-semibold tracking-wider uppercase focus:border-ring focus:outline-none"
           />
         ) : (
           <>
-            <h4 className="min-w-0 flex-1 truncate text-sm font-semibold tracking-wide uppercase">
+            {/* Escalón 2 de 3. Más chica que el rubro y en gris, pero sigue en
+                caja alta y con el espaciado abierto: así se lee como rótulo de
+                bloque y no compite con el título de arriba ni con los nombres de
+                los ítems, que van en caja normal. */}
+            <h4 className="min-w-0 flex-1 truncate text-xs font-semibold tracking-wider text-muted-foreground uppercase">
               {seccion.nombre}
             </h4>
             <Button
@@ -672,7 +709,12 @@ export function SeccionGrilla({
                   lee para saber de qué fila es cada número, y si se achicara
                   junto con las demás "PLANTA BAJA" terminaría partido en tres
                   renglones. Las de los ítems se reparten lo que queda. */}
-              <th className="w-44 px-3 py-2 text-left align-bottom text-xs font-semibold tracking-wide text-muted-foreground uppercase">
+              {/* Escalón 3 de 3, el de los rótulos de columna. "Nivel" y los
+                  nombres de los ítems son lo mismo —el rótulo de un eje de la
+                  tabla— así que van iguales: chicos, de peso medio y en caja
+                  normal. La caja normal es lo que más los separa de la sección,
+                  que va en mayúsculas. */}
+              <th className="w-44 px-3 py-2 text-left align-bottom text-xs font-medium text-muted-foreground">
                 Nivel
               </th>
               {items.map((item) => (
@@ -682,7 +724,7 @@ export function SeccionGrilla({
                   className="border-l px-2 pt-2 pb-1 text-center align-bottom"
                 >
                   <span className="flex items-center justify-center gap-1">
-                    <span className="min-w-0 truncate text-sm font-semibold text-foreground">
+                    <span className="min-w-0 truncate text-xs font-medium text-foreground">
                       {item.nombre}
                     </span>
                     <ItemSeccionDialog
@@ -703,9 +745,23 @@ export function SeccionGrilla({
                       }
                     />
                   </span>
-                  <span className="block text-xs font-normal text-muted-foreground">
+                  {/* La unidad baja un punto más: ahora que el nombre del ítem
+                      es text-xs, dejarla en text-xs la hacía pesar lo mismo que
+                      el nombre y el encabezado se leía como dos renglones de
+                      igual rango. */}
+                  <span className="block text-[10px] font-normal text-muted-foreground">
                     {simboloUnidad(item.unidad)}
                   </span>
+                  {/* El modelo elegido, si ya se sabe. No entra en ninguna
+                      cuenta: es sólo para tenerlo anotado al lado del ítem. */}
+                  {item.modelo && (
+                    <span
+                      title={item.modelo}
+                      className="block truncate text-[10px] font-normal text-muted-foreground italic"
+                    >
+                      {item.modelo}
+                    </span>
+                  )}
                 </th>
               ))}
             </tr>
@@ -766,6 +822,44 @@ export function SeccionGrilla({
               {items.map((item) => {
                 const total = totales.get(item.id) ?? 0;
                 const vacio = item.mediciones.length === 0;
+                const hierro = esHierro(item);
+                // Los bultos (barras, palets, etc.) se redondean para arriba
+                // una sola vez, acá en el total de toda la obra: hacerlo por
+                // nivel y después sumar daría de más una vez por planta, que
+                // en una obra de seis plantas son cinco palets comprados de
+                // más (o, en hierro, barras de sobra en cada piso).
+                const bultos = tieneBultos(item)
+                  ? bultosDe(item, materialDe(item, total))
+                  : null;
+
+                // El hierro también en el total es sólo la cantidad de barras
+                // a pedir: ni los metros ni los kilos aportan algo que la
+                // cantidad de barras, redondeada para arriba, no diga ya.
+                if (hierro) {
+                  return (
+                    <td
+                      key={item.id}
+                      className="border-l bg-foreground/[0.04] px-3 py-2 text-right"
+                    >
+                      {vacio || bultos === null ? (
+                        <span className="text-sm text-muted-foreground">—</span>
+                      ) : (
+                        <span
+                          title={`${formatCantidad(bultos.exacto)} barras exactas`}
+                          className="flex flex-col items-end leading-tight"
+                        >
+                          <span className="text-sm font-semibold tabular-nums">
+                            {bultos.enteros}
+                          </span>
+                          <span className="text-[10px] tabular-nums text-muted-foreground">
+                            {formatCantidad(bultos.exacto)}
+                          </span>
+                        </span>
+                      )}
+                    </td>
+                  );
+                }
+
                 return (
                   <Fragment key={item.id}>
                     <td className="border-l px-3 py-2 text-right text-sm font-semibold tabular-nums">
@@ -779,6 +873,28 @@ export function SeccionGrilla({
                         {vacio ? "—" : formatCantidad(conDesperdicio(total, item.desperdicio))}
                       </td>
                     )}
+                    {tieneBultos(item) && (
+                      <td className="bg-foreground/[0.04] px-3 py-2 text-right">
+                        {vacio || bultos === null ? (
+                          <span className="text-sm text-muted-foreground">—</span>
+                        ) : (
+                          <span
+                            title={`${formatCantidad(bultos.exacto)} ${etiquetaBultos([item])} exactos`}
+                            className="flex flex-col items-end leading-tight"
+                          >
+                            <span className="text-sm font-semibold tabular-nums">
+                              {bultos.enteros}
+                            </span>
+                            {/* El exacto al lado del entero: 6,26 dice que
+                                sobran tres cuartos del último, y eso a veces
+                                cambia la decisión de cuántos pedir. */}
+                            <span className="text-[10px] tabular-nums text-muted-foreground">
+                              {formatCantidad(bultos.exacto)}
+                            </span>
+                          </span>
+                        )}
+                      </td>
+                    )}
                     {conversionDe(item) !== null && (
                       <td className="bg-foreground/[0.06] px-3 py-2 text-right text-sm font-semibold tabular-nums">
                         {vacio ? "—" : formatCantidad(materialDe(item, total) ?? 0)}
@@ -788,54 +904,6 @@ export function SeccionGrilla({
                 );
               })}
             </tr>
-
-            {/* Los bultos van una fila abajo del total y sólo acá, no por nivel:
-                un palet se compra una vez para toda la obra. Redondear para
-                arriba planta por planta y después sumar daría de más una vez
-                por planta, que en una obra de seis plantas son cinco palets de
-                ladrillos comprados de más. */}
-            {conBulto.length > 0 && (
-              <tr className="border-t bg-muted/60">
-                <th
-                  scope="row"
-                  className="px-3 py-1.5 text-left text-xs font-medium tracking-wide text-muted-foreground uppercase"
-                >
-                  {etiquetaBulto}
-                </th>
-                {items.map((item) => {
-                  const total = totales.get(item.id) ?? 0;
-                  const bultos = bultosDe(item, materialDe(item, total));
-                  return (
-                    <Fragment key={item.id}>
-                      <td className="border-l" />
-                      {item.desperdicio !== null && <td />}
-                      {conversionDe(item) !== null && (
-                        <td className="bg-foreground/[0.06] px-3 py-1.5 text-right">
-                          {bultos === null || item.mediciones.length === 0 ? (
-                            <span className="text-sm text-muted-foreground">—</span>
-                          ) : (
-                            <span
-                              title={`${formatCantidad(bultos.exacto)} ${etiquetaBulto} exactos`}
-                              className="flex flex-col items-end leading-tight"
-                            >
-                              <span className="text-sm font-semibold tabular-nums">
-                                {bultos.enteros}
-                              </span>
-                              {/* El exacto al lado del entero: 6,26 dice que
-                                  sobran tres cuartos del último, y eso a veces
-                                  cambia la decisión de cuántos pedir. */}
-                              <span className="text-[10px] tabular-nums text-muted-foreground">
-                                {formatCantidad(bultos.exacto)}
-                              </span>
-                            </span>
-                          )}
-                        </td>
-                      )}
-                    </Fragment>
-                  );
-                })}
-              </tr>
-            )}
           </tfoot>
         </table>
       )}
@@ -953,6 +1021,13 @@ function FilaGrilla({
           const derivada = esDerivadaEnFila(item, fila.clave);
           const desglosada = renglones.length > 1;
           const abierto = abierta?.itemId === item.id && abierta.filaKey === filaKey;
+          const hierro = esHierro(item);
+          // Lo que se lee en la celda de hierro es la cantidad de barras, no
+          // los metros: acá sólo interesa cuánto pedir. Sin redondear, como
+          // toda celda de nivel (ver bultosDe) — el redondeo es sólo del
+          // total, al pie.
+          const barrasEnNivel = (ml: number) =>
+            formatCantidad(bultosDe(item, materialDe(item, ml))?.exacto ?? 0);
 
           return (
             <Fragment key={item.id}>
@@ -963,7 +1038,7 @@ function FilaGrilla({
                       title="Sale de una cuenta sobre otro ítem"
                       className="min-w-0 flex-1 px-2 py-1 text-right text-sm tabular-nums text-muted-foreground italic"
                     >
-                      {formatCantidad(medido)}
+                      {hierro ? barrasEnNivel(medido) : formatCantidad(medido)}
                     </span>
                   ) : desglosada ? (
                     // Con varios renglones el número de la celda es la suma, y
@@ -977,7 +1052,7 @@ function FilaGrilla({
                       }
                       className="min-w-0 flex-1 rounded-sm px-2 py-1 text-right text-sm font-medium tabular-nums transition-colors duration-150 hover:bg-muted"
                     >
-                      {formatCantidad(medido)}
+                      {hierro ? barrasEnNivel(medido) : formatCantidad(medido)}
                     </button>
                   ) : (
                     <Celda
@@ -987,6 +1062,7 @@ function FilaGrilla({
                       filaNombre={fila.nombre}
                       valor={tiene ? medido : null}
                       onSaved={onItemSaved}
+                      vistaCalculada={hierro ? barrasEnNivel : undefined}
                     />
                   )}
 
@@ -1017,7 +1093,7 @@ function FilaGrilla({
                 </span>
               </td>
 
-              {item.desperdicio !== null && (
+              {!hierro && item.desperdicio !== null && (
                 // Un tono más apagada que la de al lado: no es un dato medido,
                 // es el mismo número con la merma encima. Se lee de reojo al
                 // armar la compra, no al computar.
@@ -1026,7 +1102,22 @@ function FilaGrilla({
                 </td>
               )}
 
-              {conversionDe(item) !== null && (
+              {!hierro && tieneBultos(item) && (
+                // El exacto de este nivel, sin redondear: redondear acá y
+                // sumar los niveles después compraría de más, una vez por
+                // nivel (ver el comentario de `bultosDe`). El número que se
+                // usa para pedir es el redondeado del total, al pie.
+                <td
+                  title={`${item.nombre} en ${fila.nombre}: cantidad de ${etiquetaBultos([item])}, sin redondear`}
+                  className="bg-foreground/[0.04] px-2 py-1 text-right text-sm tabular-nums text-muted-foreground"
+                >
+                  {!tiene
+                    ? "—"
+                    : formatCantidad(bultosDe(item, materialDe(item, medido))?.exacto ?? 0)}
+                </td>
+              )}
+
+              {!hierro && conversionDe(item) !== null && (
                 // El material del nivel. No se puede escribir: sale de lo medido
                 // y pisarlo a mano rompería la única regla del módulo, que es
                 // que ningún total se carga a dedo.
@@ -1089,11 +1180,13 @@ function DetalleCelda({
   onCerrar: () => void;
 }) {
   const renglones = medicionesDeFila(item, fila);
+  const hierro = esHierro(item);
 
   return (
     <div className="space-y-1">
       <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-        {item.nombre} · {filaNombre} · {simboloUnidad(item.unidad)}
+        {item.nombre} · {filaNombre} ·{" "}
+        {hierro ? "ml, cantidad de barras y kilos de hierro" : simboloUnidad(item.unidad)}
       </p>
 
       {renglones.map((medicion) => (
@@ -1147,6 +1240,14 @@ function RenglonDetalle({
   // muestra lo que aportan para que el número de la celda no parezca mal sumado.
   const aporta = parcialMedicion(medicion, item.unidad);
   const conMedidas = Math.abs(aporta - medicion.cantidad) > 0.0001;
+
+  // Para el hierro, de los metros de este renglón salen la cantidad de barras
+  // y los kilos: es la misma cuenta que arma la celda de la grilla general,
+  // aplicada a lo que aporta esta base en vez de al total del nivel. Sin
+  // redondear, como toda cuenta que no es el total de la obra (ver bultosDe).
+  const hierro = esHierro(item);
+  const kg = hierro ? materialDe(item, aporta) ?? 0 : null;
+  const barras = hierro ? bultosDe(item, kg)?.exacto ?? 0 : null;
 
   const guardar = () => {
     const limpio = descripcion.trim();
@@ -1222,6 +1323,22 @@ function RenglonDetalle({
         <span className="w-20 shrink-0 text-right text-xs text-muted-foreground tabular-nums">
           = {formatCantidad(aporta)}
         </span>
+      )}
+      {hierro && (
+        <>
+          <span
+            title={`${formatCantidad(aporta)} m ÷ 12 m por barra`}
+            className="w-16 shrink-0 text-right text-xs text-muted-foreground tabular-nums"
+          >
+            {formatCantidad(barras ?? 0)} barras
+          </span>
+          <span
+            title={`${formatCantidad(barras ?? 0)} barras × ${formatCantidad(item.porBulto ?? 0)} kg cada una`}
+            className="w-20 shrink-0 text-right text-xs text-muted-foreground tabular-nums"
+          >
+            {formatCantidad(kg ?? 0)} kg
+          </span>
+        </>
       )}
       <button
         type="button"
@@ -1325,7 +1442,8 @@ function RenglonNuevo({
 }
 
 /**
- * Las subcolumnas de un ítem: lo medido, lo medido con la merma y el material.
+ * Las subcolumnas de un ítem: lo medido, lo medido con la merma, los bultos
+ * (si se compra agrupado) y el material.
  *
  * El porcentaje y el rinde van acá arriba, en el encabezado, y no repetidos en
  * cada celda: son propiedades del ítem, y verlos quince veces hacia abajo no
@@ -1333,24 +1451,60 @@ function RenglonNuevo({
  * "+10%", "×15 un"— así que la tercera columna no aparece como un número
  * mágico: se lee de izquierda a derecha de dónde salió.
  *
- * Las dos últimas aparecen sólo si el ítem las tiene. Una columna que repite
+ * Las últimas tres aparecen sólo si el ítem las tiene. Una columna que repite
  * exactamente el número de al lado es una columna que no dice nada.
  */
 function Subencabezados({ item }: { item: ItemOpcion }) {
   const conversion = conversionDe(item);
+
+  // El hierro va en una sola subcolumna: la cantidad de barras. Los metros
+  // que se tipearon y los kilos que pesan quedan adentro del detalle de cada
+  // nivel (ver DetalleCelda), no acá, para no repetir las tres medidas en una
+  // grilla que ya tiene treinta filas.
+  if (esHierro(item)) {
+    return (
+      <th
+        title={`Cantidad de barras de 12 m, de ${formatCantidad(item.porBulto!)} kg cada una. Los metros y los kilos se ven adentro del detalle de cada nivel.`}
+        className="border-l px-2 pb-1 text-right text-[10px] font-normal text-muted-foreground"
+      >
+        barras
+      </th>
+    );
+  }
+
   return (
     <Fragment>
-      <th className="border-l px-2 pb-1 text-right text-xs font-normal text-muted-foreground">
-        medido
+      {/* El rótulo de esta primera columna es la unidad en la que se carga
+          ("ml", "m²", "kg"...) y no la palabra genérica "medido": así queda
+          claro de entrada qué es lo único que hay que tipear. */}
+      <th
+        title={`Lo que se carga a mano, en ${UNIDAD_INFO[item.unidad].nombre.toLowerCase()}`}
+        className="border-l px-2 pb-1 text-right text-[10px] font-normal text-muted-foreground"
+      >
+        {simboloUnidad(item.unidad)}
       </th>
       {item.desperdicio !== null && (
-        <th className="px-2 pb-1 text-right text-xs font-normal text-muted-foreground">
+        <th className="px-2 pb-1 text-right text-[10px] font-normal text-muted-foreground">
           +{formatCantidad(item.desperdicio)}%
         </th>
       )}
+      {tieneBultos(item) && (
+        <th
+          title={`Cantidad de ${etiquetaBultos([item])}, de ${formatCantidad(item.porBulto!)} ${simboloUnidad(item.rindeUnidad!)} cada una`}
+          className="bg-foreground/[0.04] px-2 pb-1 text-right text-[10px] font-normal text-muted-foreground"
+        >
+          {etiquetaBultos([item])}
+        </th>
+      )}
       {conversion && (
-        <th className="bg-foreground/[0.05] px-2 pb-1 text-right text-xs font-normal text-muted-foreground">
-          ×{formatCantidad(conversion.rinde)} {simboloUnidad(conversion.unidad)}
+        // El rótulo es la unidad del material ("kg"), no la fórmula: la
+        // fórmula (cuánto rinde cada unidad medida) queda en el title, para
+        // quien la quiera ver sin ocupar el ancho de la columna.
+        <th
+          title={`Cada ${simboloUnidad(item.unidad)} son ${formatCantidad(conversion.rinde)} ${simboloUnidad(conversion.unidad)}`}
+          className="bg-foreground/[0.05] px-2 pb-1 text-right text-[10px] font-normal text-muted-foreground"
+        >
+          {simboloUnidad(conversion.unidad)}
         </th>
       )}
     </Fragment>

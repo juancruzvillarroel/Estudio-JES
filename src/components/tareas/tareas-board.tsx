@@ -8,9 +8,10 @@ import { TareasLista } from "@/components/tareas/tareas-lista";
 import { EstadoTareasTabs } from "@/components/tareas/estado-tareas-tabs";
 import {
   ordenarTareas,
-  type EstadoTarea,
+  tareasDeVista,
   type OpcionSimple,
   type TareaOpcion,
+  type VistaTarea,
 } from "@/lib/tareas";
 
 /**
@@ -18,8 +19,9 @@ import {
  * tareas": acá sí las hay, pero están todas en otra solapa, y el mensaje tiene
  * que dejar claro cuál se está mirando.
  */
-const VACIO_POR_ESTADO: Record<EstadoTarea, string> = {
+const VACIO_POR_VISTA: Record<VistaTarea, string> = {
   PENDIENTE: "No quedan tareas pendientes en esta obra.",
+  A_CORREGIR: "No hay nada esperando una corrección en esta obra.",
   EN_REVISION: "No hay nada esperando revisión en esta obra.",
   COMPLETADA: "Todavía no hay tareas completadas en esta obra.",
 };
@@ -43,7 +45,7 @@ export function TareasBoard({
     setItems(tareas);
   }
 
-  const [estado, setEstado] = useState<EstadoTarea>("PENDIENTE");
+  const [vista, setVista] = useState<VistaTarea>("PENDIENTE");
 
   const handleSaved = (tarea: TareaOpcion) => {
     setItems((prev) => {
@@ -56,21 +58,25 @@ export function TareasBoard({
     setItems((prev) => prev.filter((t) => t.id !== id));
   };
 
-  // Cada solapa muestra un solo estado, nunca mezclados: lo que falta hacer se
+  // Cada solapa muestra una sola vista, nunca mezcladas: lo que falta hacer se
   // perdía entre lo ya hecho, que es lo que se acumula con el tiempo.
-  const conteos = {
-    PENDIENTE: items.filter((t) => t.estado === "PENDIENTE").length,
-    EN_REVISION: items.filter((t) => t.estado === "EN_REVISION").length,
-    COMPLETADA: items.filter((t) => t.estado === "COMPLETADA").length,
+  const conteos: Record<VistaTarea, number> = {
+    PENDIENTE: tareasDeVista(items, "PENDIENTE").length,
+    A_CORREGIR: tareasDeVista(items, "A_CORREGIR").length,
+    EN_REVISION: tareasDeVista(items, "EN_REVISION").length,
+    COMPLETADA: tareasDeVista(items, "COMPLETADA").length,
   };
-  const pendientes = conteos.PENDIENTE;
-  const visibles = ordenarTareas(items.filter((t) => t.estado === estado));
+  const visibles = ordenarTareas(tareasDeVista(items, vista));
 
   // El renglón de abajo del título. Nombra lo que sigue abierto, y lo que está
-  // en revisión cuenta como abierto: decir "no quedan tareas pendientes" con
-  // cinco esperando el visto bueno haría pensar que la obra está al día.
+  // en revisión o a corregir cuenta como abierto: decir "no quedan tareas
+  // pendientes" con cinco esperando el visto bueno o una corrección haría
+  // pensar que la obra está al día.
   const abiertas = [
-    pendientes > 0 ? `${pendientes} ${pendientes === 1 ? "pendiente" : "pendientes"}` : null,
+    conteos.PENDIENTE > 0
+      ? `${conteos.PENDIENTE} ${conteos.PENDIENTE === 1 ? "pendiente" : "pendientes"}`
+      : null,
+    conteos.A_CORREGIR > 0 ? `${conteos.A_CORREGIR} a corregir` : null,
     conteos.EN_REVISION > 0 ? `${conteos.EN_REVISION} en revisión` : null,
   ].filter(Boolean);
 
@@ -113,7 +119,7 @@ export function TareasBoard({
         </div>
       </div>
 
-      <EstadoTareasTabs value={estado} onChange={setEstado} conteos={conteos}>
+      <EstadoTareasTabs value={vista} onChange={setVista} conteos={conteos}>
         <TareasLista
           tareas={visibles}
           rubros={rubros}
@@ -123,7 +129,7 @@ export function TareasBoard({
           vacio={
             items.length === 0
               ? "Todavía no hay tareas cargadas para esta obra."
-              : VACIO_POR_ESTADO[estado]
+              : VACIO_POR_VISTA[vista]
           }
         />
       </EstadoTareasTabs>

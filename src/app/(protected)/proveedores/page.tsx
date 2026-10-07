@@ -45,7 +45,14 @@ export default async function ProveedoresPage() {
       </div>
 
       <Tabs defaultValue="proveedores" className="mt-6">
-        <TabsList>
+        {/* En móvil la barra ocupa todo el ancho y las tres solapas se reparten
+            en partes iguales: los `flex-1` de cada solapa ya están, lo único que
+            faltaba era sacarle el `w-fit` a la barra. Así el blanco de cada una
+            es del tamaño de un dedo y no del largo de su palabra, que dejaba
+            "Rubros" mucho más chica que las otras dos. De `sm` para arriba
+            vuelve a medir lo que necesita: estirada a lo ancho de un monitor
+            quedarían tres botones enormes con una palabra en el medio. */}
+        <TabsList className="w-full sm:w-fit">
           <TabsTrigger value="proveedores">Proveedores</TabsTrigger>
           <TabsTrigger value="rubros">Rubros</TabsTrigger>
           <TabsTrigger value="materiales">Materiales</TabsTrigger>
