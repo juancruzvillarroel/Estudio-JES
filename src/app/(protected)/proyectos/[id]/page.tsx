@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { FileText } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { requireSeccion } from "@/lib/dal";
 import { Button } from "@/components/ui/button";
@@ -269,30 +268,28 @@ export default async function ProyectoDetallePage({
    */
 
   /**
-   * El fondo de los dos botones va translúcido y con desenfoque detrás.
+   * Los dos botones van sin fondo: letras blancas con una sombra difusa
+   * detrás, en vez del parche de vidrio que tapaban antes.
    *
-   * Sobre la foto, un fondo opaco es un parche rectangular tapando justo la
-   * esquina de arriba, que es donde suele estar el cielo o la fachada. Así la
-   * imagen se sigue viendo debajo, y el desenfoque es lo que mantiene el texto
-   * legible aunque abajo haya una zona clara.
-   *
-   * En la portada sin foto no se nota nada: `bg-background/60` sobre el fondo
-   * de la página es el mismo color, sólo que el borde y el hover quedan un
-   * poco más suaves.
+   * Sobre la foto, un fondo —aunque sea translúcido— seguía siendo un
+   * rectángulo tapando parte de la imagen. Sin fondo la foto queda entera a
+   * la vista, y la sombra (no un borde ni un relleno) es lo que mantiene el
+   * texto legible aunque abajo haya una zona clara. En la portada sin foto
+   * la sombra no hace falta para leerlo, pero tampoco molesta: ahí el fondo
+   * es oscuro y el blanco ya contrasta solo.
    */
   const botonVidrio =
-    "border-white/25 bg-background/60 backdrop-blur-sm hover:bg-background/80";
+    "text-white drop-shadow-[0_1px_3px_rgba(0,0,0,0.7)] hover:bg-transparent hover:text-white hover:opacity-80 aria-expanded:bg-transparent aria-expanded:text-white";
 
   const acciones = (
     <div className="flex shrink-0 flex-col items-end gap-2">
       {proyecto.brochureUrl && (
         <Button
-          variant="outline"
+          variant="ghost"
           className={botonVidrio}
           nativeButton={false}
           render={
             <a href={proyecto.brochureUrl} target="_blank" rel="noopener noreferrer">
-              <FileText />
               Ver brochure
             </a>
           }
@@ -302,7 +299,7 @@ export default async function ProyectoDetallePage({
         proyecto={proyectoEditable}
         niveles={niveles}
         trigger={
-          <Button variant="outline" className={botonVidrio}>
+          <Button variant="ghost" className={botonVidrio}>
             Editar datos
           </Button>
         }
@@ -463,30 +460,30 @@ export default async function ProyectoDetallePage({
               className="absolute inset-0 h-full w-full object-cover"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/15 to-transparent" />
-            {/* Los botones arriba a la derecha, en su propia caja. Antes
-                compartían el renglón de abajo con el nombre de la obra y en un
-                celular se lo comían: el título quedaba en una tira de dos
-                palabras por renglón al lado de dos botones que no se achican.
-                Arriba tienen la esquina para ellos solos y el nombre recupera
-                todo el ancho. */}
-            <div className="absolute top-0 right-0 p-4 sm:p-6">{acciones}</div>
-            <div className="absolute inset-x-0 bottom-0 p-4 sm:p-6">
-              <div className="flex items-center gap-2">
-                <h1 className="text-3xl font-semibold tracking-tight text-white">{proyecto.nombre}</h1>
-                <Badge variant={proyecto.estado === "ACTIVO" ? "secondary" : "outline"}>
-                  {ESTADO_LABELS[proyecto.estado]}
-                </Badge>
+            {/* Los botones van abajo, al lado del nombre, y no arriba en su
+                propia esquina: así quedan a la vista sin tapar la foto con
+                una caja aparte. `items-end` los pega al renglón de abajo
+                del título, que es más alto cuando hay barrio y dirección. */}
+            <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 p-4 sm:p-6">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h1 className="text-3xl font-semibold tracking-tight text-white">{proyecto.nombre}</h1>
+                  <Badge variant={proyecto.estado === "ACTIVO" ? "secondary" : "outline"}>
+                    {ESTADO_LABELS[proyecto.estado]}
+                  </Badge>
+                </div>
+                {proyecto.barrio && (
+                  <p className="text-sm text-white/80">{capitalizarOracion(proyecto.barrio)}</p>
+                )}
+                <p className="text-sm text-white/80">
+                  {proyecto.direccion ? capitalizarOracion(proyecto.direccion) : "Sin dirección"}
+                </p>
               </div>
-              {proyecto.barrio && (
-                <p className="text-sm text-white/80">{capitalizarOracion(proyecto.barrio)}</p>
-              )}
-              <p className="text-sm text-white/80">
-                {proyecto.direccion ? capitalizarOracion(proyecto.direccion) : "Sin dirección"}
-              </p>
+              {acciones}
             </div>
           </div>
         ) : (
-          <div className="flex items-start justify-between">
+          <div className="flex flex-col gap-3">
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-3xl font-semibold tracking-tight">{proyecto.nombre}</h1>
@@ -501,7 +498,10 @@ export default async function ProyectoDetallePage({
                 {proyecto.direccion ? capitalizarOracion(proyecto.direccion) : "Sin dirección"}
               </p>
             </div>
-            {acciones}
+            {/* Sin foto no hay dónde "abajo" apoyarse salvo el propio texto:
+                los botones van en su renglón, debajo del nombre y la
+                dirección, en vez de al lado como antes. */}
+            <div className="flex justify-end">{acciones}</div>
           </div>
         )}
 
