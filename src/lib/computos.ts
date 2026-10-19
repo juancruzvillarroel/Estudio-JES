@@ -446,6 +446,24 @@ export function convierte(item: {
 }
 
 /**
+ * ¿Este ítem, además de convertirse a material, se compra agrupado en
+ * bultos (palets, bolsas, barras...)? Hace falta `rinde` para saber cuánto
+ * material hay, y `porBulto` para saber cuánto trae cada uno: sin lo primero
+ * lo segundo no tiene con qué dividir.
+ *
+ * Vive acá y no en la grilla porque el pie de la tabla y la hoja de
+ * presupuesto tienen que decidir lo mismo: si una redondeara a bultos y la
+ * otra no, los dos papeles pedirían cantidades distintas del mismo ítem.
+ */
+export function tieneBultos(item: {
+  porBulto: number | null;
+  rinde: number | null;
+  rindeUnidad: UnidadComputo | null;
+}) {
+  return item.porBulto !== null && conversionDe(item) !== null;
+}
+
+/**
  * Lo medido, leído en la unidad en la que se compra.
  *
  * Una pared se mide en metros pero se pide en ladrillos: 42 m de pared a 15
@@ -517,6 +535,47 @@ export function etiquetaBultos(items: { bultoNombre: string | null }[]) {
   );
   const nombre = nombres.size === 1 ? [...nombres][0] : "bulto";
   return nombre.endsWith("s") ? nombre : `${nombre}s`;
+}
+
+/**
+ * La cantidad que efectivamente se pide de este ítem, con su unidad.
+ *
+ * Es la misma decisión que toma el pie de la grilla, puesta en un solo
+ * lugar: si se compra agrupado, los bultos ya redondeados para arriba; si
+ * no pero se convierte a otra unidad, el material ya convertido (que ya
+ * lleva la merma adentro); si no convierte, lo medido con la merma puesta.
+ * Un ítem sin ninguna de las dos cosas pide lo mismo que mide.
+ *
+ * Centralizarla es lo que hace que la hoja de presupuesto pida exactamente
+ * lo que la grilla dice en su columna de total: dos cuentas por separado
+ * para el mismo número son dos lugares donde se pueden desacompasar.
+ */
+export function cantidadFinalCompra(
+  item: {
+    unidad: UnidadComputo;
+    desperdicio: number | null;
+    rinde: number | null;
+    rindeUnidad: UnidadComputo | null;
+    porBulto: number | null;
+    bultoNombre: string | null;
+  },
+  total: number
+): { cantidad: number; unidad: string } {
+  if (tieneBultos(item)) {
+    const bultos = bultosDe(item, materialDe(item, total));
+    return { cantidad: bultos?.enteros ?? 0, unidad: etiquetaBultos([item]) };
+  }
+  const conversion = conversionDe(item);
+  if (conversion) {
+    return {
+      cantidad: materialDe(item, total) ?? 0,
+      unidad: simboloUnidad(conversion.unidad),
+    };
+  }
+  return {
+    cantidad: conDesperdicio(total, item.desperdicio),
+    unidad: simboloUnidad(item.unidad),
+  };
 }
 
 /** Cuánto suma un nivel dentro de su ítem. */

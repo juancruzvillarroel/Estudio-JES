@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { SeccionGrilla } from "@/components/computos/seccion-grilla";
 import { abrirInformeComputo } from "@/components/computos/informe-computo";
 import { InformeRubroDialog } from "@/components/computos/informe-rubro-dialog";
+import { PresupuestarDialog } from "@/components/computos/presupuestar-dialog";
 import { crearSeccion, eliminarItem } from "@/actions/computos";
 import {
   calcularTotales,
@@ -545,7 +546,20 @@ export function ComputoBoard({
                         setTipoPorRubro((prev) => ({ ...prev, [rubro.id]: t }))
                       }
                     />
-                    <FechaModificacion fecha={fechaDeComputo(fechas, rubro.id, tipo)} />
+                    <div className="flex items-center gap-2">
+                      <FechaModificacion fecha={fechaDeComputo(fechas, rubro.id, tipo)} />
+                      <PresupuestarDialog
+                        proyectoNombre={proyectoNombre}
+                        rubroNombre={rubro.nombre}
+                        tipo={tipo}
+                        modificadoEl={fechaDeComputo(fechas, rubro.id, tipo)}
+                        secciones={delRubro}
+                        items={items.filter(
+                          (i) => i.seccionId && delRubro.some((s) => s.id === i.seccionId)
+                        )}
+                        totales={totales}
+                      />
+                    </div>
                   </div>
 
                   {delRubro.map((seccion) => (

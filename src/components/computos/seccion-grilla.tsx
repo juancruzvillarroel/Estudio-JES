@@ -50,6 +50,7 @@ import {
   parcialMedicion,
   parseMedida,
   simboloUnidad,
+  tieneBultos,
   tieneMedidoEnFila,
   UNIDAD_INFO,
   type ClaveFila,
@@ -413,16 +414,6 @@ function FilaExtraNueva({
  */
 
 /**
- * ¿Este ítem, además de convertirse a material, se compra agrupado en
- * bultos (palets, bolsas, barras...)? Hace falta `rinde` para saber cuánto
- * material hay, y `porBulto` para saber cuánto trae cada uno: sin lo primero
- * lo segundo no tiene con qué dividir.
- */
-function tieneBultos(item: ItemOpcion) {
-  return item.porBulto !== null && conversionDe(item) !== null;
-}
-
-/**
  * Cuántas columnas de la tabla ocupa un ítem.
  *
  * El hierro es un caso aparte y va siempre en una sola: la grilla general no
@@ -748,9 +739,24 @@ export function SeccionGrilla({
                   {/* La unidad baja un punto más: ahora que el nombre del ítem
                       es text-xs, dejarla en text-xs la hacía pesar lo mismo que
                       el nombre y el encabezado se leía como dos renglones de
-                      igual rango. */}
-                  <span className="block text-[10px] font-normal text-muted-foreground">
-                    {simboloUnidad(item.unidad)}
+                      igual rango.
+
+                      Para el hierro dice "barras" y no "ml": es lo que se ve
+                      en la columna, y repetir "ml" acá arriba —la unidad en
+                      la que se tipea, no la que se muestra— contradecía al
+                      subencabezado de abajo. Como esta es la única etiqueta
+                      de unidad que le queda al hierro (el subencabezado va
+                      vacío, ver Subencabezados), el tooltip con el peso de
+                      la barra y dónde se tipea vive acá. */}
+                  <span
+                    title={
+                      esHierro(item)
+                        ? `Cantidad de barras de 12 m, de ${formatCantidad(item.porBulto!)} kg cada una. Se tipea en ml; los metros y los kilos se ven adentro del detalle de cada nivel.`
+                        : undefined
+                    }
+                    className="block text-[10px] font-normal text-muted-foreground"
+                  >
+                    {esHierro(item) ? "barras" : simboloUnidad(item.unidad)}
                   </span>
                   {/* El modelo elegido, si ya se sabe. No entra en ninguna
                       cuenta: es sólo para tenerlo anotado al lado del ítem. */}
@@ -1047,6 +1053,11 @@ function FilaGrilla({
                       type="button"
                       aria-expanded={abierto}
                       aria-label={`Detalle de ${item.nombre} en ${fila.nombre}`}
+                      title={
+                        hierro
+                          ? "Cantidad de barras, sin redondear (se redondea sólo en el Total). Tocá para ver los metros y los kilos de cada renglón."
+                          : undefined
+                      }
                       onClick={() =>
                         onAbrir(abierto ? null : { itemId: item.id, filaKey })
                       }
@@ -1164,6 +1175,25 @@ function FilaGrilla({
  * cuenta que ya está hecha. El costo, dicho de frente: después no se puede
  * revisar de dónde salió ese 0,58.
  */
+/**
+ * Las columnas del despiece, en grid y no en flex.
+ *
+ * En flex, lo único que crece es la descripción: los números quedan
+ * apretados contra el borde derecho, uno pegado al otro, sin importar cuánto
+ * ancho sobre. En grid cada columna tiene su lugar fijo y los números quedan
+ * repartidos bajo su rótulo del encabezado, igual en el renglón nuevo que en
+ * cada uno ya cargado.
+ *
+ * El hierro suma dos columnas (barras y kilos) que el resto de los ítems no
+ * tiene; de ahí que haya dos planillas distintas y no una con columnas vacías
+ * para todos.
+ */
+function columnasDetalle(hierro: boolean) {
+  return hierro
+    ? "grid-cols-[1fr_6.5rem_6.5rem_6.5rem_1.75rem]"
+    : "grid-cols-[1fr_6.5rem_1.75rem]";
+}
+
 function DetalleCelda({
   proyectoId,
   item,
@@ -1185,9 +1215,24 @@ function DetalleCelda({
   return (
     <div className="space-y-1">
       <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-        {item.nombre} · {filaNombre} ·{" "}
-        {hierro ? "ml, cantidad de barras y kilos de hierro" : simboloUnidad(item.unidad)}
+        {item.nombre} · {filaNombre}
       </p>
+
+      {/* El rótulo de cada columna, alineado con el mismo grid que usa cada
+          renglón de abajo: así se lee de entrada en qué medida está cada
+          número, sin tener que adivinarlo o pasar el mouse por arriba. */}
+      <div
+        className={cn(
+          "grid items-end gap-2 px-2 text-[10px] font-medium text-muted-foreground",
+          columnasDetalle(hierro)
+        )}
+      >
+        <span />
+        <span className="text-right">{simboloUnidad(item.unidad)}</span>
+        {hierro && <span className="text-right">barras</span>}
+        {hierro && <span className="text-right">kg</span>}
+        <span />
+      </div>
 
       {renglones.map((medicion) => (
         <RenglonDetalle
@@ -1288,7 +1333,7 @@ function RenglonDetalle({
     });
 
   return (
-    <div className="flex items-center gap-2">
+    <div className={cn("grid items-center gap-2", columnasDetalle(hierro))}>
       <input
         value={descripcion}
         onChange={(e) => setDescripcion(e.target.value)}
@@ -1302,50 +1347,55 @@ function RenglonDetalle({
         placeholder="Base B1"
         aria-label="Descripción del renglón"
         disabled={pending}
-        className="min-w-0 flex-1 rounded-sm border border-transparent bg-transparent px-2 py-1 text-sm transition-colors duration-150 hover:border-input focus:border-ring focus:bg-background focus:outline-none"
+        className="min-w-0 rounded-sm border border-transparent bg-transparent px-2 py-1 text-sm transition-colors duration-150 hover:border-input focus:border-ring focus:bg-background focus:outline-none"
       />
-      <input
-        value={valor}
-        onChange={(e) => setValor(e.target.value)}
-        onBlur={guardar}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            e.currentTarget.blur();
-          }
-        }}
-        inputMode="decimal"
-        aria-label="Cantidad del renglón"
-        disabled={pending}
-        className="w-24 shrink-0 rounded-sm border border-transparent bg-transparent px-2 py-1 text-right text-sm tabular-nums transition-colors duration-150 hover:border-input focus:border-ring focus:bg-background focus:outline-none"
-      />
-      {conMedidas && (
-        <span className="w-20 shrink-0 text-right text-xs text-muted-foreground tabular-nums">
-          = {formatCantidad(aporta)}
+      {/* El valor tipeado y, si corresponde, lo que aporta debajo: van juntos
+          en la misma columna porque son la misma medida, una cargada y otra
+          calculada a partir de ella (ver el comentario de `aporta` arriba). */}
+      <span className="flex flex-col items-end">
+        <input
+          value={valor}
+          onChange={(e) => setValor(e.target.value)}
+          onBlur={guardar}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              e.currentTarget.blur();
+            }
+          }}
+          inputMode="decimal"
+          aria-label="Cantidad del renglón"
+          disabled={pending}
+          className="w-full rounded-sm border border-transparent bg-transparent px-2 py-1 text-right text-sm tabular-nums transition-colors duration-150 hover:border-input focus:border-ring focus:bg-background focus:outline-none"
+        />
+        {conMedidas && (
+          <span className="pr-2 text-right text-[10px] text-muted-foreground tabular-nums">
+            = {formatCantidad(aporta)}
+          </span>
+        )}
+      </span>
+      {hierro && (
+        <span
+          title={`${formatCantidad(aporta)} m ÷ 12 m por barra`}
+          className="text-right text-sm text-muted-foreground tabular-nums"
+        >
+          {formatCantidad(barras ?? 0)}
         </span>
       )}
       {hierro && (
-        <>
-          <span
-            title={`${formatCantidad(aporta)} m ÷ 12 m por barra`}
-            className="w-16 shrink-0 text-right text-xs text-muted-foreground tabular-nums"
-          >
-            {formatCantidad(barras ?? 0)} barras
-          </span>
-          <span
-            title={`${formatCantidad(barras ?? 0)} barras × ${formatCantidad(item.porBulto ?? 0)} kg cada una`}
-            className="w-20 shrink-0 text-right text-xs text-muted-foreground tabular-nums"
-          >
-            {formatCantidad(kg ?? 0)} kg
-          </span>
-        </>
+        <span
+          title={`${formatCantidad(barras ?? 0)} barras × ${formatCantidad(item.porBulto ?? 0)} kg cada una`}
+          className="text-right text-sm text-muted-foreground tabular-nums"
+        >
+          {formatCantidad(kg ?? 0)}
+        </span>
       )}
       <button
         type="button"
         aria-label={`Eliminar ${medicion.descripcion ?? "renglón"}`}
         onClick={borrar}
         disabled={pending}
-        className="shrink-0 rounded-sm text-muted-foreground transition-colors duration-150 hover:text-foreground"
+        className="justify-self-end rounded-sm text-muted-foreground transition-colors duration-150 hover:text-foreground"
       >
         <Trash2 className="h-3.5 w-3.5" />
       </button>
@@ -1377,6 +1427,7 @@ function RenglonNuevo({
   const [descripcion, setDescripcion] = useState("");
   const [valor, setValor] = useState("");
   const [pending, startTransition] = useTransition();
+  const hierro = esHierro(item);
 
   const agregar = () => {
     const limpio = descripcion.trim();
@@ -1403,7 +1454,7 @@ function RenglonNuevo({
   };
 
   return (
-    <div className="flex items-center gap-2 pt-1">
+    <div className={cn("grid items-center gap-2 pt-1", columnasDetalle(hierro))}>
       <input
         value={descripcion}
         onChange={(e) => setDescripcion(e.target.value)}
@@ -1416,7 +1467,7 @@ function RenglonNuevo({
         }}
         placeholder="Base B1"
         aria-label="Descripción del renglón nuevo"
-        className="min-w-0 flex-1 rounded-sm border border-input bg-background px-2 py-1 text-sm focus:border-ring focus:outline-none"
+        className="min-w-0 rounded-sm border border-input bg-background px-2 py-1 text-sm focus:border-ring focus:outline-none"
       />
       <input
         value={valor}
@@ -1431,9 +1482,21 @@ function RenglonNuevo({
         inputMode="decimal"
         placeholder="0,58"
         aria-label="Cantidad del renglón nuevo"
-        className="w-24 shrink-0 rounded-sm border border-input bg-background px-2 py-1 text-right text-sm tabular-nums focus:border-ring focus:outline-none"
+        className="rounded-sm border border-input bg-background px-2 py-1 text-right text-sm tabular-nums focus:border-ring focus:outline-none"
       />
-      <Button type="button" size="sm" variant="outline" disabled={pending} onClick={agregar}>
+      {/* El botón no tiene columna fija: arranca donde termina la de los
+          metros y ocupa todo lo que sigue —barras y kilos, para el hierro,
+          o nada más, para el resto— porque hasta que no se guarda el
+          renglón no hay ni barras ni kilos que mostrar ahí. */}
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        disabled={pending}
+        onClick={agregar}
+        style={{ gridColumn: "3 / -1" }}
+        className="justify-self-end"
+      >
         <Plus className="h-3.5 w-3.5" />
         Renglón
       </Button>
@@ -1457,19 +1520,14 @@ function RenglonNuevo({
 function Subencabezados({ item }: { item: ItemOpcion }) {
   const conversion = conversionDe(item);
 
-  // El hierro va en una sola subcolumna: la cantidad de barras. Los metros
-  // que se tipearon y los kilos que pesan quedan adentro del detalle de cada
-  // nivel (ver DetalleCelda), no acá, para no repetir las tres medidas en una
-  // grilla que ya tiene treinta filas.
+  // El hierro va en una sola subcolumna: la cantidad de barras. Esa etiqueta
+  // ya se dice una vez arriba, debajo del nombre del ítem (ver el encabezado
+  // principal) — repetirla acá, en el subencabezado, es lo que generaba dos
+  // rótulos para una sola columna. Un `<th>` vacío mantiene la grilla, sin
+  // texto. Los metros y los kilos quedan adentro del detalle de cada nivel
+  // (ver DetalleCelda), no acá.
   if (esHierro(item)) {
-    return (
-      <th
-        title={`Cantidad de barras de 12 m, de ${formatCantidad(item.porBulto!)} kg cada una. Los metros y los kilos se ven adentro del detalle de cada nivel.`}
-        className="border-l px-2 pb-1 text-right text-[10px] font-normal text-muted-foreground"
-      >
-        barras
-      </th>
-    );
+    return <th className="border-l px-2 pb-1" />;
   }
 
   return (
