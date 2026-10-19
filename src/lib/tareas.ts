@@ -213,6 +213,36 @@ export function tareasDeVista(tareas: TareaOpcion[], vista: VistaTarea): TareaOp
   return tareas.filter((t) => t.estado === vista);
 }
 
+/** Los tres colores del puntito de estado de un plano en Documentación. */
+export type ColorEstadoDocumento = "rojo" | "amarillo" | "verde";
+
+/**
+ * Color del puntito de un plano del listado de Documentación, a partir de su
+ * documento (PENDIENTE/PRESENTADO) y la tarea activa vinculada a él, si hay
+ * una (ver Tarea.documentoId).
+ *
+ * Mismo criterio que separa las solapas de tareas (ver `VistaTarea`):
+ * pendiente sin tocar es rojo, en revisión o devuelta a corregir es
+ * amarillo, completada es verde. Sin tarea vinculada sólo hay rojo o verde,
+ * según si el plano ya se tildó —a mano o subiendo un archivo.
+ *
+ * PRESENTADO manda por sobre la tarea: las acciones de tareas mantienen a
+ * los dos sincronizados (completar la tarea tilda el plano, reabrirla lo
+ * destilda), así que en el camino normal nunca deberían contradecirse; si
+ * alguna vez lo hacen, mostrar lo que diga el plano es lo que se ve en el
+ * resto de Documentación.
+ */
+export function colorEstadoDocumento(
+  estadoDocumento: "PENDIENTE" | "PRESENTADO",
+  tareaActiva: { estado: EstadoTarea; aCorregir: boolean } | null
+): ColorEstadoDocumento {
+  if (estadoDocumento === "PRESENTADO") return "verde";
+  if (!tareaActiva) return "rojo";
+  if (tareaActiva.estado === "COMPLETADA") return "verde";
+  if (tareaActiva.estado === "EN_REVISION" || tareaActiva.aCorregir) return "amarillo";
+  return "rojo";
+}
+
 /**
  * Orden de la lista: por fecha de creación, de la más nueva a la más vieja.
  *

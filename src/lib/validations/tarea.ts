@@ -29,6 +29,11 @@ export const TareaSchema = z.object({
       })
     )
     .default([]),
+  // Si la tarea sale del botón "Nueva tarea" de un plano en Documentación,
+  // el id del DocumentoTipo (no el de Documento: todavía puede no existir
+  // uno para esta obra). Solo se usa al crear; una tarea existente ya tiene
+  // su vínculo resuelto y no se toca al editarla.
+  documentoTipoId: z.string().optional(),
 });
 
 export type TareaInput = z.infer<typeof TareaSchema>;

@@ -266,15 +266,6 @@ model DocumentoCategoria {
   subTipos    String[] @default([])
   createdAt   DateTime @default(now())
 
-  // A qué rubro del catálogo pertenecen los planos de esta categoría (ej.
-  // "Instalaciones" -> Instalación sanitaria, o el rubro que corresponda).
-  // Se configura una sola vez desde la pantalla de documentación y de ahí
-  // en más cada plano de la categoría ya sabe con qué rubro crear una tarea,
-  // sin tener que elegirlo de nuevo cada vez. Null mientras no se configuró,
-  // o en categorías que no corresponden a ningún rubro (Pliegos, por ej.).
-  rubroId     String?
-  rubro       Rubro?   @relation(fields: [rubroId], references: [id])
-
   tipos DocumentoTipo[]
 }
 
@@ -366,6 +357,13 @@ model Documento {
   createdAt     DateTime        @default(now())
   updatedAt     DateTime        @updatedAt
 
+  // La tarea que se crea desde este plano (botón "Nueva tarea" en
+  // Documentación) para ir a buscar lo que falta. Puede haber varias en el
+  // tiempo (una completada no impide crear otra más adelante), pero las
+  // acciones de tareas no dejan que haya más de una activa a la vez: el
+  // puntito de este plano tiene que mostrar un solo color sin ambigüedad.
+  tareas Tarea[]
+
   @@unique([proyectoId, tipoId])
   @@index([proyectoId])
 }
@@ -438,7 +436,6 @@ model Rubro {
   computo          ComputoItem[]
   computoSecciones ComputoSeccion[]
   computoFechas    ComputoFecha[]
-  categoriasDocumento DocumentoCategoria[]
 }
 
 // De qué lado de la obra es un cómputo: lo que se compra, o lo que se paga por
@@ -1105,6 +1102,13 @@ model Tarea {
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
+  // Si viene de un plano del listado de Documentación (botón "Nueva tarea"),
+  // el plano del que salió: al completarse esta tarea, el plano se tilda solo
+  // (y si se reabre la tarea, el plano vuelve a quedar pendiente). Null en
+  // las tareas que se cargan sueltas, sin pasar por Documentación.
+  documentoId    String?
+  documento      Documento?     @relation(fields: [documentoId], references: [id])
+
   asignados TareaAsignado[]
   items     TareaItem[]
   secciones TareaSeccion[]
@@ -1112,6 +1116,7 @@ model Tarea {
   @@index([proyectoId])
   @@index([rubroId])
   @@index([estado])
+  @@index([documentoId])
 }
 
 // Agrupa sub ítems dentro de una tarea, para las tareas largas que se dividen

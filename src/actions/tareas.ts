@@ -134,14 +134,43 @@ async function sincronizarChecklist(
  */
 const OPCIONES_TX = { timeout: 15000, maxWait: 10000 } as const;
 
+/** Lo que tira `crearTarea` adentro de la transacción para cortarla sin guardar nada. */
+const ERROR_TAREA_ACTIVA = "ERROR_TAREA_ACTIVA";
+
+/**
+ * Sincroniza el plano vinculado (Tarea.documentoId) con el estado nuevo de
+ * la tarea: completada lo tilda, cualquier otro estado lo destilda. No hace
+ * nada si la tarea no viene de un plano del listado de Documentación.
+ *
+ * Así el tilde de Documentación no se toca a mano para las tareas que
+ * siguen este circuito: sigue solo a la tarea, para adelante y para atrás
+ * (si se la reabre, el plano vuelve a quedar pendiente).
+ */
+async function sincronizarDocumentoVinculado(documentoId: string | null, estado: EstadoTarea) {
+  if (!documentoId) return;
+  await prisma.documento.update({
+    where: { id: documentoId },
+    data: { estado: estado === "COMPLETADA" ? "PRESENTADO" : "PENDIENTE" },
+  });
+}
+
 export async function crearTarea(input: TareaInput): Promise<ActionResult> {
   const session = await verifySession();
   const validated = TareaSchema.safeParse(input);
   if (!validated.success) {
     return { success: false, error: validated.error.issues[0]?.message ?? "Datos inválidos." };
   }
-  const { proyectoId, titulo, descripcion, rubroId, prioridad, asignadoIds, items, secciones } =
-    validated.data;
+  const {
+    proyectoId,
+    titulo,
+    descripcion,
+    rubroId,
+    prioridad,
+    asignadoIds,
+    items,
+    secciones,
+    documentoTipoId,
+  } = validated.data;
 
   try {
     // La tarea se crea primero y el checklist se arma después, porque los
@@ -149,6 +178,33 @@ export async function crearTarea(input: TareaInput): Promise<ActionResult> {
     // tarea, y ninguno existe hasta que se graba. Va todo en una transacción
     // para no dejar una tarea a medio armar si algo falla.
     const item = await prisma.$transaction(async (tx) => {
+      // Si la tarea sale del botón "Nueva tarea" de un plano, se la vincula a
+      // su documento (lazy: se crea si todavía no existía para esta obra,
+      // mismo criterio que el resto de Documentación). Un plano no puede
+      // tener más de una tarea activa a la vez, así que si ya hay una sin
+      // completar se corta acá, antes de crear nada.
+      let documentoId: string | null = null;
+      if (documentoTipoId) {
+        const documento = await tx.documento.upsert({
+          where: { proyectoId_tipoId: { proyectoId, tipoId: documentoTipoId } },
+          update: {},
+          create: { proyectoId, tipoId: documentoTipoId },
+        });
+        const activa = await tx.tarea.findFirst({
+          where: { documentoId: documento.id, estado: { not: "COMPLETADA" } },
+          select: { id: true },
+        });
+        if (activa) throw new Error(ERROR_TAREA_ACTIVA);
+
+        // Un plano ya tildado al que se le crea una tarea nueva vuelve a
+        // quedar pendiente: de ahora en más el color lo manda esta tarea, y
+        // arranca en rojo.
+        if (documento.estado === "PRESENTADO") {
+          await tx.documento.update({ where: { id: documento.id }, data: { estado: "PENDIENTE" } });
+        }
+        documentoId = documento.id;
+      }
+
       const creada = await tx.tarea.create({
         data: {
           proyectoId,
@@ -157,6 +213,7 @@ export async function crearTarea(input: TareaInput): Promise<ActionResult> {
           rubroId: rubroId || null,
           prioridad,
           creadoPorId: session.userId,
+          documentoId,
           asignados: { create: asignadoIds.map((userId) => ({ userId })) },
         },
         select: { id: true },
@@ -167,6 +224,9 @@ export async function crearTarea(input: TareaInput): Promise<ActionResult> {
     revalidar(proyectoId);
     return { success: true, item: mapTarea(item) };
   } catch (error) {
+    if (error instanceof Error && error.message === ERROR_TAREA_ACTIVA) {
+      return { success: false, error: "Ese plano ya tiene una tarea activa." };
+    }
     // Sin esto el motivo real se pierde y del lado del usuario solo queda un
     // "no se pudo": queda en el log del servidor para poder diagnosticarlo.
     console.error("crearTarea", error);
@@ -246,6 +306,7 @@ export async function cambiarEstadoTarea(
       },
       include: tareaInclude,
     });
+    await sincronizarDocumentoVinculado(item.documentoId, item.estado);
     revalidar(item.proyectoId);
     return { success: true, item: mapTarea(item) };
   } catch (error) {
@@ -277,6 +338,7 @@ export async function mandarACorregirTarea(id: string, nota: string): Promise<Ac
       },
       include: tareaInclude,
     });
+    await sincronizarDocumentoVinculado(item.documentoId, item.estado);
     revalidar(item.proyectoId);
     return { success: true, item: mapTarea(item) };
   } catch (error) {
@@ -332,6 +394,7 @@ export async function cambiarEstadoItemTarea(
       : // La tarea no cambia de estado, pero igual hay que devolverla al
         // cliente con el checklist actualizado.
         await prisma.tarea.findUniqueOrThrow({ where: { id: tareaId }, include: tareaInclude });
+    if (reabrir) await sincronizarDocumentoVinculado(item.documentoId, item.estado);
     revalidar(item.proyectoId);
     return { success: true, item: mapTarea(item) };
   } catch (error) {

@@ -25,14 +25,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DeleteButton } from "@/components/ui/delete-button";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  actualizarRubroCategoriaDocumento,
   crearCategoriaDocumento,
   crearTipoDocumento,
   eliminarCategoriaDocumento,
@@ -54,11 +46,7 @@ type Categoria = {
   nombre: string;
   orden: number;
   porPiso: boolean;
-  rubroId: string | null;
 };
-
-/** Valor del <Select> de rubro cuando la categoría no tiene uno asociado. */
-const SIN_RUBRO_CATEGORIA = "";
 
 type Tipo = {
   id: string;
@@ -71,12 +59,22 @@ type Tipo = {
   parentId: string | null;
 };
 
+/** La tarea activa (sin completar) vinculada a un plano, si tiene una. */
+type TareaActiva = {
+  id: string;
+  estado: "PENDIENTE" | "EN_REVISION" | "COMPLETADA";
+  aCorregir: boolean;
+  titulo: string;
+};
+
 type Documento = {
+  id: string;
   tipoId: string;
   estado: "PENDIENTE" | "PRESENTADO";
   notas: string | null;
   archivoNombre: string | null;
   archivoUrl: string | null;
+  tareaActiva: TareaActiva | null;
 };
 
 const AVISO_COMPARTIDO =
@@ -143,6 +141,40 @@ function progreso(
     }
   }
   return { total, presentados };
+}
+
+/**
+ * Título automático de la tarea que se crea desde un plano: el camino
+ * completo hasta él, categoría - subsección - cada nivel intermedio - su
+ * propio nombre, así no hay que escribirlo a mano ni repetir en el título
+ * algo que ya se ve en el árbol.
+ *
+ * La subsección no hace falta buscarla en los ancestros: crearTipoDocumento
+ * se la copia a todo lo que cuelga de un padre, así que el mismo tipo ya la
+ * tiene cargada, sea hoja o no.
+ */
+function construirTitulosAuto(categorias: Categoria[], tipos: Tipo[]): Map<string, string> {
+  const categoriaPorId = new Map(categorias.map((c) => [c.id, c]));
+  const tipoPorId = new Map(tipos.map((t) => [t.id, t]));
+
+  function ruta(tipo: Tipo): string {
+    const partes: string[] = [];
+    const categoria = categoriaPorId.get(tipo.categoriaId);
+    if (categoria) partes.push(categoria.nombre);
+    if (tipo.subSeccion) partes.push(tipo.subSeccion);
+
+    const ancestros: string[] = [];
+    let actual = tipo.parentId ? tipoPorId.get(tipo.parentId) : undefined;
+    while (actual) {
+      ancestros.unshift(actual.nombre);
+      actual = actual.parentId ? tipoPorId.get(actual.parentId) : undefined;
+    }
+
+    partes.push(...ancestros, tipo.nombre);
+    return partes.join(" - ");
+  }
+
+  return new Map(tipos.map((t) => [t.id, ruta(t)]));
 }
 
 /**
@@ -410,7 +442,7 @@ function ProgresoBar({ total, presentados }: { total: number; presentados: numbe
 function NodoDocumento({
   proyectoId,
   categoriaId,
-  categoriaRubroId,
+  titulosAuto,
   rubros,
   usuarios,
   tipo,
@@ -420,8 +452,8 @@ function NodoDocumento({
 }: {
   proyectoId: string;
   categoriaId: string;
-  /** Rubro configurado para la categoría: con qué rubro se crea la tarea de "Nueva tarea". */
-  categoriaRubroId: string | null;
+  /** Título que le toca a la tarea de "Nueva tarea" de cada plano: categoría - subsección - nivel... */
+  titulosAuto: Map<string, string>;
   rubros: OpcionSimple[];
   usuarios: OpcionSimple[];
   tipo: Tipo;
@@ -434,15 +466,17 @@ function NodoDocumento({
   const compartido = tipo.proyectoId === null;
 
   if (hijos.length === 0) {
+    const documento = documentosPorTipo.get(tipo.id);
     return (
       <DocumentoItemCard
         proyectoId={proyectoId}
         tipoId={tipo.id}
         nombre={tipo.nombre}
         descripcion={tipo.descripcion}
-        estado={documentosPorTipo.get(tipo.id)?.estado ?? "PENDIENTE"}
+        estado={documento?.estado ?? "PENDIENTE"}
+        tareaActiva={documento?.tareaActiva ?? null}
         compartido={compartido}
-        rubroIdInicial={categoriaRubroId}
+        tituloTareaInicial={titulosAuto.get(tipo.id) ?? tipo.nombre}
         rubros={rubros}
         usuarios={usuarios}
         dragHandle={dragHandle}
@@ -490,7 +524,7 @@ function NodoDocumento({
               <ListaNodos
                 proyectoId={proyectoId}
                 categoriaId={categoriaId}
-                categoriaRubroId={categoriaRubroId}
+                titulosAuto={titulosAuto}
                 rubros={rubros}
                 usuarios={usuarios}
                 nodos={hijos}
@@ -521,7 +555,7 @@ function NodoDocumento({
 function ListaNodos({
   proyectoId,
   categoriaId,
-  categoriaRubroId,
+  titulosAuto,
   rubros,
   usuarios,
   nodos,
@@ -530,7 +564,7 @@ function ListaNodos({
 }: {
   proyectoId: string;
   categoriaId: string;
-  categoriaRubroId: string | null;
+  titulosAuto: Map<string, string>;
   rubros: OpcionSimple[];
   usuarios: OpcionSimple[];
   nodos: Tipo[];
@@ -546,7 +580,7 @@ function ListaNodos({
               <NodoDocumento
                 proyectoId={proyectoId}
                 categoriaId={categoriaId}
-                categoriaRubroId={categoriaRubroId}
+                titulosAuto={titulosAuto}
                 rubros={rubros}
                 usuarios={usuarios}
                 tipo={tipo}
@@ -566,7 +600,7 @@ function ListaNodos({
 function SubSeccionBloque({
   proyectoId,
   categoriaId,
-  categoriaRubroId,
+  titulosAuto,
   rubros,
   usuarios,
   sub,
@@ -578,7 +612,7 @@ function SubSeccionBloque({
 }: {
   proyectoId: string;
   categoriaId: string;
-  categoriaRubroId: string | null;
+  titulosAuto: Map<string, string>;
   rubros: OpcionSimple[];
   usuarios: OpcionSimple[];
   sub: string;
@@ -632,7 +666,7 @@ function SubSeccionBloque({
               <ListaNodos
                 proyectoId={proyectoId}
                 categoriaId={categoriaId}
-                categoriaRubroId={categoriaRubroId}
+                titulosAuto={titulosAuto}
                 rubros={rubros}
                 usuarios={usuarios}
                 nodos={nodos}
@@ -661,6 +695,7 @@ function CategoriaBloque({
   documentosPorTipo,
   presentado,
   dragHandle,
+  titulosAuto,
   rubros,
   usuarios,
 }: {
@@ -671,23 +706,11 @@ function CategoriaBloque({
   documentosPorTipo: Map<string, Documento>;
   presentado: (id: string) => boolean;
   dragHandle?: React.ReactNode;
+  titulosAuto: Map<string, string>;
   rubros: OpcionSimple[];
   usuarios: OpcionSimple[];
 }) {
   const [editando, setEditando] = useState(false);
-  const [, startTransitionRubro] = useTransition();
-
-  // El <Select> de Base UI necesita el mapa value → label para mostrar el
-  // texto del valor elegido en el trigger.
-  const rubroItems = Object.fromEntries([
-    [SIN_RUBRO_CATEGORIA, "Sin rubro"],
-    ...rubros.map((r) => [r.id, r.nombre]),
-  ]);
-  const handleCambiarRubro = (rubroId: string) => {
-    startTransitionRubro(async () => {
-      await actualizarRubroCategoriaDocumento(proyectoId, categoria.id, rubroId || null);
-    });
-  };
 
   if (editando) {
     return (
@@ -749,7 +772,7 @@ function CategoriaBloque({
                           <SubSeccionBloque
                             proyectoId={proyectoId}
                             categoriaId={categoria.id}
-                            categoriaRubroId={categoria.rubroId}
+                            titulosAuto={titulosAuto}
                             rubros={rubros}
                             usuarios={usuarios}
                             sub={sub}
@@ -768,7 +791,7 @@ function CategoriaBloque({
               <ListaNodos
                 proyectoId={proyectoId}
                 categoriaId={categoria.id}
-                categoriaRubroId={categoria.rubroId}
+                titulosAuto={titulosAuto}
                 rubros={rubros}
                 usuarios={usuarios}
                 nodos={tiposSinSubSeccion}
@@ -785,27 +808,6 @@ function CategoriaBloque({
             )}
           </AccordionPanel>
         </AccordionItem>
-        {/* Rubro con el que se crea la tarea al tocar "Nueva tarea" en
-            cualquier plano de esta categoría (ver DocumentoItemCard). Se
-            configura una sola vez y queda igual en todas las obras, como el
-            nombre de la categoría. Oculto en pantallas chicas: no es algo que
-            se use seguido y en el celular no entra sin apretar el resto. */}
-        <Select value={categoria.rubroId ?? SIN_RUBRO_CATEGORIA} onValueChange={(v) => handleCambiarRubro(v ?? SIN_RUBRO_CATEGORIA)} items={rubroItems}>
-          <SelectTrigger
-            className="hidden w-36 shrink-0 text-xs sm:flex"
-            aria-label={`Rubro para crear tareas desde "${categoria.nombre}"`}
-          >
-            <SelectValue placeholder="Sin rubro" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={SIN_RUBRO_CATEGORIA}>Sin rubro</SelectItem>
-            {rubros.map((r) => (
-              <SelectItem key={r.id} value={r.id}>
-                {r.nombre}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
         <BotonRenombrar nombre={categoria.nombre} onClick={() => setEditando(true)} />
         <DeleteButton
           iconOnly
@@ -864,6 +866,8 @@ export function DocumentacionBoard({
     else hijosPorPadre.set(tipo.parentId, [tipo]);
   }
   const hijosDe = (id: string) => hijosPorPadre.get(id) ?? [];
+
+  const titulosAuto = construirTitulosAuto(itemsCategorias, itemsTipos);
 
   const moverSubSecciones = (categoriaId: string, activo: string, destino: string) => {
     const raices = itemsTipos.filter(
@@ -997,6 +1001,7 @@ export function DocumentacionBoard({
                       documentosPorTipo={documentosPorTipo}
                       presentado={presentado}
                       dragHandle={asa}
+                      titulosAuto={titulosAuto}
                       rubros={rubros}
                       usuarios={usuarios}
                     />
