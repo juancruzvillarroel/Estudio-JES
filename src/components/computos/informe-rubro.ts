@@ -139,6 +139,39 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
   });
 
   /**
+   * Lo mismo que `valoresHierro`, pero con las barras ya redondeadas para
+   * arriba. Sólo tiene sentido en una fila de TOTAL (o en la de +10%, que es
+   * un total con otro número adentro): las barras se compran una vez para
+   * toda la obra, así que ahí —y sólo ahí— corresponde el redondeo. Por eso
+   * ya no hace falta una fila aparte debajo del total.
+   */
+  const valoresHierroRedondeado = (item: ItemOpcion, medido: number) => {
+    const kg = kgDeMetros(item, medido);
+    const bultos = bultosDe(item, kg);
+    return { ml: medido, barras: bultos?.enteros ?? 0, kg };
+  };
+
+  /** Los ítems de hierro de esta sección: son los que alimentan la columna del total en kg. */
+  const hierroItems = items.filter((i) => esHierro(i));
+  const conTotalKg = hierroItems.length > 0;
+
+  /** Cuántos kg suman, entre todos los diámetros, lo cargado en esta fila (un piso). */
+  const totalKgFila = (fila: ClaveFila): number | null => {
+    const algo = hierroItems.some((i) => tieneMedidoEnFila(i, fila));
+    if (!algo) return null;
+    return hierroItems.reduce((acc, i) => {
+      if (!tieneMedidoEnFila(i, fila)) return acc;
+      return acc + kgDeMetros(i, medidoEnFila(i, fila, datos.totales));
+    }, 0);
+  };
+
+  /** La celda de la columna del total en kg, o nada si esta sección no tiene hierro. */
+  const celdaTotalKg = (valor: number | null) =>
+    conTotalKg
+      ? `<td class="num total-kg-col">${esc(valor === null ? "—" : formatCantidad(valor))}</td>`
+      : "";
+
+  /**
    * Una celda de hierro para una de sus columnas elegidas. `valores` null es la
    * fila sin nada cargado: pinta raya, igual que cualquier otra celda vacía.
    */
@@ -221,6 +254,7 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
             medicion.descripcion ?? "—"
           )}</th>
           ${celdas}
+          ${conTotalKg ? `<td class="total-kg-col"></td>` : ""}
         </tr>`;
         });
       })
@@ -234,10 +268,15 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
           (item) => `
         <th class="item" colspan="${columnasPorItem(item)}">
           <div class="item-nombre">${esc(item.nombre)}</div>
-          <div class="item-unidad">${esc(simboloUnidad(item.unidad))}</div>
+          ${
+            esHierro(item)
+              ? ""
+              : `<div class="item-unidad">${esc(simboloUnidad(item.unidad))}</div>`
+          }
         </th>`
         )
         .join("")}
+      ${conTotalKg ? `<th class="item total-kg-col">Total kg</th>` : ""}
     </tr>
     <tr class="sub">
       <th></th>
@@ -267,6 +306,7 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
           }`;
         })
         .join("")}
+      ${conTotalKg ? `<th class="total-kg-col"></th>` : ""}
     </tr>`;
 
   const cuerpo = filas
@@ -307,10 +347,20 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
         <tr>
           <th class="nivel-col" scope="row">${esc(fila.nombre)}</th>
           ${celdas}
+          ${celdaTotalKg(totalKgFila(fila.clave))}
         </tr>
         ${datos.conDetalle ? renglonesDe(fila.clave) : ""}`;
     })
     .join("");
+
+  /** Cuántos kg suman, entre todos los diámetros, los totales de toda la sección. */
+  const algunHierroCargado = hierroItems.some((i) => i.mediciones.length > 0);
+  const totalKgGeneral = !algunHierroCargado
+    ? null
+    : hierroItems.reduce((acc, item) => {
+        if (item.mediciones.length === 0) return acc;
+        return acc + kgDeMetros(item, datos.totales.get(item.id) ?? 0);
+      }, 0);
 
   const filaTotal = `
     <tr class="total">
@@ -320,7 +370,10 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
           const total = datos.totales.get(item.id) ?? 0;
           const vacio = item.mediciones.length === 0;
           if (esHierro(item)) {
-            const valores = vacio ? null : valoresHierro(item, total);
+            // Acá, y sólo acá, las barras ya van redondeadas para arriba: es
+            // lo que efectivamente se compra, y así no hace falta una fila
+            // aparte debajo con la misma cuenta.
+            const valores = vacio ? null : valoresHierroRedondeado(item, total);
             return columnasHierro()
               .map((u) => celdaHierro(u, valores))
               .join("");
@@ -341,6 +394,34 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
           )}</td>${merma}${material}`;
         })
         .join("")}
+      ${celdaTotalKg(totalKgGeneral)}
+    </tr>`;
+
+  /**
+   * El margen de obra sobre el hierro: 10% fijo arriba del total, aparte de la
+   * merma propia de cada diámetro (que ya está adentro de cada número de
+   * arriba). Es el número con el que se termina pidiendo en la práctica, así
+   * que va en su propia fila y no reemplaza al Total, que sigue siendo lo que
+   * dice el cómputo sin margen.
+   */
+  const filaDesperdicio10 =
+    hierroItems.length === 0
+      ? ""
+      : `
+    <tr class="extra">
+      <th class="nivel-col" scope="row">Total +10%</th>
+      ${items
+        .map((item) => {
+          if (!esHierro(item)) return celdasVacias(item);
+          const vacio = item.mediciones.length === 0;
+          const total = datos.totales.get(item.id) ?? 0;
+          const valores = vacio ? null : valoresHierroRedondeado(item, total * 1.1);
+          return columnasHierro()
+            .map((u) => celdaHierro(u, valores))
+            .join("");
+        })
+        .join("")}
+      ${celdaTotalKg(totalKgGeneral === null ? null : totalKgGeneral * 1.1)}
     </tr>`;
 
   /**
@@ -350,9 +431,12 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
    * palet se compra una vez para toda la obra, y redondear para arriba planta
    * por planta daría de más una vez por planta. Junto al entero va el exacto,
    * más chico, que es el que dice cuánto sobra del último.
+   *
+   * El hierro no entra acá: su redondeo ya va directo en la fila de Total, así
+   * que repetirlo acá sería la misma cuenta dos veces.
    */
   const conBulto = items.filter(
-    (i) => i.porBulto !== null && conversionDe(i) !== null
+    (i) => !esHierro(i) && i.porBulto !== null && conversionDe(i) !== null
   );
   const etiquetaBulto = etiquetaBultos(conBulto);
 
@@ -364,6 +448,12 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
       <th class="nivel-col" scope="row">${esc(etiquetaBulto)}</th>
       ${items
         .map((item) => {
+          // Esta fila ya no dice nada del hierro (ver conBulto arriba): sus
+          // columnas quedan en blanco, tantas como le tocan, para no romper
+          // el colspan del encabezado.
+          if (esHierro(item)) return celdasVacias(item);
+          const vacios = `<td></td>${conMerma(item) ? `<td class="merma"></td>` : ""}`;
+          if (conversionDe(item) === null) return vacios;
           const total = datos.totales.get(item.id) ?? 0;
           const bultos =
             item.mediciones.length === 0
@@ -375,27 +465,13 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
               : `<strong>${esc(String(bultos.enteros))}</strong> <span class="exacto">${esc(
                   formatCantidad(bultos.exacto)
                 )}</span>`;
-          // El hierro ya tiene sus propias columnas (ml/barras/kg, las que se
-          // elijan): el total de barras a pedir va adentro de la que
-          // corresponda —"barras" si está, o la primera que haya— y el resto
-          // vacías, para no desarmar el colspan del encabezado.
-          if (esHierro(item)) {
-            const columnas = columnasHierro();
-            const indice = Math.max(columnas.indexOf("barras"), 0);
-            return columnas
-              .map((_, i) =>
-                i === indice ? `<td class="num material">${texto}</td>` : `<td></td>`
-              )
-              .join("");
-          }
-          const vacios = `<td></td>${conMerma(item) ? `<td class="merma"></td>` : ""}`;
-          if (conversionDe(item) === null) return vacios;
           return `${vacios}<td class="num material">${texto}</td>`;
         })
         .join("")}
+      ${conTotalKg ? `<td class="total-kg-col"></td>` : ""}
     </tr>`;
 
-  const pie = `${filaTotal}${filaBultos}`;
+  const pie = `${filaTotal}${filaDesperdicio10}${filaBultos}`;
 
   return `
     <section class="bloque">
@@ -502,7 +578,7 @@ function construirHtml(datos: DatosInformeRubro) {
     table.grilla { width: 100%; border-collapse: collapse; }
     table.grilla th, table.grilla td {
       border: 1px solid var(--linea);
-      padding: 3px 5px;
+      padding: 2px 4px;
       break-inside: avoid;
     }
 
@@ -512,29 +588,39 @@ function construirHtml(datos: DatosInformeRubro) {
       text-align: left;
       font-weight: 600;
       background: #f2f2f2;
-      width: 26mm;
-      font-size: 9px;
+      width: 22mm;
+      font-size: 8.5px;
       text-transform: uppercase;
       letter-spacing: 0.03em;
     }
 
     thead th.item {
       background: #ebebeb;
-      font-size: 10px;
+      font-size: 9.5px;
       vertical-align: bottom;
     }
     thead th.item .item-nombre { font-weight: 700; }
-    thead th.item .item-unidad { font-weight: 400; color: var(--gris); font-size: 8.5px; }
+    thead th.item .item-unidad { font-weight: 400; color: var(--gris); font-size: 8px; }
     thead tr.sub th {
       background: #f7f7f7;
-      font-size: 8px;
+      font-size: 7.5px;
       font-weight: 500;
       color: var(--gris);
       text-transform: uppercase;
-      letter-spacing: 0.05em;
+      letter-spacing: 0.04em;
     }
 
-    .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+    /* Los números son lo que más se amontona: una grilla de hierro con siete
+       diámetros por dos columnas ya son quince columnas de datos, y en A4
+       apaisado eso es poco ancho por celda. Achicar la fuente acá, y no en
+       toda la tabla, es lo que deja los números sueltos y legibles sin perder
+       los títulos, que necesitan su tamaño para leerse de lejos. */
+    .num {
+      text-align: right;
+      white-space: nowrap;
+      font-variant-numeric: tabular-nums;
+      font-size: 9px;
+    }
     /* La columna del desperdicio, más clara: es la derivada de al lado, no un
        dato independiente, y en gris se lee como lo que es. */
     .merma { background: #fafafa; color: var(--gris); }
@@ -545,11 +631,30 @@ function construirHtml(datos: DatosInformeRubro) {
        pedido, así que tiene que encontrarse sin buscarla. */
     .material { background: #f0f0f0; font-weight: 600; }
 
+    /* El total en kg de todos los diámetros juntos: va aparte, con un borde
+       grueso a la izquierda, porque no es una columna más del ítem de al
+       lado —es la suma de toda la fila— y tiene que leerse como tal. */
+    .total-kg-col {
+      border-left: 2px solid var(--oscuro);
+      background: #f3f3f3;
+      font-weight: 700;
+    }
+    thead th.total-kg-col { font-size: 8.5px; }
+
     tfoot tr.total th, tfoot tr.total td {
       background: #e2e2e2;
       font-weight: 700;
       border-top: 2px solid var(--oscuro);
     }
+    /* El margen del 10% sobre el hierro: un escalón más claro que el Total,
+       para que se lea como lo que es —un extra sobre el número de arriba— y
+       no se confunda con el cómputo sin margen. */
+    tfoot tr.extra th, tfoot tr.extra td {
+      background: #fff6e8;
+      font-weight: 700;
+      color: #8a5a00;
+    }
+    tfoot tr.extra td.total-kg-col { background: #fdeccb; }
     tfoot tr.bultos th, tfoot tr.bultos td { background: #ededed; }
     tfoot tr.bultos th.nivel-col { font-size: 8.5px; }
     tfoot tr.bultos td.material { font-size: 11px; }
