@@ -274,7 +274,7 @@ function SinSeccion({
 export function ComputoBoard({
   proyectoId,
   proyectoNombre,
-  niveles,
+  niveles: nivelesProp,
   rubros,
   secciones: seccionesProp,
   filasExtra: filasExtraProp,
@@ -294,6 +294,11 @@ export function ComputoBoard({
   /** Cuándo se tocó por última vez cada rubro y lado. Ver FechaModificacion. */
   fechas: FechaComputoOpcion[];
 }) {
+  // Los niveles son de la obra, no de una sección: viven acá y no en cada
+  // SeccionGrilla para que renombrar o borrar uno desde una grilla se vea al
+  // toque en todas las demás, sin esperar a recargar la página.
+  const [niveles, setNiveles] = useState(nivelesProp);
+  const [prevNiveles, setPrevNiveles] = useState(nivelesProp);
   const [items, setItems] = useState(itemsProp);
   const [prevItems, setPrevItems] = useState(itemsProp);
   const [secciones, setSecciones] = useState(seccionesProp);
@@ -313,6 +318,10 @@ export function ComputoBoard({
    */
   const [tipoPorRubro, setTipoPorRubro] = useState<Record<string, TipoComputo>>({});
 
+  if (nivelesProp !== prevNiveles) {
+    setPrevNiveles(nivelesProp);
+    setNiveles(nivelesProp);
+  }
   if (itemsProp !== prevItems) {
     setPrevItems(itemsProp);
     setItems(itemsProp);
@@ -372,6 +381,13 @@ export function ComputoBoard({
     // (Cascade), así que acá tampoco pueden quedar.
     setFilasExtra((prev) => prev.filter((x) => x.seccionId !== id));
   };
+
+  /** Un nivel que se renombró desde alguna grilla: se corrige en la lista única. */
+  const reemplazarNivel = (n: NivelOpcion) =>
+    setNiveles((prev) => prev.map((x) => (x.id === n.id ? n : x)));
+
+  const sacarNivel = (id: string) =>
+    setNiveles((prev) => prev.filter((x) => x.id !== id));
 
   /** Igual que con los ítems: puede ser una fila nueva o una que se renombró. */
   const reemplazarFilaExtra = (f: FilaExtraOpcion) =>
@@ -581,6 +597,8 @@ export function ComputoBoard({
                       onSeccionDeleted={sacarSeccion}
                       onFilaExtraSaved={reemplazarFilaExtra}
                       onFilaExtraDeleted={sacarFilaExtra}
+                      onNivelSaved={reemplazarNivel}
+                      onNivelDeleted={sacarNivel}
                     />
                   ))}
 

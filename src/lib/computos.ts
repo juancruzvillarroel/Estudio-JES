@@ -983,3 +983,90 @@ export function esHierro(item: {
     (item.bultoNombre ?? "").trim().toLowerCase() === "barra"
   );
 }
+
+/**
+ * Las barras que corresponden a estos metros de hierro, sin redondear (el
+ * redondeo hacia arriba sólo tiene sentido en el Total, no mientras se está
+ * tipeando ni en el desglose de un nivel).
+ */
+export function barrasDeMetros(
+  item: {
+    desperdicio: number | null;
+    rinde: number | null;
+    rindeUnidad: UnidadComputo | null;
+    porBulto: number | null;
+  },
+  metros: number
+): number {
+  const kg = materialDe(item, metros) ?? 0;
+  return bultosDe(item, kg)?.exacto ?? 0;
+}
+
+/**
+ * La vuelta de barrasDeMetros: de una cantidad de barras salen los metros que
+ * hay que haber medido para pedir justo eso (deshace la merma y el peso por
+ * barra, en vez de aplicarlos).
+ */
+export function metrosDeBarras(
+  item: {
+    desperdicio: number | null;
+    rinde: number | null;
+    rindeUnidad: UnidadComputo | null;
+    porBulto: number | null;
+  },
+  barras: number
+): number {
+  const conversion = conversionDe(item);
+  if (!conversion || item.porBulto === null) return 0;
+  const kg = barras * item.porBulto;
+  const merma = item.desperdicio === null ? 1 : 1 + item.desperdicio / 100;
+  return kg / conversion.rinde / merma;
+}
+
+/**
+ * ¿Esta sección necesita, además del total por ítem al pie, el total por
+ * piso a la derecha?
+ *
+ * Hoy es sólo HORMIGÓN de ESTRUCTURA_H°A: columnas, vigas, losas, escaleras,
+ * tabiques y bases son items distintos, pero lo que de verdad se usa para
+ * programar un pozo de hormigón es cuánto hay que colar ESE piso en total, no
+ * cuánto hay de cada tipo de pieza. El resto de las secciones no tiene esta
+ * necesidad —no se vacía "todo lo medido de un piso" junto, cada ítem se pide
+ * por separado— así que no hace falta una columna que nadie va a mirar.
+ *
+ * Se exige que los ítems compartan unidad y que ninguno convierta a otra
+ * (hierro, ladrillos en palets, etc.): sumar m³ de hormigón con barras de
+ * hierro sería un número sin sentido, y esta columna existe justamente para
+ * lo contrario, un número que se pueda leer de una.
+ */
+export function mostrarTotalPorFila(
+  seccion: { nombre: string },
+  items: {
+    unidad: UnidadComputo;
+    rinde: number | null;
+    rindeUnidad: UnidadComputo | null;
+    porBulto: number | null;
+    bultoNombre: string | null;
+  }[]
+): boolean {
+  if (seccion.nombre.trim().toUpperCase() !== "HORMIGÓN") return false;
+  if (items.length === 0) return false;
+  const unidad = items[0].unidad;
+  return items.every(
+    (i) => i.unidad === unidad && conversionDe(i) === null && !esHierro(i)
+  );
+}
+
+/**
+ * La suma de lo medido de todos los ítems de la sección, para una fila (un
+ * piso, una fila extra, o "Toda la obra"). Sólo tiene sentido llamarla cuando
+ * `mostrarTotalPorFila` ya dijo que sí: ahí todos los ítems comparten unidad,
+ * así que sumarlos da un número y no una mezcla.
+ */
+export function totalPorFila(
+  items: ItemOpcion[],
+  fila: ClaveFila,
+  totales?: Map<string, number>
+): number {
+  return items.reduce((acc, item) => acc + medidoEnFila(item, fila, totales), 0);
+}
