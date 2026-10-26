@@ -15,11 +15,14 @@ import {
 } from "@/components/ui/dialog";
 import {
   abrirInformeRubro,
+  UNIDADES_HIERRO,
   type FilaInforme,
   type SeccionInforme,
+  type UnidadHierro,
 } from "@/components/computos/informe-rubro";
 import {
   claveFilaKey,
+  esHierro,
   fechaDeComputo,
   ordenarFilas,
   simboloUnidad,
@@ -53,6 +56,13 @@ function alternar(conjunto: Set<string>, id: string) {
   else next.add(id);
   return next;
 }
+
+/** Cómo se lee cada lectura del hierro en la lista de opciones del diálogo. */
+const ETIQUETA_UNIDAD_HIERRO: Record<UnidadHierro, string> = {
+  ml: "Metros (lo medido)",
+  barras: "Cantidad de barras",
+  kg: "Kilogramos",
+};
 
 /**
  * Un renglón de checkbox con su etiqueta, clickeable entero.
@@ -166,6 +176,9 @@ export function InformeRubroDialog({
   const [conDesperdicio, setConDesperdicio] = useState(true);
   const [conDetalle, setConDetalle] = useState(true);
   const [conVacias, setConVacias] = useState(false);
+  const [unidadesHierro, setUnidadesHierro] = useState<Set<UnidadHierro>>(
+    new Set(UNIDADES_HIERRO)
+  );
 
   /** Las secciones que se pueden elegir: las del lado o lados marcados. */
   const delLado = secciones
@@ -217,6 +230,8 @@ export function InformeRubroDialog({
   const hayGeneral = itemsActivos.some((i) =>
     i.mediciones.some((m) => m.nivelId === null && m.filaExtraId === null)
   );
+  /** Si hay hierro entre lo elegido, el diálogo ofrece elegir sus columnas. */
+  const hayHierro = itemsActivos.some((i) => esHierro(i));
 
   const opcionesFila: FilaOpcion[] = [
     ...niveles.map((n) => ({
@@ -277,6 +292,7 @@ export function InformeRubroDialog({
     setConDesperdicio(true);
     setConDetalle(true);
     setConVacias(false);
+    setUnidadesHierro(new Set(UNIDADES_HIERRO));
     // Fuerza el resincronizado de los ítems y las filas en el render siguiente,
     // que es cuando ya se sabe qué secciones quedaron marcadas.
     setPrevItems("");
@@ -337,6 +353,11 @@ export function InformeRubroDialog({
       secciones: imprimibles,
       conDesperdicio,
       conDetalle,
+      unidadesHierro: {
+        ml: unidadesHierro.has("ml"),
+        barras: unidadesHierro.has("barras"),
+        kg: unidadesHierro.has("kg"),
+      },
     });
     setOpen(false);
   };
@@ -466,6 +487,32 @@ export function InformeRubroDialog({
                   onCambio={() => setItemsElegidos((prev) => alternar(prev, item.id))}
                 >
                   {item.nombre}
+                </Opcion>
+              ))}
+            </Grupo>
+          )}
+
+          {hayHierro && (
+            <Grupo
+              titulo="Unidades del hierro"
+              cuantas={unidadesHierro.size}
+              total={UNIDADES_HIERRO.length}
+              onTodas={(marcar) =>
+                setUnidadesHierro(marcar ? new Set(UNIDADES_HIERRO) : new Set())
+              }
+            >
+              {UNIDADES_HIERRO.map((unidad) => (
+                <Opcion
+                  key={unidad}
+                  marcado={unidadesHierro.has(unidad)}
+                  onCambio={() =>
+                    setUnidadesHierro(
+                      (prev) =>
+                        alternar(prev as Set<string>, unidad) as Set<UnidadHierro>
+                    )
+                  }
+                >
+                  {ETIQUETA_UNIDAD_HIERRO[unidad]}
                 </Opcion>
               ))}
             </Grupo>

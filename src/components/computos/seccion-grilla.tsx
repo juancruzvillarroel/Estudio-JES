@@ -44,11 +44,13 @@ import {
   esHierro,
   etiquetaBultos,
   formatCantidad,
+  kgDeMetros,
   materialDe,
   medicionesDeFila,
   medidaATexto,
   medidoEnFila,
   metrosDeBarras,
+  metrosDeKg,
   mostrarTotalPorFila,
   ordenarFilas,
   parcialMedicion,
@@ -170,15 +172,16 @@ function Celda({
 }
 
 /**
- * La celda de hierro: dos campos en paralelo para el mismo metraje, uno en
- * metros lineales (lo que se mide en obra) y otro en barras (lo que se
- * compra). Se puede completar cualquiera de los dos; el otro se completa solo
- * con la conversión del ítem. Lo que se guarda siempre son los metros —es la
- * única unidad que entiende `guardarCelda`— así que cuando se tipea en barras
- * se convierte antes de mandarla.
+ * La celda de hierro: tres campos en paralelo para el mismo metraje, uno en
+ * metros lineales (lo que se mide en obra), otro en barras y otro en kilos
+ * (las dos formas en que se pide). Se puede completar cualquiera de los tres;
+ * los otros dos se completan solos con la conversión del ítem. Lo que se
+ * guarda siempre son los metros —es la única unidad que entiende
+ * `guardarCelda`— así que cuando se tipea en barras o en kg se convierte
+ * antes de mandarla.
  *
- * No hay focus-toggle como en `Celda`: los dos valores están siempre visibles
- * a la vez, que es justo lo que pidió reemplazar esta celda.
+ * No hay focus-toggle como en `Celda`: los tres valores están siempre
+ * visibles a la vez, que es justo lo que pidió reemplazar esta celda.
  */
 function CeldaHierro({
   proyectoId,
@@ -197,18 +200,21 @@ function CeldaHierro({
   /** Lo medido en metros, o null si esta celda todavía no tiene ninguna fila. */
   valor: number | null;
   onSaved: (item: ItemOpcion) => void;
-  /** Si el detalle de esta celda está abierto, para la flechita de la columna de barras. */
+  /** Si el detalle de esta celda está abierto, para la flechita de la columna de kg. */
   abierto: boolean;
   onAbrir: () => void;
 }) {
   const metrosATexto = (m: number | null) => (m === null ? "" : medidaATexto(m));
   const barrasATexto = (m: number | null) =>
     m === null ? "" : formatCantidad(barrasDeMetros(item, m));
+  const kgATexto = (m: number | null) => (m === null ? "" : formatCantidad(kgDeMetros(item, m)));
 
   const [textoMl, setTextoMl] = useState(metrosATexto(valor));
   const [textoBarras, setTextoBarras] = useState(barrasATexto(valor));
+  const [textoKg, setTextoKg] = useState(kgATexto(valor));
   const [guardadoMl, setGuardadoMl] = useState(textoMl);
   const [guardadoBarras, setGuardadoBarras] = useState(textoBarras);
+  const [guardadoKg, setGuardadoKg] = useState(textoKg);
   const [prev, setPrev] = useState(valor);
   const [pending, startTransition] = useTransition();
 
@@ -216,8 +222,10 @@ function CeldaHierro({
     setPrev(valor);
     setTextoMl(metrosATexto(valor));
     setTextoBarras(barrasATexto(valor));
+    setTextoKg(kgATexto(valor));
     setGuardadoMl(metrosATexto(valor));
     setGuardadoBarras(barrasATexto(valor));
+    setGuardadoKg(kgATexto(valor));
   }
 
   const guardar = (metros: number | null) => {
@@ -227,6 +235,7 @@ function CeldaHierro({
         toast.error(result.error);
         setTextoMl(guardadoMl);
         setTextoBarras(guardadoBarras);
+        setTextoKg(guardadoKg);
         return;
       }
       onSaved(result.item);
@@ -243,9 +252,12 @@ function CeldaHierro({
       return;
     }
     const nuevoTextoBarras = barrasATexto(numero);
+    const nuevoTextoKg = kgATexto(numero);
     setGuardadoMl(limpio);
     setGuardadoBarras(nuevoTextoBarras);
     setTextoBarras(nuevoTextoBarras);
+    setGuardadoKg(nuevoTextoKg);
+    setTextoKg(nuevoTextoKg);
     guardar(numero);
   };
 
@@ -260,9 +272,32 @@ function CeldaHierro({
     }
     const metros = barras === null ? null : metrosDeBarras(item, barras);
     const nuevoTextoMl = metrosATexto(metros);
+    const nuevoTextoKg = kgATexto(metros);
     setGuardadoBarras(limpio);
     setGuardadoMl(nuevoTextoMl);
     setTextoMl(nuevoTextoMl);
+    setGuardadoKg(nuevoTextoKg);
+    setTextoKg(nuevoTextoKg);
+    guardar(metros);
+  };
+
+  const porKg = () => {
+    const limpio = textoKg.trim();
+    if (limpio === guardadoKg) return;
+    const kg = limpio === "" ? null : parseMedida(limpio);
+    if (limpio !== "" && kg === null) {
+      toast.error("Escribí un número mayor a 0.");
+      setTextoKg(guardadoKg);
+      return;
+    }
+    const metros = kg === null ? null : metrosDeKg(item, kg);
+    const nuevoTextoMl = metrosATexto(metros);
+    const nuevoTextoBarras = barrasATexto(metros);
+    setGuardadoKg(limpio);
+    setGuardadoMl(nuevoTextoMl);
+    setTextoMl(nuevoTextoMl);
+    setGuardadoBarras(nuevoTextoBarras);
+    setTextoBarras(nuevoTextoBarras);
     guardar(metros);
   };
 
@@ -299,31 +334,54 @@ function CeldaHierro({
         />
       </td>
       <td className="group/celda bg-foreground/[0.04] px-1 py-0.5">
+        <input
+          value={textoBarras}
+          onChange={(e) => setTextoBarras(e.target.value)}
+          onBlur={porBarras}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              e.currentTarget.blur();
+            }
+            if (e.key === "Escape") {
+              setTextoBarras(guardadoBarras);
+              e.currentTarget.blur();
+            }
+          }}
+          inputMode="decimal"
+          placeholder="—"
+          title={`${item.nombre} en ${filaNombre}: cantidad de barras de 12 m, de ${formatCantidad(item.porBulto ?? 0)} kg cada una`}
+          aria-label={`${item.nombre} en ${filaNombre}, en barras`}
+          disabled={pending}
+          className={inputClass}
+        />
+      </td>
+      <td className="group/celda bg-foreground/[0.04] px-1 py-0.5">
         <span className="flex items-center gap-0.5">
           <input
-            value={textoBarras}
-            onChange={(e) => setTextoBarras(e.target.value)}
-            onBlur={porBarras}
+            value={textoKg}
+            onChange={(e) => setTextoKg(e.target.value)}
+            onBlur={porKg}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
                 e.currentTarget.blur();
               }
               if (e.key === "Escape") {
-                setTextoBarras(guardadoBarras);
+                setTextoKg(guardadoKg);
                 e.currentTarget.blur();
               }
             }}
             inputMode="decimal"
             placeholder="—"
-            title={`${item.nombre} en ${filaNombre}: cantidad de barras de 12 m, de ${formatCantidad(item.porBulto ?? 0)} kg cada una`}
-            aria-label={`${item.nombre} en ${filaNombre}, en barras`}
+            title={`${item.nombre} en ${filaNombre}: peso total en kilos`}
+            aria-label={`${item.nombre} en ${filaNombre}, en kilos`}
             disabled={pending}
             className={cn(inputClass, "min-w-0 flex-1")}
           />
           {/* La flechita para abrir el detalle (mismo lugar que en cualquier
-              otro ítem) vive en esta columna y no en la de ml: es la que
-              queda al borde derecho de la celda del ítem. */}
+              otro ítem) vive en esta columna y no en las de ml o barras: es
+              la que queda al borde derecho de la celda del ítem. */}
           <button
             type="button"
             aria-expanded={abierto}
@@ -691,10 +749,10 @@ function FilaExtraNueva({
 /**
  * Cuántas columnas de la tabla ocupa un ítem.
  *
- * El hierro es un caso aparte y va siempre en dos: metros lineales y barras,
- * una al lado de la otra, las dos editables y sincronizadas entre sí (ver
- * CeldaHierro). No necesita además la de la merma, los bultos ni el material
- * porque esas dos columnas ya son justo esa conversión.
+ * El hierro es un caso aparte y va siempre en tres: metros lineales, barras y
+ * kilos, una al lado de la otra, las tres editables y sincronizadas entre sí
+ * (ver CeldaHierro). No necesita además la de la merma ni los bultos por
+ * separado porque esas tres columnas ya son justo esa conversión.
  *
  * Para el resto: una siempre —lo medido—, más la de la merma si tiene
  * desperdicio, más la de los bultos (palets, bolsas) si se compra agrupado,
@@ -704,7 +762,7 @@ function FilaExtraNueva({
  * las celdas corridas y los números quedan abajo de la columna equivocada.
  */
 function subcolumnas(item: ItemOpcion) {
-  if (esHierro(item)) return 2;
+  if (esHierro(item)) return 3;
   return (
     1 +
     (item.desperdicio !== null ? 1 : 0) +
@@ -1136,12 +1194,12 @@ export function SeccionGrilla({
                   ? bultosDe(item, materialDe(item, total))
                   : null;
 
-                // El hierro en el total muestra las dos columnas, igual que en
-                // cada nivel: los metros totales y, al lado, las barras a
+                // El hierro en el total muestra las tres columnas, igual que
+                // en cada nivel: los metros totales, al lado las barras a
                 // pedir redondeadas para arriba (acá sí tiene sentido
                 // redondear, a diferencia de cada nivel por separado: ver el
                 // comentario de arriba sobre por qué vive acá y no en cada
-                // fila).
+                // fila) y por último el peso total en kilos.
                 if (hierro) {
                   return (
                     <Fragment key={item.id}>
@@ -1164,6 +1222,9 @@ export function SeccionGrilla({
                             </span>
                           </span>
                         )}
+                      </td>
+                      <td className="bg-foreground/[0.04] px-3 py-2 text-right text-sm font-semibold tabular-nums">
+                        {vacio ? "—" : formatCantidad(materialDe(item, total) ?? 0)}
                       </td>
                     </Fragment>
                   );
@@ -1371,12 +1432,14 @@ function FilaGrilla({
           // total, al pie.
           const barrasEnNivel = (ml: number) =>
             formatCantidad(bultosDe(item, materialDe(item, ml))?.exacto ?? 0);
+          const kgEnNivel = (ml: number) => formatCantidad(materialDe(item, ml) ?? 0);
 
           if (hierro) {
-            // El hierro va en dos columnas (ml y barras) en vez de la celda
-            // única del resto de los ítems. Derivada y desglosada muestran
-            // las dos, de solo lectura; la simple delega en CeldaHierro, que
-            // ya trae sus dos <td> con los dos campos sincronizados.
+            // El hierro va en tres columnas (ml, barras y kg) en vez de la
+            // celda única del resto de los ítems. Derivada y desglosada
+            // muestran las tres, de solo lectura; la simple delega en
+            // CeldaHierro, que ya trae sus tres <td> con los tres campos
+            // sincronizados.
             if (derivada) {
               return (
                 <Fragment key={item.id}>
@@ -1396,6 +1459,14 @@ function FilaGrilla({
                       {barrasEnNivel(medido)}
                     </span>
                   </td>
+                  <td className="bg-foreground/[0.04] px-1 py-0.5">
+                    <span
+                      title="Sale de una cuenta sobre otro ítem"
+                      className="block px-2 py-1 text-right text-sm tabular-nums text-muted-foreground italic"
+                    >
+                      {kgEnNivel(medido)}
+                    </span>
+                  </td>
                 </Fragment>
               );
             }
@@ -1403,7 +1474,7 @@ function FilaGrilla({
             if (desglosada) {
               // Con varios renglones el número de la celda es la suma, y una
               // suma no se tipea: se toca y se corrige adentro, en cualquiera
-              // de las dos columnas.
+              // de las tres columnas.
               return (
                 <Fragment key={item.id}>
                   <td className="border-l px-1 py-0.5">
@@ -1428,6 +1499,18 @@ function FilaGrilla({
                       className="w-full rounded-sm px-2 py-1 text-right text-sm font-medium tabular-nums transition-colors duration-150 hover:bg-muted"
                     >
                       {barrasEnNivel(medido)}
+                    </button>
+                  </td>
+                  <td className="bg-foreground/[0.04] px-1 py-0.5">
+                    <button
+                      type="button"
+                      aria-expanded={abierto}
+                      aria-label={`Detalle de ${item.nombre} en ${fila.nombre}`}
+                      title="Peso en kilos, sin redondear. Tocá para ver el detalle de cada renglón."
+                      onClick={() => onAbrir(abierto ? null : { itemId: item.id, filaKey })}
+                      className="w-full rounded-sm px-2 py-1 text-right text-sm font-medium tabular-nums transition-colors duration-150 hover:bg-muted"
+                    >
+                      {kgEnNivel(medido)}
                     </button>
                   </td>
                 </Fragment>
@@ -1935,24 +2018,30 @@ function RenglonNuevo({
 function Subencabezados({ item }: { item: ItemOpcion }) {
   const conversion = conversionDe(item);
 
-  // El hierro va en dos subcolumnas, ml y barras, una al lado de la otra: las
-  // dos se pueden tipear y se mantienen sincronizadas entre sí (ver
-  // CeldaHierro). La de barras lleva fondo gris como las demás columnas
+  // El hierro va en tres subcolumnas, ml, barras y kg, una al lado de la
+  // otra: las tres se pueden tipear y se mantienen sincronizadas entre sí
+  // (ver CeldaHierro). Barras y kg llevan fondo gris como las demás columnas
   // calculadas, aunque acá también se pueda escribir directamente.
   if (esHierro(item)) {
     return (
       <Fragment>
         <th
-          title="Lo que se mide en obra, en metros lineales. Se puede completar acá o en la columna de barras: lo que no se toque sale solo de lo que sí."
+          title="Lo que se mide en obra, en metros lineales. Se puede completar acá, en barras o en kg: lo que no se toque sale solo de lo que sí."
           className="border-l px-2 pb-1 text-right text-[10px] font-normal text-muted-foreground"
         >
           ml
         </th>
         <th
-          title={`Cantidad de barras de 12 m, de ${formatCantidad(item.porBulto!)} kg cada una. Se puede completar acá o en la columna de ml: lo que no se toque sale solo de lo que sí.`}
+          title={`Cantidad de barras de 12 m, de ${formatCantidad(item.porBulto!)} kg cada una. Se puede completar acá, en ml o en kg: lo que no se toque sale solo de lo que sí.`}
           className="bg-foreground/[0.04] px-2 pb-1 text-right text-[10px] font-normal text-muted-foreground"
         >
           barras
+        </th>
+        <th
+          title="Peso total del hierro, en kilos. Se puede completar acá, en ml o en barras: lo que no se toque sale solo de lo que sí."
+          className="bg-foreground/[0.04] px-2 pb-1 text-right text-[10px] font-normal text-muted-foreground"
+        >
+          kg
         </th>
       </Fragment>
     );

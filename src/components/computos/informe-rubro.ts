@@ -19,12 +19,15 @@
  */
 
 import {
+  barrasDeMetros,
   bultosDe,
   conDesperdicio,
   conversionDe,
   esDerivadaEnFila,
+  esHierro,
   etiquetaBultos,
   formatCantidad,
+  kgDeMetros,
   materialDe,
   medicionesDeFila,
   medidoEnFila,
@@ -36,6 +39,17 @@ import {
   type ItemOpcion,
   type SeccionOpcion,
 } from "@/lib/computos";
+
+/** Cuáles de las tres lecturas del hierro (ml, barras, kg) van en el papel. */
+export type UnidadHierro = "ml" | "barras" | "kg";
+
+export const UNIDADES_HIERRO: UnidadHierro[] = ["ml", "barras", "kg"];
+
+const ETIQUETA_UNIDAD_HIERRO: Record<UnidadHierro, string> = {
+  ml: "ml",
+  barras: "barras",
+  kg: "kg",
+};
 
 /** Una fila de la grilla impresa: ya elegida y ya ordenada. */
 export type FilaInforme = { clave: ClaveFila; nombre: string };
@@ -60,6 +74,14 @@ export type DatosInformeRubro = {
   conDesperdicio: boolean;
   /** Si los renglones de las celdas desglosadas van como filas aparte. */
   conDetalle: boolean;
+  /**
+   * Qué lecturas del hierro van impresas: ml, barras, kg, o varias juntas.
+   *
+   * El hierro no tiene columna de desperdicio propia —la merma va metida
+   * adentro de la cuenta de barras y de kilos, igual que en pantalla—, así que
+   * no usa `conDesperdicio` para nada: elige sus columnas por su cuenta.
+   */
+  unidadesHierro: Record<UnidadHierro, boolean>;
 };
 
 /** Escapa el texto que se inyecta en el HTML del informe. */
@@ -97,14 +119,55 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
   const conMerma = (item: ItemOpcion) =>
     datos.conDesperdicio && item.desperdicio !== null;
 
+  /**
+   * Las columnas del hierro que van impresas, en orden fijo (ml, barras, kg).
+   *
+   * Si no se eligió ninguna (se destildaron las tres) cae en ml y nada más: una
+   * columna sola, pero una, que cero columnas dejaría al ítem sin dónde poner su
+   * número.
+   */
+  const columnasHierro = () => {
+    const elegidas = UNIDADES_HIERRO.filter((u) => datos.unidadesHierro[u]);
+    return elegidas.length > 0 ? elegidas : (["ml"] as UnidadHierro[]);
+  };
+
+  /** Las tres lecturas de una medida en metros de hierro, ya convertidas. */
+  const valoresHierro = (item: ItemOpcion, metros: number) => ({
+    ml: metros,
+    barras: barrasDeMetros(item, metros),
+    kg: kgDeMetros(item, metros),
+  });
+
+  /**
+   * Una celda de hierro para una de sus columnas elegidas. `valores` null es la
+   * fila sin nada cargado: pinta raya, igual que cualquier otra celda vacía.
+   */
+  const celdaHierro = (
+    unidad: UnidadHierro,
+    valores: { ml: number; barras: number; kg: number } | null,
+    derivada = false
+  ) => {
+    const clase = `num${unidad === "ml" ? "" : " material"}${derivada ? " derivada" : ""}`;
+    const valor = valores === null ? "—" : formatCantidad(valores[unidad]);
+    return `<td class="${clase}">${esc(valor)}</td>`;
+  };
+
   const columnasPorItem = (item: ItemOpcion) =>
-    1 + (conMerma(item) ? 1 : 0) + (conversionDe(item) !== null ? 1 : 0);
+    esHierro(item)
+      ? columnasHierro().length
+      : 1 + (conMerma(item) ? 1 : 0) + (conversionDe(item) !== null ? 1 : 0);
 
   /** Las celdas numéricas vacías de un ítem, todas las que le toquen. */
-  const celdasVacias = (item: ItemOpcion) =>
-    `<td class="num"></td>${conMerma(item) ? `<td class="num merma"></td>` : ""}${
+  const celdasVacias = (item: ItemOpcion) => {
+    if (esHierro(item)) {
+      return columnasHierro()
+        .map((u) => `<td class="num${u === "ml" ? "" : " material"}"></td>`)
+        .join("");
+    }
+    return `<td class="num"></td>${conMerma(item) ? `<td class="num merma"></td>` : ""}${
       conversionDe(item) !== null ? `<td class="num material"></td>` : ""
     }`;
+  };
 
   /**
    * Los renglones que hay detrás de las celdas desglosadas de una fila, cada uno
@@ -138,15 +201,19 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
         if (renglones.length < 2) return [];
         return renglones.map((medicion) => {
           const celdas = items
-            .map((otro, i) =>
-              i === indice
-                ? `<td class="num">${esc(
-                    formatCantidad(parcialMedicion(medicion, item.unidad))
-                  )}</td>${conMerma(otro) ? `<td class="num merma"></td>` : ""}${
-                    conversionDe(otro) !== null ? `<td class="num material"></td>` : ""
-                  }`
-                : celdasVacias(otro)
-            )
+            .map((otro, i) => {
+              if (i !== indice) return celdasVacias(otro);
+              const parcial = parcialMedicion(medicion, item.unidad);
+              if (esHierro(otro)) {
+                const valores = valoresHierro(otro, parcial);
+                return columnasHierro()
+                  .map((u) => celdaHierro(u, valores))
+                  .join("");
+              }
+              return `<td class="num">${esc(formatCantidad(parcial))}</td>${
+                conMerma(otro) ? `<td class="num merma"></td>` : ""
+              }${conversionDe(otro) !== null ? `<td class="num material"></td>` : ""}`;
+            })
             .join("");
           return `
         <tr class="renglon">
@@ -176,6 +243,16 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
       <th></th>
       ${items
         .map((item) => {
+          if (esHierro(item)) {
+            return columnasHierro()
+              .map(
+                (u) =>
+                  `<th class="num${u === "ml" ? "" : " material"}">${esc(
+                    ETIQUETA_UNIDAD_HIERRO[u]
+                  )}</th>`
+              )
+              .join("");
+          }
           const conversion = conversionDe(item);
           return `<th class="num">medido</th>${
             conMerma(item)
@@ -199,6 +276,12 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
           const tiene = tieneMedidoEnFila(item, fila.clave);
           const medido = medidoEnFila(item, fila.clave, datos.totales);
           const derivada = esDerivadaEnFila(item, fila.clave);
+          if (esHierro(item)) {
+            const valores = tiene ? valoresHierro(item, medido) : null;
+            return columnasHierro()
+              .map((u) => celdaHierro(u, valores, derivada))
+              .join("");
+          }
           // Lo que no se computó va con raya y no con cero. En el papel esa
           // diferencia es la que dice qué falta todavía.
           const valor = tiene ? formatCantidad(medido) : "—";
@@ -236,6 +319,12 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
         .map((item) => {
           const total = datos.totales.get(item.id) ?? 0;
           const vacio = item.mediciones.length === 0;
+          if (esHierro(item)) {
+            const valores = vacio ? null : valoresHierro(item, total);
+            return columnasHierro()
+              .map((u) => celdaHierro(u, valores))
+              .join("");
+          }
           const merma = !conMerma(item)
             ? ""
             : `<td class="num merma">${esc(
@@ -275,20 +364,33 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
       <th class="nivel-col" scope="row">${esc(etiquetaBulto)}</th>
       ${items
         .map((item) => {
-          const vacios = `<td></td>${conMerma(item) ? `<td class="merma"></td>` : ""}`;
-          if (conversionDe(item) === null) return vacios;
           const total = datos.totales.get(item.id) ?? 0;
           const bultos =
             item.mediciones.length === 0
               ? null
               : bultosDe(item, materialDe(item, total));
-          return `${vacios}<td class="num material">${
+          const texto =
             bultos === null
               ? "—"
               : `<strong>${esc(String(bultos.enteros))}</strong> <span class="exacto">${esc(
                   formatCantidad(bultos.exacto)
-                )}</span>`
-          }</td>`;
+                )}</span>`;
+          // El hierro ya tiene sus propias columnas (ml/barras/kg, las que se
+          // elijan): el total de barras a pedir va adentro de la que
+          // corresponda —"barras" si está, o la primera que haya— y el resto
+          // vacías, para no desarmar el colspan del encabezado.
+          if (esHierro(item)) {
+            const columnas = columnasHierro();
+            const indice = Math.max(columnas.indexOf("barras"), 0);
+            return columnas
+              .map((_, i) =>
+                i === indice ? `<td class="num material">${texto}</td>` : `<td></td>`
+              )
+              .join("");
+          }
+          const vacios = `<td></td>${conMerma(item) ? `<td class="merma"></td>` : ""}`;
+          if (conversionDe(item) === null) return vacios;
+          return `${vacios}<td class="num material">${texto}</td>`;
         })
         .join("")}
     </tr>`;

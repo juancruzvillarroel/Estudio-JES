@@ -1024,6 +1024,41 @@ export function metrosDeBarras(
 }
 
 /**
+ * Los kilos que corresponden a estos metros de hierro, sin redondear —es la
+ * misma cuenta que usa `barrasDeMetros` antes de dividir por el peso de la
+ * barra, así que vive acá para no repetirla en la grilla.
+ */
+export function kgDeMetros(
+  item: {
+    desperdicio: number | null;
+    rinde: number | null;
+    rindeUnidad: UnidadComputo | null;
+  },
+  metros: number
+): number {
+  return materialDe(item, metros) ?? 0;
+}
+
+/**
+ * La vuelta de kgDeMetros: de un peso en kilos salen los metros que hay que
+ * haber medido para pedir justo eso (deshace la merma y el rinde). Misma idea
+ * que `metrosDeBarras`, pero sin pasar por la cantidad de barras en el medio.
+ */
+export function metrosDeKg(
+  item: {
+    desperdicio: number | null;
+    rinde: number | null;
+    rindeUnidad: UnidadComputo | null;
+  },
+  kg: number
+): number {
+  const conversion = conversionDe(item);
+  if (!conversion) return 0;
+  const merma = item.desperdicio === null ? 1 : 1 + item.desperdicio / 100;
+  return kg / conversion.rinde / merma;
+}
+
+/**
  * ¿Esta sección necesita, además del total por ítem al pie, el total por
  * piso a la derecha?
  *
