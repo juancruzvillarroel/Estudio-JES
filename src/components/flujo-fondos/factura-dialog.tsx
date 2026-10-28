@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { Camera, Paperclip, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Tooltip } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -414,6 +415,7 @@ export function FacturaDialog({
                       variant="outline"
                       size="icon"
                       aria-label="Nuevo proveedor"
+                      title="Nuevo proveedor"
                       disabled={!form.rubroId}
                     >
                       <Plus className="h-4 w-4" />
@@ -525,24 +527,28 @@ export function FacturaDialog({
           <div className="flex flex-col gap-2">
             <Label>Archivo de la factura</Label>
             <div className="flex gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                aria-label="Adjuntar archivo"
-                onClick={() => inputArchivoRef.current?.click()}
-              >
-                <Paperclip className="h-4 w-4" />
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="icon"
-                aria-label="Sacar foto"
-                onClick={() => inputCamaraRef.current?.click()}
-              >
-                <Camera className="h-4 w-4" />
-              </Button>
+              <Tooltip content="Adjuntar archivo">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  aria-label="Adjuntar archivo"
+                  onClick={() => inputArchivoRef.current?.click()}
+                >
+                  <Paperclip className="h-4 w-4" />
+                </Button>
+              </Tooltip>
+              <Tooltip content="Sacar foto">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  aria-label="Sacar foto"
+                  onClick={() => inputCamaraRef.current?.click()}
+                >
+                  <Camera className="h-4 w-4" />
+                </Button>
+              </Tooltip>
               <input
                 ref={inputArchivoRef}
                 type="file"
@@ -568,19 +574,21 @@ export function FacturaDialog({
             {archivoNuevo ? (
               <div className="flex items-center justify-between rounded-md border p-2 text-sm">
                 <span className="truncate">{archivoNuevo.name}</span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-label="Quitar archivo"
-                  onClick={() => {
-                    setArchivoNuevo(null);
-                    if (inputArchivoRef.current) inputArchivoRef.current.value = "";
-                    if (inputCamaraRef.current) inputCamaraRef.current.value = "";
-                  }}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
+                <Tooltip content="Quitar archivo">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Quitar archivo"
+                    onClick={() => {
+                      setArchivoNuevo(null);
+                      if (inputArchivoRef.current) inputArchivoRef.current.value = "";
+                      if (inputCamaraRef.current) inputCamaraRef.current.value = "";
+                    }}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </Tooltip>
               </div>
             ) : item?.archivoUrl && !quitarArchivo ? (
               <div className="flex items-center justify-between rounded-md border p-2 text-sm">
@@ -592,15 +600,17 @@ export function FacturaDialog({
                 >
                   Ver factura actual
                 </a>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  aria-label="Quitar archivo"
-                  onClick={() => setQuitarArchivo(true)}
-                >
-                  <X className="h-4 w-4" />
-                </Button>
+                <Tooltip content="Quitar archivo">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Quitar archivo"
+                    onClick={() => setQuitarArchivo(true)}
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </Tooltip>
               </div>
             ) : null}
           </div>

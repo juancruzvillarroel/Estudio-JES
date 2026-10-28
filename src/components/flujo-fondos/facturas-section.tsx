@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { FileText, Pencil, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Tooltip } from "@/components/ui/tooltip";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -371,17 +372,19 @@ function FacturaFila({
       </div>
       <div className="flex shrink-0 items-center gap-1">
         {factura.archivoUrl && (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            nativeButton={false}
-            aria-label={`Ver el archivo de la factura ${factura.numero}`}
-            render={
-              <a href={factura.archivoUrl} target="_blank" rel="noopener noreferrer">
-                <FileText />
-              </a>
-            }
-          />
+          <Tooltip content={`Ver el archivo de la factura ${factura.numero}`}>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              nativeButton={false}
+              aria-label={`Ver el archivo de la factura ${factura.numero}`}
+              render={
+                <a href={factura.archivoUrl} target="_blank" rel="noopener noreferrer">
+                  <FileText />
+                </a>
+              }
+            />
+          </Tooltip>
         )}
         <FacturaDialog
           proyectoId={proyectoId}
@@ -390,7 +393,12 @@ function FacturaFila({
           pedidos={pedidos}
           item={factura}
           trigger={
-            <Button variant="outline" size="sm" aria-label={`Editar la factura ${factura.numero}`}>
+            <Button
+              variant="outline"
+              size="sm"
+              aria-label={`Editar la factura ${factura.numero}`}
+              title={`Editar la factura ${factura.numero}`}
+            >
               <Pencil />
             </Button>
           }

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Download, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Tooltip } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { abrirInformeResumen, type BloqueInforme } from "@/components/flujo-fondos/informe-resumen";
@@ -552,18 +553,19 @@ export function ResumenFlujoFondos({
           />
         </div>
         {hayFiltro && (
-          <Button
-            variant="ghost"
-            size="icon"
-            aria-label="Limpiar el filtro de fechas"
-            title="Limpiar el filtro de fechas"
-            onClick={() => {
-              setDesde("");
-              setHasta("");
-            }}
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
+          <Tooltip content="Limpiar el filtro de fechas">
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Limpiar el filtro de fechas"
+              onClick={() => {
+                setDesde("");
+                setHasta("");
+              }}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </Tooltip>
         )}
       </div>
 

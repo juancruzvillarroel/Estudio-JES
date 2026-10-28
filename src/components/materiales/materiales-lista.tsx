@@ -114,7 +114,13 @@ export function MaterialesLista({
                       material={m}
                       rubros={rubros}
                       trigger={
-                        <Button type="button" variant="ghost" size="icon-sm" aria-label="Editar material">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label="Editar material"
+                          title="Editar material"
+                        >
                           <Pencil className="h-4 w-4" />
                         </Button>
                       }

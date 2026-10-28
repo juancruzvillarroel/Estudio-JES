@@ -21,6 +21,7 @@ export function NuevoMovimientoButton() {
             size="icon"
             className="h-11 w-11 rounded-full shadow-md"
             aria-label="Nuevo movimiento"
+            title="Nuevo movimiento"
           >
             <Plus className="h-5 w-5" />
           </Button>

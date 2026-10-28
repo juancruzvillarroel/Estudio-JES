@@ -37,6 +37,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { DeleteButton } from "@/components/ui/delete-button";
+import { Tooltip } from "@/components/ui/tooltip";
 import { actualizarTarea, crearTarea, eliminarTarea } from "@/actions/tareas";
 import { cn } from "@/lib/utils";
 import {
@@ -129,15 +130,17 @@ function ListaItems({
               }
             }}
           />
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Quitar sub ítem"
-            onClick={() => onQuitar(sub.key)}
-          >
-            <X className="h-3.5 w-3.5" />
-          </Button>
+          <Tooltip content="Quitar sub ítem">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Quitar sub ítem"
+              onClick={() => onQuitar(sub.key)}
+            >
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          </Tooltip>
         </div>
       ))}
       {/* Sólo cuando no quedó ningún renglón a la vista: si hay alguno, el
@@ -199,15 +202,17 @@ function SeccionBloque({
     >
       <div className="flex items-center gap-2">
         {arrastrable && (
-          <button
-            type="button"
-            aria-label="Arrastrar para reordenar la sección"
-            className="shrink-0 touch-none cursor-grab text-muted-foreground hover:text-foreground active:cursor-grabbing"
-            {...attributes}
-            {...listeners}
-          >
-            <GripVertical className="h-4 w-4" />
-          </button>
+          <Tooltip content="Arrastrar para reordenar">
+            <button
+              type="button"
+              aria-label="Arrastrar para reordenar la sección"
+              className="shrink-0 touch-none cursor-grab text-muted-foreground hover:text-foreground active:cursor-grabbing"
+              {...attributes}
+              {...listeners}
+            >
+              <GripVertical className="h-4 w-4" />
+            </button>
+          </Tooltip>
         )}
         <Input
           value={seccion.titulo}
@@ -215,15 +220,17 @@ function SeccionBloque({
           placeholder="Nombre de la sección. Ej. Documentación"
           className="font-medium"
         />
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Quitar sección"
-          onClick={onQuitar}
-        >
-          <X className="h-3.5 w-3.5" />
-        </Button>
+        <Tooltip content="Quitar sección">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Quitar sección"
+            onClick={onQuitar}
+          >
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        </Tooltip>
       </div>
       <ListaItems
         items={visibles}

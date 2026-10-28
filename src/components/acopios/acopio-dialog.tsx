@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { useForm, useFieldArray, Controller } from "react-hook-form";
 import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Tooltip } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -258,15 +259,18 @@ export function AcopioDialog({
                           {...register(`precios.${index}.precioUnitario`, campoNumerico)}
                         />
                       </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        disabled={fields.length === 1}
-                        onClick={() => remove(index)}
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      <Tooltip content="Quitar este material de la lista">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          aria-label="Quitar este material de la lista"
+                          disabled={fields.length === 1}
+                          onClick={() => remove(index)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </Tooltip>
                     </div>
                   ))}
                 </div>

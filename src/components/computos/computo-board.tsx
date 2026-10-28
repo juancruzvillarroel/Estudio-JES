@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Tooltip } from "@/components/ui/tooltip";
 import { SeccionGrilla } from "@/components/computos/seccion-grilla";
 import { abrirInformeComputo } from "@/components/computos/informe-computo";
 import { InformeRubroDialog } from "@/components/computos/informe-rubro-dialog";
@@ -223,24 +224,26 @@ function SinSeccion({
               <span className="w-8 shrink-0 text-xs text-muted-foreground">
                 {simboloUnidad(item.unidad)}
               </span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="icon-sm"
-                aria-label={`Eliminar ${item.nombre}`}
-                onClick={() =>
-                  startTransition(async () => {
-                    const result = await eliminarItem(proyectoId, item.id);
-                    if (!result.success) {
-                      toast.error(result.error);
-                      return;
-                    }
-                    onDeleted(item.id);
-                  })
-                }
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
+              <Tooltip content={`Eliminar ${item.nombre}`}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={`Eliminar ${item.nombre}`}
+                  onClick={() =>
+                    startTransition(async () => {
+                      const result = await eliminarItem(proyectoId, item.id);
+                      if (!result.success) {
+                        toast.error(result.error);
+                        return;
+                      }
+                      onDeleted(item.id);
+                    })
+                  }
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </Tooltip>
             </div>
           );
         })}

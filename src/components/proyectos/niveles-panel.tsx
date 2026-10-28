@@ -22,6 +22,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tooltip } from "@/components/ui/tooltip";
 import {
   crearNivel,
   eliminarNivel,
@@ -109,15 +110,17 @@ function FilaNivel({
       )}
     >
       {arrastrable && (
-        <button
-          type="button"
-          aria-label={`Arrastrar ${nivel.nombre}`}
-          className="shrink-0 touch-none cursor-grab text-muted-foreground hover:text-foreground active:cursor-grabbing"
-          {...attributes}
-          {...listeners}
-        >
-          <GripVertical className="h-4 w-4" />
-        </button>
+        <Tooltip content="Arrastrar para reordenar">
+          <button
+            type="button"
+            aria-label={`Arrastrar ${nivel.nombre}`}
+            className="shrink-0 touch-none cursor-grab text-muted-foreground hover:text-foreground active:cursor-grabbing"
+            {...attributes}
+            {...listeners}
+          >
+            <GripVertical className="h-4 w-4" />
+          </button>
+        </Tooltip>
       )}
 
       <Input
@@ -134,15 +137,17 @@ function FilaNivel({
         className="h-8 px-2 text-sm"
       />
 
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        aria-label={`Eliminar ${nivel.nombre}`}
-        onClick={borrar}
-      >
-        <Trash2 className="h-4 w-4" />
-      </Button>
+      <Tooltip content={`Eliminar ${nivel.nombre}`}>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label={`Eliminar ${nivel.nombre}`}
+          onClick={borrar}
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </Tooltip>
     </div>
   );
 }

@@ -120,6 +120,7 @@ export function DocumentoItemCard({
               variant="ghost"
               size="icon-sm"
               aria-label={`Crear tarea para "${nombre}"`}
+              title={`Crear tarea para "${nombre}"`}
             >
               <ListPlus className="h-3.5 w-3.5" />
             </Button>

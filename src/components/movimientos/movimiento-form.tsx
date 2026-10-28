@@ -5,6 +5,7 @@ import { useForm, useFieldArray, Controller } from "react-hook-form";
 import { useRouter } from "next/navigation";
 import { Camera, CheckCheck, Paperclip, Plus, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Tooltip } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -454,6 +455,7 @@ export function MovimientoForm({
                   variant="outline"
                   size="icon"
                   aria-label="Nuevo proveedor"
+                  title="Nuevo proveedor"
                   disabled={!rubroId}
                 >
                   <Plus className="h-4 w-4" />
@@ -589,15 +591,18 @@ export function MovimientoForm({
                     {...register(`itemsPedido.${index}.cantidad`, campoNumerico)}
                   />
                 </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  disabled={pedidoItemFields.length === 1}
-                  onClick={() => removePedidoItem(index)}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                <Tooltip content="Quitar este material del pedido">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Quitar este material del pedido"
+                    disabled={pedidoItemFields.length === 1}
+                    onClick={() => removePedidoItem(index)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </Tooltip>
               </div>
             ))}
           </div>
@@ -737,24 +742,28 @@ export function MovimientoForm({
         <div className="flex gap-2">
           <Textarea id="notas" className="flex-1" {...register("notas")} />
           <div className="flex flex-col gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              aria-label="Adjuntar archivo"
-              onClick={() => inputArchivoRef.current?.click()}
-            >
-              <Paperclip className="h-4 w-4" />
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              aria-label="Sacar foto"
-              onClick={() => inputCamaraRef.current?.click()}
-            >
-              <Camera className="h-4 w-4" />
-            </Button>
+            <Tooltip content="Adjuntar archivo">
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                aria-label="Adjuntar archivo"
+                onClick={() => inputArchivoRef.current?.click()}
+              >
+                <Paperclip className="h-4 w-4" />
+              </Button>
+            </Tooltip>
+            <Tooltip content="Sacar foto">
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                aria-label="Sacar foto"
+                onClick={() => inputCamaraRef.current?.click()}
+              >
+                <Camera className="h-4 w-4" />
+              </Button>
+            </Tooltip>
           </div>
           <input
             ref={inputArchivoRef}
@@ -775,19 +784,21 @@ export function MovimientoForm({
         {archivoAdjunto && (
           <div className="flex items-center justify-between rounded-md border p-2 text-sm">
             <span className="truncate">{archivoAdjunto.name}</span>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label="Quitar archivo"
-              onClick={() => {
-                setArchivoAdjunto(null);
-                if (inputArchivoRef.current) inputArchivoRef.current.value = "";
-                if (inputCamaraRef.current) inputCamaraRef.current.value = "";
-              }}
-            >
-              <X className="h-4 w-4" />
-            </Button>
+            <Tooltip content="Quitar archivo">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label="Quitar archivo"
+                onClick={() => {
+                  setArchivoAdjunto(null);
+                  if (inputArchivoRef.current) inputArchivoRef.current.value = "";
+                  if (inputCamaraRef.current) inputCamaraRef.current.value = "";
+                }}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </Tooltip>
           </div>
         )}
       </div>

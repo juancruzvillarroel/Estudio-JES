@@ -20,6 +20,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 
 import { Button } from "@/components/ui/button";
+import { Tooltip } from "@/components/ui/tooltip";
 import { ItemSeccionDialog } from "@/components/computos/item-seccion-dialog";
 import {
   agregarDetalle,
@@ -382,20 +383,22 @@ function CeldaHierro({
           {/* La flechita para abrir el detalle (mismo lugar que en cualquier
               otro ítem) vive en esta columna y no en las de ml o barras: es
               la que queda al borde derecho de la celda del ítem. */}
-          <button
-            type="button"
-            aria-expanded={abierto}
-            aria-label={`Detalle de ${item.nombre} en ${filaNombre}`}
-            onClick={onAbrir}
-            className={cn(
-              "shrink-0 rounded-sm p-0.5 text-muted-foreground transition-all duration-150 hover:bg-muted hover:text-foreground focus:opacity-100",
-              abierto ? "opacity-100" : "opacity-0 group-hover/celda:opacity-100"
-            )}
-          >
-            <ChevronDown
-              className={cn("h-3 w-3 transition-transform duration-200", abierto && "rotate-180")}
-            />
-          </button>
+          <Tooltip content={`Detalle de ${item.nombre} en ${filaNombre}`}>
+            <button
+              type="button"
+              aria-expanded={abierto}
+              aria-label={`Detalle de ${item.nombre} en ${filaNombre}`}
+              onClick={onAbrir}
+              className={cn(
+                "shrink-0 rounded-sm p-0.5 text-muted-foreground transition-all duration-150 hover:bg-muted hover:text-foreground focus:opacity-100",
+                abierto ? "opacity-100" : "opacity-0 group-hover/celda:opacity-100"
+              )}
+            >
+              <ChevronDown
+                className={cn("h-3 w-3 transition-transform duration-200", abierto && "rotate-180")}
+              />
+            </button>
+          </Tooltip>
         </span>
       </td>
     </Fragment>
@@ -489,22 +492,26 @@ function FilaExtraNombre({
       {/* Sin truncate: el nombre del nivel se lee entero y si no entra, baja
           de renglón. Es la etiqueta de la fila; cortada no sirve. */}
       <span className="min-w-0 flex-1 leading-tight break-words">{fila.nombre}</span>
-      <button
-        type="button"
-        aria-label={`Renombrar ${fila.nombre}`}
-        onClick={() => setEditando(true)}
-        className="shrink-0 rounded-sm text-muted-foreground opacity-0 transition-all duration-150 group-hover:opacity-100 hover:text-foreground focus:opacity-100"
-      >
-        <Pencil className="h-3 w-3" />
-      </button>
-      <button
-        type="button"
-        aria-label={`Eliminar ${fila.nombre}`}
-        onClick={borrar}
-        className="shrink-0 rounded-sm text-muted-foreground opacity-0 transition-all duration-150 group-hover:opacity-100 hover:text-foreground focus:opacity-100"
-      >
-        <Trash2 className="h-3 w-3" />
-      </button>
+      <Tooltip content={`Renombrar ${fila.nombre}`}>
+        <button
+          type="button"
+          aria-label={`Renombrar ${fila.nombre}`}
+          onClick={() => setEditando(true)}
+          className="shrink-0 rounded-sm text-muted-foreground opacity-0 transition-all duration-150 group-hover:opacity-100 hover:text-foreground focus:opacity-100"
+        >
+          <Pencil className="h-3 w-3" />
+        </button>
+      </Tooltip>
+      <Tooltip content={`Eliminar ${fila.nombre}`}>
+        <button
+          type="button"
+          aria-label={`Eliminar ${fila.nombre}`}
+          onClick={borrar}
+          className="shrink-0 rounded-sm text-muted-foreground opacity-0 transition-all duration-150 group-hover:opacity-100 hover:text-foreground focus:opacity-100"
+        >
+          <Trash2 className="h-3 w-3" />
+        </button>
+      </Tooltip>
     </span>
   );
 }
@@ -611,14 +618,16 @@ function NivelNombre({
       >
         {nivel.nombre}
       </span>
-      <button
-        type="button"
-        aria-label={`Eliminar ${nivel.nombre}`}
-        onClick={borrar}
-        className="shrink-0 rounded-sm text-muted-foreground opacity-0 transition-all duration-150 group-hover:opacity-100 hover:text-foreground focus:opacity-100"
-      >
-        <Trash2 className="h-3 w-3" />
-      </button>
+      <Tooltip content={`Eliminar ${nivel.nombre}`}>
+        <button
+          type="button"
+          aria-label={`Eliminar ${nivel.nombre}`}
+          onClick={borrar}
+          className="shrink-0 rounded-sm text-muted-foreground opacity-0 transition-all duration-150 group-hover:opacity-100 hover:text-foreground focus:opacity-100"
+        >
+          <Trash2 className="h-3 w-3" />
+        </button>
+      </Tooltip>
     </span>
   );
 }
@@ -989,15 +998,17 @@ export function SeccionGrilla({
             <h4 className="min-w-0 flex-1 truncate text-xs font-semibold tracking-wider text-muted-foreground uppercase">
               {seccion.nombre}
             </h4>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              aria-label={`Renombrar ${seccion.nombre}`}
-              onClick={() => setRenombrando(true)}
-            >
-              <Pencil className="h-3.5 w-3.5" />
-            </Button>
+            <Tooltip content={`Renombrar ${seccion.nombre}`}>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label={`Renombrar ${seccion.nombre}`}
+                onClick={() => setRenombrando(true)}
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
+            </Tooltip>
           </>
         )}
 
@@ -1008,15 +1019,17 @@ export function SeccionGrilla({
         />
         {agregar}
 
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          aria-label={`Eliminar ${seccion.nombre}`}
-          onClick={borrar}
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
+        <Tooltip content={`Eliminar ${seccion.nombre}`}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label={`Eliminar ${seccion.nombre}`}
+            onClick={borrar}
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </Tooltip>
       </div>
 
       {items.length === 0 ? (
@@ -1074,6 +1087,7 @@ export function SeccionGrilla({
                         <button
                           type="button"
                           aria-label={`Editar ${item.nombre}`}
+                          title={`Editar ${item.nombre}`}
                           className="shrink-0 rounded-sm text-muted-foreground transition-colors duration-150 hover:text-foreground"
                         >
                           <Pencil className="h-3 w-3" />
@@ -1379,15 +1393,17 @@ function FilaGrilla({
         >
           <span className="flex min-w-0 items-start gap-1">
             {arrastrable ? (
-              <button
-                type="button"
-                aria-label={`Mover ${fila.nombre}`}
-                className="mt-0.5 shrink-0 touch-none cursor-grab rounded-sm text-muted-foreground/60 transition-colors duration-150 hover:text-foreground active:cursor-grabbing group-hover/fila:text-muted-foreground"
-                {...attributes}
-                {...listeners}
-              >
-                <GripVertical className="h-3.5 w-3.5" />
-              </button>
+              <Tooltip content="Arrastrar para reordenar">
+                <button
+                  type="button"
+                  aria-label={`Mover ${fila.nombre}`}
+                  className="mt-0.5 shrink-0 touch-none cursor-grab rounded-sm text-muted-foreground/60 transition-colors duration-150 hover:text-foreground active:cursor-grabbing group-hover/fila:text-muted-foreground"
+                  {...attributes}
+                  {...listeners}
+                >
+                  <GripVertical className="h-3.5 w-3.5" />
+                </button>
+              </Tooltip>
             ) : (
               // Hueco del mismo ancho que el agarre, para que el nombre de
               // "Toda la obra" no quede corrido respecto de las plantas.
@@ -1478,40 +1494,43 @@ function FilaGrilla({
               return (
                 <Fragment key={item.id}>
                   <td className="border-l px-1 py-0.5">
-                    <button
-                      type="button"
-                      aria-expanded={abierto}
-                      aria-label={`Detalle de ${item.nombre} en ${fila.nombre}`}
-                      title="Metros, sin redondear. Tocá para ver el detalle de cada renglón."
-                      onClick={() => onAbrir(abierto ? null : { itemId: item.id, filaKey })}
-                      className="w-full rounded-sm px-2 py-1 text-right text-sm font-medium tabular-nums transition-colors duration-150 hover:bg-muted"
-                    >
-                      {formatCantidad(medido)}
-                    </button>
+                    <Tooltip content="Metros, sin redondear. Tocá para ver el detalle de cada renglón.">
+                      <button
+                        type="button"
+                        aria-expanded={abierto}
+                        aria-label={`Detalle de ${item.nombre} en ${fila.nombre}`}
+                        onClick={() => onAbrir(abierto ? null : { itemId: item.id, filaKey })}
+                        className="w-full rounded-sm px-2 py-1 text-right text-sm font-medium tabular-nums transition-colors duration-150 hover:bg-muted"
+                      >
+                        {formatCantidad(medido)}
+                      </button>
+                    </Tooltip>
                   </td>
                   <td className="bg-foreground/[0.04] px-1 py-0.5">
-                    <button
-                      type="button"
-                      aria-expanded={abierto}
-                      aria-label={`Detalle de ${item.nombre} en ${fila.nombre}`}
-                      title="Cantidad de barras, sin redondear (se redondea sólo en el Total). Tocá para ver el detalle de cada renglón."
-                      onClick={() => onAbrir(abierto ? null : { itemId: item.id, filaKey })}
-                      className="w-full rounded-sm px-2 py-1 text-right text-sm font-medium tabular-nums transition-colors duration-150 hover:bg-muted"
-                    >
-                      {barrasEnNivel(medido)}
-                    </button>
+                    <Tooltip content="Cantidad de barras, sin redondear (se redondea sólo en el Total). Tocá para ver el detalle de cada renglón.">
+                      <button
+                        type="button"
+                        aria-expanded={abierto}
+                        aria-label={`Detalle de ${item.nombre} en ${fila.nombre}`}
+                        onClick={() => onAbrir(abierto ? null : { itemId: item.id, filaKey })}
+                        className="w-full rounded-sm px-2 py-1 text-right text-sm font-medium tabular-nums transition-colors duration-150 hover:bg-muted"
+                      >
+                        {barrasEnNivel(medido)}
+                      </button>
+                    </Tooltip>
                   </td>
                   <td className="bg-foreground/[0.04] px-1 py-0.5">
-                    <button
-                      type="button"
-                      aria-expanded={abierto}
-                      aria-label={`Detalle de ${item.nombre} en ${fila.nombre}`}
-                      title="Peso en kilos, sin redondear. Tocá para ver el detalle de cada renglón."
-                      onClick={() => onAbrir(abierto ? null : { itemId: item.id, filaKey })}
-                      className="w-full rounded-sm px-2 py-1 text-right text-sm font-medium tabular-nums transition-colors duration-150 hover:bg-muted"
-                    >
-                      {kgEnNivel(medido)}
-                    </button>
+                    <Tooltip content="Peso en kilos, sin redondear. Tocá para ver el detalle de cada renglón.">
+                      <button
+                        type="button"
+                        aria-expanded={abierto}
+                        aria-label={`Detalle de ${item.nombre} en ${fila.nombre}`}
+                        onClick={() => onAbrir(abierto ? null : { itemId: item.id, filaKey })}
+                        className="w-full rounded-sm px-2 py-1 text-right text-sm font-medium tabular-nums transition-colors duration-150 hover:bg-muted"
+                      >
+                        {kgEnNivel(medido)}
+                      </button>
+                    </Tooltip>
                   </td>
                 </Fragment>
               );
@@ -1546,17 +1565,19 @@ function FilaGrilla({
                   ) : desglosada ? (
                     // Con varios renglones el número de la celda es la suma, y
                     // una suma no se tipea: se toca y se corrige adentro.
-                    <button
-                      type="button"
-                      aria-expanded={abierto}
-                      aria-label={`Detalle de ${item.nombre} en ${fila.nombre}`}
-                      onClick={() =>
-                        onAbrir(abierto ? null : { itemId: item.id, filaKey })
-                      }
-                      className="min-w-0 flex-1 rounded-sm px-2 py-1 text-right text-sm font-medium tabular-nums transition-colors duration-150 hover:bg-muted"
-                    >
-                      {formatCantidad(medido)}
-                    </button>
+                    <Tooltip content="Suma de los renglones. Tocá para ver el detalle.">
+                      <button
+                        type="button"
+                        aria-expanded={abierto}
+                        aria-label={`Detalle de ${item.nombre} en ${fila.nombre}`}
+                        onClick={() =>
+                          onAbrir(abierto ? null : { itemId: item.id, filaKey })
+                        }
+                        className="min-w-0 flex-1 rounded-sm px-2 py-1 text-right text-sm font-medium tabular-nums transition-colors duration-150 hover:bg-muted"
+                      >
+                        {formatCantidad(medido)}
+                      </button>
+                    </Tooltip>
                   ) : (
                     <Celda
                       proyectoId={proyectoId}
@@ -1572,25 +1593,27 @@ function FilaGrilla({
                     // El desplegado arranca invisible: la mayoría de las celdas
                     // son un número suelto y quince flechitas por fila taparían
                     // la lectura de la planilla, que es para lo que se abre.
-                    <button
-                      type="button"
-                      aria-expanded={abierto}
-                      aria-label={`Detalle de ${item.nombre} en ${fila.nombre}`}
-                      onClick={() =>
-                        onAbrir(abierto ? null : { itemId: item.id, filaKey })
-                      }
-                      className={cn(
-                        "shrink-0 rounded-sm p-0.5 text-muted-foreground transition-all duration-150 hover:bg-muted hover:text-foreground focus:opacity-100",
-                        abierto ? "opacity-100" : "opacity-0 group-hover/celda:opacity-100"
-                      )}
-                    >
-                      <ChevronDown
+                    <Tooltip content={`Detalle de ${item.nombre} en ${fila.nombre}`}>
+                      <button
+                        type="button"
+                        aria-expanded={abierto}
+                        aria-label={`Detalle de ${item.nombre} en ${fila.nombre}`}
+                        onClick={() =>
+                          onAbrir(abierto ? null : { itemId: item.id, filaKey })
+                        }
                         className={cn(
-                          "h-3 w-3 transition-transform duration-200",
-                          abierto && "rotate-180"
+                          "shrink-0 rounded-sm p-0.5 text-muted-foreground transition-all duration-150 hover:bg-muted hover:text-foreground focus:opacity-100",
+                          abierto ? "opacity-100" : "opacity-0 group-hover/celda:opacity-100"
                         )}
-                      />
-                    </button>
+                      >
+                        <ChevronDown
+                          className={cn(
+                            "h-3 w-3 transition-transform duration-200",
+                            abierto && "rotate-180"
+                          )}
+                        />
+                      </button>
+                    </Tooltip>
                   )}
                 </span>
               </td>
@@ -1890,15 +1913,17 @@ function RenglonDetalle({
           {formatCantidad(kg ?? 0)}
         </span>
       )}
-      <button
-        type="button"
-        aria-label={`Eliminar ${medicion.descripcion ?? "renglón"}`}
-        onClick={borrar}
-        disabled={pending}
-        className="justify-self-end rounded-sm text-muted-foreground transition-colors duration-150 hover:text-foreground"
-      >
-        <Trash2 className="h-3.5 w-3.5" />
-      </button>
+      <Tooltip content={`Eliminar ${medicion.descripcion ?? "renglón"}`}>
+        <button
+          type="button"
+          aria-label={`Eliminar ${medicion.descripcion ?? "renglón"}`}
+          onClick={borrar}
+          disabled={pending}
+          className="justify-self-end rounded-sm text-muted-foreground transition-colors duration-150 hover:text-foreground"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+        </button>
+      </Tooltip>
     </div>
   );
 }

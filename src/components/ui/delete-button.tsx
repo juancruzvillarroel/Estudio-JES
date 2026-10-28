@@ -4,6 +4,7 @@ import { useTransition } from "react";
 import { toast } from "sonner";
 import { Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Tooltip } from "@/components/ui/tooltip";
 
 type DeleteActionState = { error?: string; success?: boolean } | undefined;
 
@@ -34,16 +35,18 @@ export function DeleteButton({
 
   if (iconOnly) {
     return (
-      <Button
-        type="button"
-        variant="ghost"
-        size="icon-sm"
-        disabled={pending}
-        onClick={handleClick}
-        aria-label="Eliminar"
-      >
-        <Trash2 className="h-4 w-4" />
-      </Button>
+      <Tooltip content="Eliminar">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          disabled={pending}
+          onClick={handleClick}
+          aria-label="Eliminar"
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      </Tooltip>
     );
   }
 

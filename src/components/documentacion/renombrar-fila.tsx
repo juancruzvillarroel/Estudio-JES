@@ -5,6 +5,7 @@ import { Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Tooltip } from "@/components/ui/tooltip";
 
 /**
  * La fila convertida en un campo de texto mientras se le cambia el nombre.
@@ -77,14 +78,16 @@ export function RenombrarFila({
 /** El lápiz que abre la edición, igual en los cuatro niveles del listado. */
 export function BotonRenombrar({ nombre, onClick }: { nombre: string; onClick: () => void }) {
   return (
-    <Button
-      type="button"
-      variant="ghost"
-      size="icon-sm"
-      aria-label={`Renombrar "${nombre}"`}
-      onClick={onClick}
-    >
-      <Pencil className="h-3.5 w-3.5" />
-    </Button>
+    <Tooltip content={`Renombrar "${nombre}"`}>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-sm"
+        aria-label={`Renombrar "${nombre}"`}
+        onClick={onClick}
+      >
+        <Pencil className="h-3.5 w-3.5" />
+      </Button>
+    </Tooltip>
   );
 }

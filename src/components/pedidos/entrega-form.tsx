@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Tooltip } from "@/components/ui/tooltip";
 import { EntregaSchema, type EntregaInput } from "@/lib/validations/entrega";
 import { registrarEntrega } from "@/actions/entregas";
 import { CAMPO_NUMERICO_VACIO, campoNumerico } from "@/lib/utils";
@@ -211,24 +212,28 @@ export function EntregaForm({
         <Label htmlFor="numeroRemito">Número de remito (opcional)</Label>
         <div className="flex gap-2">
           <Input id="numeroRemito" className="flex-1" {...register("numeroRemito")} />
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            aria-label="Adjuntar archivo"
-            onClick={() => inputArchivoRef.current?.click()}
-          >
-            <Paperclip className="h-4 w-4" />
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            aria-label="Sacar foto"
-            onClick={() => inputCamaraRef.current?.click()}
-          >
-            <Camera className="h-4 w-4" />
-          </Button>
+          <Tooltip content="Adjuntar archivo">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              aria-label="Adjuntar archivo"
+              onClick={() => inputArchivoRef.current?.click()}
+            >
+              <Paperclip className="h-4 w-4" />
+            </Button>
+          </Tooltip>
+          <Tooltip content="Sacar foto">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              aria-label="Sacar foto"
+              onClick={() => inputCamaraRef.current?.click()}
+            >
+              <Camera className="h-4 w-4" />
+            </Button>
+          </Tooltip>
           <input
             ref={inputArchivoRef}
             type="file"
@@ -248,19 +253,21 @@ export function EntregaForm({
         {remitoArchivo && (
           <div className="flex items-center justify-between rounded-md border p-2 text-sm">
             <span className="truncate">{remitoArchivo.name}</span>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              aria-label="Quitar archivo"
-              onClick={() => {
-                setRemitoArchivo(null);
-                if (inputArchivoRef.current) inputArchivoRef.current.value = "";
-                if (inputCamaraRef.current) inputCamaraRef.current.value = "";
-              }}
-            >
-              <X className="h-4 w-4" />
-            </Button>
+            <Tooltip content="Quitar archivo">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                aria-label="Quitar archivo"
+                onClick={() => {
+                  setRemitoArchivo(null);
+                  if (inputArchivoRef.current) inputArchivoRef.current.value = "";
+                  if (inputCamaraRef.current) inputCamaraRef.current.value = "";
+                }}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </Tooltip>
           </div>
         )}
       </div>

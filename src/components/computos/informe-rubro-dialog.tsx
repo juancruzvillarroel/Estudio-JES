@@ -13,6 +13,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Tooltip } from "@/components/ui/tooltip";
 import {
   abrirInformeRubro,
   UNIDADES_HIERRO,
@@ -364,18 +365,20 @@ export function InformeRubroDialog({
 
   return (
     <Dialog open={open} onOpenChange={abrir}>
-      <DialogTrigger
-        render={
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label={`Descargar el cómputo de ${rubroNombre}`}
-          />
-        }
-      >
-        <FileDown className="h-4 w-4" />
-      </DialogTrigger>
+      <Tooltip content={`Descargar el cómputo de ${rubroNombre}`}>
+        <DialogTrigger
+          render={
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label={`Descargar el cómputo de ${rubroNombre}`}
+            />
+          }
+        >
+          <FileDown className="h-4 w-4" />
+        </DialogTrigger>
+      </Tooltip>
 
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-md">
         <DialogHeader>

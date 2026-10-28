@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Tooltip } from "@/components/ui/tooltip";
 import {
   actualizarDerivada,
   actualizarMedicion,
@@ -364,36 +365,43 @@ function FilaMedicion({
       </td>
       <td className="w-20 py-1 pr-2">
         <div className="flex items-center justify-end gap-0.5">
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label={borrador.deduccion ? "Dejar de descontar" : "Descontar esta fila"}
-            aria-pressed={borrador.deduccion}
-            title={borrador.deduccion ? "Descuenta del total" : "Convertir en descuento"}
-            onClick={() => guardarYa({ ...borrador, deduccion: !borrador.deduccion })}
-            className={cn(borrador.deduccion && "text-error")}
+          <Tooltip
+            content={
+              borrador.deduccion ? "Descuenta del total" : "Convertir en descuento"
+            }
           >
-            <Minus className="h-4 w-4" />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Eliminar fila"
-            onClick={() => {
-              startTransition(async () => {
-                const result = await eliminarMedicion(proyectoId, medicion.id);
-                if (!result.success) {
-                  toast.error(result.error);
-                  return;
-                }
-                onDeleted(medicion.id);
-              });
-            }}
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label={borrador.deduccion ? "Dejar de descontar" : "Descontar esta fila"}
+              aria-pressed={borrador.deduccion}
+              onClick={() => guardarYa({ ...borrador, deduccion: !borrador.deduccion })}
+              className={cn(borrador.deduccion && "text-error")}
+            >
+              <Minus className="h-4 w-4" />
+            </Button>
+          </Tooltip>
+          <Tooltip content="Eliminar fila">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Eliminar fila"
+              onClick={() => {
+                startTransition(async () => {
+                  const result = await eliminarMedicion(proyectoId, medicion.id);
+                  if (!result.success) {
+                    toast.error(result.error);
+                    return;
+                  }
+                  onDeleted(medicion.id);
+                });
+              }}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </Tooltip>
         </div>
       </td>
     </tr>
@@ -501,16 +509,18 @@ function FilaNueva({
       </td>
       <td className="w-20 py-1 pr-2">
         <div className="flex justify-end">
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Agregar medición"
-            disabled={!hayAlgo || pending}
-            onClick={agregar}
-          >
-            <Plus className="h-4 w-4" />
-          </Button>
+          <Tooltip content="Agregar medición">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Agregar medición"
+              disabled={!hayAlgo || pending}
+              onClick={agregar}
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+          </Tooltip>
         </div>
       </td>
     </tr>

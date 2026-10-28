@@ -22,6 +22,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DeleteButton } from "@/components/ui/delete-button";
+import { Tooltip } from "@/components/ui/tooltip";
 import { EstadoPedidoBadge } from "@/components/pedidos/estado-badge";
 import { EditarEntregaDialog } from "@/components/pedidos/editar-entrega-dialog";
 import { deletePedido } from "@/actions/pedidos";
@@ -315,22 +316,24 @@ export function PedidosEntregasList({
                 <TableCell className={cn(COL_ACCIONES, "text-right")}>
                   <div className="flex w-full justify-end gap-0.5 sm:gap-1">
                     {(f.tipo === "PEDIDO" ? f.archivoUrl : f.remitoUrl) && (
-                      <Button
-                        render={
-                          <a
-                            href={f.tipo === "PEDIDO" ? f.archivoUrl! : f.remitoUrl!}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                          />
-                        }
-                        nativeButton={false}
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        aria-label="Ver archivo adjunto"
-                      >
-                        <ExternalLink className="h-4 w-4" />
-                      </Button>
+                      <Tooltip content="Ver archivo adjunto">
+                        <Button
+                          render={
+                            <a
+                              href={f.tipo === "PEDIDO" ? f.archivoUrl! : f.remitoUrl!}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            />
+                          }
+                          nativeButton={false}
+                          type="button"
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label="Ver archivo adjunto"
+                        >
+                          <ExternalLink className="h-4 w-4" />
+                        </Button>
+                      </Tooltip>
                     )}
                     {f.tipo === "PEDIDO" ? (
                       <>
@@ -342,28 +345,31 @@ export function PedidosEntregasList({
                             completo o cancelado, que es cuando la pantalla de
                             carga te rebota igual. */}
                         {(f.estado === "PENDIENTE" || f.estado === "PARCIAL") && (
+                          <Tooltip content="Registrar entrega">
+                            <Button
+                              render={<Link href={`/pedidos/${f.id}/entregas/nueva`} />}
+                              nativeButton={false}
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              aria-label={`Registrar entrega del pedido #${formatNumeroPedido(f.numero)}`}
+                            >
+                              <Truck className="h-4 w-4" />
+                            </Button>
+                          </Tooltip>
+                        )}
+                        <Tooltip content="Editar pedido">
                           <Button
-                            render={<Link href={`/pedidos/${f.id}/entregas/nueva`} />}
+                            render={<Link href={`/pedidos/${f.id}/editar`} />}
                             nativeButton={false}
                             type="button"
                             variant="ghost"
                             size="icon-sm"
-                            aria-label={`Registrar entrega del pedido #${formatNumeroPedido(f.numero)}`}
-                            title="Registrar entrega"
+                            aria-label="Editar pedido"
                           >
-                            <Truck className="h-4 w-4" />
+                            <Pencil className="h-4 w-4" />
                           </Button>
-                        )}
-                        <Button
-                          render={<Link href={`/pedidos/${f.id}/editar`} />}
-                          nativeButton={false}
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label="Editar pedido"
-                        >
-                          <Pencil className="h-4 w-4" />
-                        </Button>
+                        </Tooltip>
                         <DeleteButton
                           iconOnly
                           action={() => deletePedido(f.id)}
@@ -378,7 +384,7 @@ export function PedidosEntregasList({
                           numeroRemito={f.numeroRemito}
                           notas={f.notas}
                           trigger={
-                            <Button type="button" variant="ghost" size="icon-sm" aria-label="Editar entrega">
+                            <Button type="button" variant="ghost" size="icon-sm" aria-label="Editar entrega" title="Editar entrega">
                               <Pencil className="h-4 w-4" />
                             </Button>
                           }

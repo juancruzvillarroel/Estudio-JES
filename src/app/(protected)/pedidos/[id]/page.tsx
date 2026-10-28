@@ -4,6 +4,7 @@ import { Pencil } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { requireSeccion } from "@/lib/dal";
 import { Button } from "@/components/ui/button";
+import { Tooltip } from "@/components/ui/tooltip";
 import {
   Table,
   TableBody,
@@ -111,16 +112,18 @@ export default async function PedidoDetallePage({
           {/* En móvil las tres acciones van en un renglón alineadas a la
               derecha; en escritorio se apilan como antes. */}
           <div className="flex shrink-0 items-center gap-2 max-sm:justify-end sm:flex-col sm:items-end">
-            <Button
-              render={<Link href={`/pedidos/${pedido.id}/editar`} />}
-              nativeButton={false}
-              type="button"
-              variant="outline"
-              size="icon"
-              aria-label="Editar pedido"
-            >
-              <Pencil className="h-4 w-4" />
-            </Button>
+            <Tooltip content="Editar pedido">
+              <Button
+                render={<Link href={`/pedidos/${pedido.id}/editar`} />}
+                nativeButton={false}
+                type="button"
+                variant="outline"
+                size="icon"
+                aria-label="Editar pedido"
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
+            </Tooltip>
             <EliminarPedidoButton pedidoId={pedido.id} numero={formatNumeroPedido(pedido.numero)} />
             {puedeRegistrarEntrega && (
               <Button render={<Link href={`/pedidos/${pedido.id}/entregas/nueva`} />} nativeButton={false}>

@@ -21,6 +21,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { DeleteButton } from "@/components/ui/delete-button";
+import { Tooltip } from "@/components/ui/tooltip";
 import { createVenta, deleteVenta, updateVenta } from "@/actions/ventas";
 import { MONEDA_LABELS, type MedioPagoOpcion, type UnidadProyectoOpcion } from "@/lib/flujo-fondos";
 import type { VentaOpcion } from "@/lib/ventas";
@@ -530,15 +531,17 @@ export function VentaDialog({
                           onChange={(e) => handleCuotaChange(index, "monto", e.target.value)}
                           className="h-8 w-28"
                         />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-sm"
-                          aria-label="Quitar pago"
-                          onClick={() => handleQuitarCuota(index)}
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </Button>
+                        <Tooltip content="Quitar pago">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon-sm"
+                            aria-label="Quitar pago"
+                            onClick={() => handleQuitarCuota(index)}
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </Button>
+                        </Tooltip>
                       </>
                     )}
                   </div>

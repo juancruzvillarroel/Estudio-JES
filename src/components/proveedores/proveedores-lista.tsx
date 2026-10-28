@@ -126,7 +126,7 @@ export function ProveedoresLista({
                       proveedor={p}
                       rubros={rubros}
                       trigger={
-                        <Button type="button" variant="ghost" size="icon-sm" aria-label="Editar proveedor">
+                        <Button type="button" variant="ghost" size="icon-sm" aria-label="Editar proveedor" title="Editar proveedor">
                           <Pencil className="h-4 w-4" />
                         </Button>
                       }

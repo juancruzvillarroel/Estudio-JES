@@ -89,7 +89,13 @@ export function UnidadesProyectoPanel({
                 onSaved={handleSaved}
                 onDeleted={handleDeleted}
                 trigger={
-                  <Button type="button" variant="ghost" size="icon-sm" aria-label="Editar unidad">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Editar unidad"
+                    title="Editar unidad"
+                  >
                     <Pencil className="h-4 w-4" />
                   </Button>
                 }

@@ -72,7 +72,13 @@ export function ProyectoInversoresPanel({
                 onSaved={handleSaved}
                 onDeleted={handleDeleted}
                 trigger={
-                  <Button type="button" variant="ghost" size="icon-sm" aria-label="Editar inversor">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Editar inversor"
+                    title="Editar inversor"
+                  >
                     <Pencil className="h-4 w-4" />
                   </Button>
                 }

@@ -25,6 +25,7 @@ import { Accordion, AccordionItem, AccordionTrigger, AccordionPanel } from "@/co
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Tooltip } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { crearTipoTramite, moverTipoTramite } from "@/actions/municipal";
 import { TramiteItemRow } from "./tramite-item-row";
@@ -163,15 +164,17 @@ function TramiteBlock({
   });
 
   const dragHandle = (
-    <button
-      type="button"
-      aria-label="Arrastrar para mover"
-      className="shrink-0 touch-none cursor-grab text-muted-foreground hover:text-foreground active:cursor-grabbing"
-      {...attributes}
-      {...listeners}
-    >
-      <GripVertical className="h-3.5 w-3.5" />
-    </button>
+    <Tooltip content="Arrastrar para reordenar">
+      <button
+        type="button"
+        aria-label="Arrastrar para mover"
+        className="shrink-0 touch-none cursor-grab text-muted-foreground hover:text-foreground active:cursor-grabbing"
+        {...attributes}
+        {...listeners}
+      >
+        <GripVertical className="h-3.5 w-3.5" />
+      </button>
+    </Tooltip>
   );
 
   return (
@@ -422,7 +425,7 @@ function CategoriaPanel({
                     categoriaId={categoria.id}
                     etapa={etapa}
                     trigger={
-                      <Button type="button" variant="ghost" size="icon-sm" aria-label="Editar etapa">
+                      <Button type="button" variant="ghost" size="icon-sm" aria-label="Editar etapa" title="Editar etapa">
                         <Pencil className="h-3.5 w-3.5" />
                       </Button>
                     }
@@ -481,24 +484,28 @@ export function MunicipalBoard({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-end gap-1">
-        <Button
-          type="button"
-          size="icon-sm"
-          variant={vista === "grid" ? "secondary" : "ghost"}
-          onClick={() => setVista("grid")}
-          aria-label="Ver en cuadrícula"
-        >
-          <LayoutGrid className="h-4 w-4" />
-        </Button>
-        <Button
-          type="button"
-          size="icon-sm"
-          variant={vista === "lista" ? "secondary" : "ghost"}
-          onClick={() => setVista("lista")}
-          aria-label="Ver en lista"
-        >
-          <List className="h-4 w-4" />
-        </Button>
+        <Tooltip content="Ver en cuadrícula">
+          <Button
+            type="button"
+            size="icon-sm"
+            variant={vista === "grid" ? "secondary" : "ghost"}
+            onClick={() => setVista("grid")}
+            aria-label="Ver en cuadrícula"
+          >
+            <LayoutGrid className="h-4 w-4" />
+          </Button>
+        </Tooltip>
+        <Tooltip content="Ver en lista">
+          <Button
+            type="button"
+            size="icon-sm"
+            variant={vista === "lista" ? "secondary" : "ghost"}
+            onClick={() => setVista("lista")}
+            aria-label="Ver en lista"
+          >
+            <List className="h-4 w-4" />
+          </Button>
+        </Tooltip>
       </div>
 
       {categorias.length === 0 ? (
@@ -537,7 +544,7 @@ export function MunicipalBoard({
                     proyectoId={proyectoId}
                     categoria={categoria}
                     trigger={
-                      <Button type="button" variant="ghost" size="icon-sm" aria-label="Editar categoría">
+                      <Button type="button" variant="ghost" size="icon-sm" aria-label="Editar categoría" title="Editar categoría">
                         <Pencil className="h-4 w-4" />
                       </Button>
                     }

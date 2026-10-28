@@ -78,7 +78,13 @@ export function MediosPagoPanel({
                 onSaved={handleSaved}
                 onDeleted={handleDeleted}
                 trigger={
-                  <Button type="button" variant="ghost" size="icon-sm" aria-label="Editar medio de pago">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Editar medio de pago"
+                    title="Editar medio de pago"
+                  >
                     <Pencil className="h-4 w-4" />
                   </Button>
                 }

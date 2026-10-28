@@ -4,6 +4,7 @@ import { useRef } from "react";
 import { Camera, Paperclip, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
+import { Tooltip } from "@/components/ui/tooltip";
 
 /**
  * Un campo para adjuntar un papel: elegir archivo o sacarle una foto.
@@ -55,24 +56,30 @@ export function AdjuntoCampo({
       <div className="flex flex-col gap-2">
         <Label>{label}</Label>
         <div className="flex gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            aria-label={`Adjuntar archivo de ${minuscula}`}
-            onClick={() => inputArchivoRef.current?.click()}
+          <Tooltip content={`Adjuntar archivo de ${minuscula}`}>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              aria-label={`Adjuntar archivo de ${minuscula}`}
+              onClick={() => inputArchivoRef.current?.click()}
+            >
+              <Paperclip className="h-4 w-4" />
+            </Button>
+          </Tooltip>
+          <Tooltip
+            content={`Sacar foto ${minuscula === "factura" ? "de la" : "del"} ${minuscula}`}
           >
-            <Paperclip className="h-4 w-4" />
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            aria-label={`Sacar foto ${minuscula === "factura" ? "de la" : "del"} ${minuscula}`}
-            onClick={() => inputCamaraRef.current?.click()}
-          >
-            <Camera className="h-4 w-4" />
-          </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              aria-label={`Sacar foto ${minuscula === "factura" ? "de la" : "del"} ${minuscula}`}
+              onClick={() => inputCamaraRef.current?.click()}
+            >
+              <Camera className="h-4 w-4" />
+            </Button>
+          </Tooltip>
           <input
             ref={inputArchivoRef}
             type="file"
@@ -93,15 +100,17 @@ export function AdjuntoCampo({
         {archivo ? (
           <div className="flex items-center justify-between gap-2 rounded-md border p-2 text-sm">
             <span className="truncate">{archivo.name}</span>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              aria-label={`Quitar el archivo de ${minuscula}`}
-              onClick={() => onArchivo(null)}
-            >
-              <X className="h-4 w-4" />
-            </Button>
+            <Tooltip content={`Quitar el archivo de ${minuscula}`}>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label={`Quitar el archivo de ${minuscula}`}
+                onClick={() => onArchivo(null)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </Tooltip>
           </div>
         ) : urlActual && !quitado ? (
           <div className="flex items-center justify-between gap-2 rounded-md border p-2 text-sm">
@@ -113,15 +122,17 @@ export function AdjuntoCampo({
             >
               {textoActual}
             </a>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              aria-label={`Quitar el archivo de ${minuscula}`}
-              onClick={onQuitar}
-            >
-              <X className="h-4 w-4" />
-            </Button>
+            <Tooltip content={`Quitar el archivo de ${minuscula}`}>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label={`Quitar el archivo de ${minuscula}`}
+                onClick={onQuitar}
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </Tooltip>
           </div>
         ) : null}
       </div>

@@ -426,6 +426,7 @@ export function MovimientoFondoDialog({
                         variant="outline"
                         size="icon"
                         aria-label="Nuevo proveedor"
+                        title="Nuevo proveedor"
                         disabled={!rubroId}
                       >
                         <Plus className="h-4 w-4" />

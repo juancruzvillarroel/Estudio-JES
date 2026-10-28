@@ -223,7 +223,11 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
    *
    * Sólo se desglosan las celdas de dos renglones o más. Una celda de un solo
    * renglón ya es su propio detalle: repetirla abajo es imprimir dos veces el
-   * mismo número. Las derivadas no se tocan, que no tienen renglones que mostrar.
+   * mismo número. La excepción es cuando ese renglón único tiene una
+   * descripción propia (por ejemplo "Base B1"): ahí el renglón no es un
+   * simple duplicado del total, es la única referencia escrita a qué
+   * corresponde ese número, y perderla en el papel deja la cuenta sin
+   * explicación. Las derivadas no se tocan, que no tienen renglones que mostrar.
    */
   const renglonesDe = (fila: ClaveFila) =>
     items
@@ -231,7 +235,9 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
         const renglones = medicionesDeFila(item, fila).filter(
           (m) => m.origenId === null
         );
-        if (renglones.length < 2) return [];
+        const tieneDescripcionPropia =
+          renglones.length === 1 && !!renglones[0].descripcion?.trim();
+        if (renglones.length < 2 && !tieneDescripcionPropia) return [];
         return renglones.map((medicion) => {
           const celdas = items
             .map((otro, i) => {

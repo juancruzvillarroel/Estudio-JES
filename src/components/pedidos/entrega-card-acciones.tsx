@@ -25,7 +25,7 @@ export function EntregaCardAcciones({
         numeroRemito={numeroRemito}
         notas={notas}
         trigger={
-          <Button type="button" variant="ghost" size="icon-sm" aria-label="Editar entrega">
+          <Button type="button" variant="ghost" size="icon-sm" aria-label="Editar entrega" title="Editar entrega">
             <Pencil className="h-4 w-4" />
           </Button>
         }

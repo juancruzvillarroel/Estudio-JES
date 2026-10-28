@@ -731,7 +731,7 @@ export function TareasLista({
                     onSaved={onSaved}
                     onDeleted={onDeleted}
                     trigger={
-                      <Button type="button" variant="ghost" size="icon-sm" aria-label="Editar tarea">
+                      <Button type="button" variant="ghost" size="icon-sm" aria-label="Editar tarea" title="Editar tarea">
                         <Pencil className="h-3.5 w-3.5" />
                       </Button>
                     }

@@ -20,6 +20,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Tooltip } from "@/components/ui/tooltip";
 import { RubroDialog } from "@/components/rubros/rubro-dialog";
 import { SubrubroDialog } from "@/components/rubros/subrubro-dialog";
 import { reordenarRubros } from "@/actions/rubros";
@@ -63,25 +64,29 @@ function RubroBlock({
     >
       <div className="flex items-center gap-3 p-3">
         {arrastrable && (
+          <Tooltip content="Arrastrar para reordenar">
+            <button
+              type="button"
+              aria-label="Arrastrar para reordenar"
+              className="shrink-0 touch-none cursor-grab text-muted-foreground hover:text-foreground active:cursor-grabbing"
+              {...attributes}
+              {...listeners}
+            >
+              <GripVertical className="h-4 w-4" />
+            </button>
+          </Tooltip>
+        )}
+        <Tooltip content={expandido ? "Ocultar subrubros" : "Mostrar subrubros"}>
           <button
             type="button"
-            aria-label="Arrastrar para reordenar"
-            className="shrink-0 touch-none cursor-grab text-muted-foreground hover:text-foreground active:cursor-grabbing"
-            {...attributes}
-            {...listeners}
+            aria-label={expandido ? "Ocultar subrubros" : "Mostrar subrubros"}
+            aria-expanded={expandido}
+            onClick={onToggle}
+            className="shrink-0 text-muted-foreground hover:text-foreground"
           >
-            <GripVertical className="h-4 w-4" />
+            <ChevronRight className={cn("h-4 w-4 transition-transform", expandido && "rotate-90")} />
           </button>
-        )}
-        <button
-          type="button"
-          aria-label={expandido ? "Ocultar subrubros" : "Mostrar subrubros"}
-          aria-expanded={expandido}
-          onClick={onToggle}
-          className="shrink-0 text-muted-foreground hover:text-foreground"
-        >
-          <ChevronRight className={cn("h-4 w-4 transition-transform", expandido && "rotate-90")} />
-        </button>
+        </Tooltip>
         <span className="w-10 shrink-0 font-mono text-xs text-muted-foreground">
           {rubro.codigoPrefijo ?? "—"}
         </span>
@@ -116,7 +121,7 @@ function RubroBlock({
         <RubroDialog
           rubro={rubro}
           trigger={
-            <Button type="button" variant="ghost" size="icon-sm" aria-label="Editar rubro">
+            <Button type="button" variant="ghost" size="icon-sm" aria-label="Editar rubro" title="Editar rubro">
               <Pencil className="h-4 w-4" />
             </Button>
           }
@@ -156,7 +161,7 @@ function RubroBlock({
                     rubroId={rubro.id}
                     subrubro={s}
                     trigger={
-                      <Button type="button" variant="ghost" size="icon-sm" aria-label="Editar subrubro">
+                      <Button type="button" variant="ghost" size="icon-sm" aria-label="Editar subrubro" title="Editar subrubro">
                         <Pencil className="h-3.5 w-3.5" />
                       </Button>
                     }
