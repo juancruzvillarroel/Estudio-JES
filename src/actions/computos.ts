@@ -13,6 +13,7 @@ import {
   mapSeccion,
   TIPOS_COMPUTO,
   UNIDADES,
+  type CampoCajon,
   type ClaveFila,
   type FilaExtraOpcion,
   type ItemOpcion,
@@ -774,11 +775,14 @@ export async function guardarCelda(
   }
 }
 
+/** Los tres campos de cajón, para recorrerlos sin repetir la lista. */
+const CAMPOS_CAJON: readonly CampoCajon[] = ["cajonC10", "cajonC15", "cajonC18"];
+
 /**
- * Guarda un cajón (C10 o C15) de una celda de la grilla de PUERTAS.
+ * Guarda un cajón (C10, C15 o C18) de una celda de la grilla de PUERTAS.
  *
  * Vive en la misma fila que la cantidad de puertas de esa celda (ver
- * ComputoMedicion.cajonC10/cajonC15 en el schema), pero es un número
+ * ComputoMedicion.cajonC10/cajonC15/cajonC18 en el schema), pero es un número
  * independiente: una celda puede tener puertas sin cajones contados todavía,
  * o cajones contados antes que las puertas. Por eso, a diferencia de
  * `guardarCelda`, esto puede crear una fila sin tocar `cantidad` (queda en 0,
@@ -789,7 +793,7 @@ export async function guardarCajon(
   proyectoId: string,
   itemId: string,
   fila: ClaveFila,
-  campo: "cajonC10" | "cajonC15",
+  campo: CampoCajon,
   valor: number | null
 ): Promise<ResultItem> {
   await requireSeccion("proyectos");
@@ -811,7 +815,14 @@ export async function guardarCajon(
     const cargadas = await prisma.computoMedicion.findMany({
       where: { itemId, nivelId: donde.nivelId, filaExtraId: donde.filaExtraId },
       orderBy: { orden: "asc" },
-      select: { id: true, origenId: true, cantidad: true, cajonC10: true, cajonC15: true },
+      select: {
+        id: true,
+        origenId: true,
+        cantidad: true,
+        cajonC10: true,
+        cajonC15: true,
+        cajonC18: true,
+      },
     });
 
     if (cargadas.some((f) => f.origenId !== null)) {
@@ -829,10 +840,13 @@ export async function guardarCajon(
 
     const medicion = cargadas[0];
     if (medicion) {
-      const otroCajon = campo === "cajonC10" ? medicion.cajonC15 : medicion.cajonC10;
-      // Si la fila se queda sin cantidad de puertas, sin el otro cajón y sin
-      // éste, no representa nada: se borra en vez de dejar un renglón vacío.
-      if (valor === null && otroCajon === null && Number(medicion.cantidad) === 0) {
+      // Si la fila se queda sin cantidad de puertas, sin ningún otro cajón y
+      // sin éste, no representa nada: se borra en vez de dejar un renglón
+      // vacío.
+      const sinOtrosCajones = CAMPOS_CAJON.filter((c) => c !== campo).every(
+        (c) => medicion[c] === null
+      );
+      if (valor === null && sinOtrosCajones && Number(medicion.cantidad) === 0) {
         await prisma.computoMedicion.delete({ where: { id: medicion.id } });
       } else {
         await prisma.computoMedicion.update({

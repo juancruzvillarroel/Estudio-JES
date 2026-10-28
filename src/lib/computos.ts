@@ -622,6 +622,8 @@ export type MedicionOpcion = {
   cajonC10: number | null;
   /** Cajones de puertas (marco grande). Sólo se usa en la sección PUERTAS. */
   cajonC15: number | null;
+  /** Cajones de puertas (marco de 18). Sólo se usa en la sección PUERTAS. */
+  cajonC18: number | null;
 };
 
 export type ItemOpcion = {
@@ -678,6 +680,7 @@ export function mapMedicion(m: {
   orden: number;
   cajonC10?: unknown;
   cajonC15?: unknown;
+  cajonC18?: unknown;
   nivel?: { repeticiones: number } | null;
 }): MedicionOpcion {
   return {
@@ -697,6 +700,7 @@ export function mapMedicion(m: {
     repeticiones: m.nivel?.repeticiones ?? 1,
     cajonC10: aNumero(m.cajonC10),
     cajonC15: aNumero(m.cajonC15),
+    cajonC18: aNumero(m.cajonC18),
   };
 }
 
@@ -1130,29 +1134,30 @@ export function totalPorFila(
   return items.reduce((acc, item) => acc + medidoEnFila(item, fila, totales), 0);
 }
 
+/** Los tres cajones de puertas que existen: marco chico, grande y de 18. */
+export type CampoCajon = "cajonC10" | "cajonC15" | "cajonC18";
+
 /**
  * ¿Esta sección es la grilla de PUERTAS (no HERRAJES, aunque comparten
- * rubro)? Ahí, y sólo ahí, cada ítem suma dos columnas más: C10 y C15, los
- * cajones (marcos chico y grande). Se detecta por nombre exacto, igual que
- * `mostrarTotalPorFila` con HORMIGÓN: no hay un campo "tipo de sección" en la
- * base, y agregar uno sólo para esto sería más de lo que hace falta.
+ * rubro)? Ahí, y sólo ahí, cada ítem suma tres columnas más: C10, C15 y C18,
+ * los cajones (marcos chico, grande y de 18). Se detecta por nombre exacto,
+ * igual que `mostrarTotalPorFila` con HORMIGÓN: no hay un campo "tipo de
+ * sección" en la base, y agregar uno sólo para esto sería más de lo que hace
+ * falta.
  */
 export function esSeccionPuertas(seccion: { nombre: string }): boolean {
   return seccion.nombre.trim().toUpperCase() === "PUERTAS";
 }
 
 /**
- * Los cajones (C10 o C15) que tiene cargados un ítem en una fila, sumados.
+ * Los cajones (C10, C15 o C18) que tiene cargados un ítem en una fila,
+ * sumados.
  *
  * Multiplica por las repeticiones del nivel igual que `parcialMedicion`: una
  * planta tipo x4 tiene que multiplicar también los cajones de esa planta, no
  * sólo la cantidad de puertas.
  */
-export function cajonesEnFila(
-  item: ItemOpcion,
-  fila: ClaveFila,
-  campo: "cajonC10" | "cajonC15"
-): number {
+export function cajonesEnFila(item: ItemOpcion, fila: ClaveFila, campo: CampoCajon): number {
   return medicionesDeFila(item, fila).reduce((acc, m) => {
     const valor = m[campo];
     if (valor === null) return acc;
@@ -1161,8 +1166,8 @@ export function cajonesEnFila(
   }, 0);
 }
 
-/** El total de C10 o C15 de un ítem, para el pie de la grilla. */
-export function totalCajones(item: ItemOpcion, campo: "cajonC10" | "cajonC15"): number {
+/** El total de C10, C15 o C18 de un ítem, para el pie de la grilla. */
+export function totalCajones(item: ItemOpcion, campo: CampoCajon): number {
   return item.mediciones.reduce((acc, m) => {
     const valor = m[campo];
     if (valor === null) return acc;

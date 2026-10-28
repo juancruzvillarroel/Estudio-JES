@@ -119,8 +119,9 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
   const { items, filas } = seccion;
 
   /**
-   * PUERTAS lleva, además de la columna de siempre, los cajones de C10 y C15 —
-   * la misma excepción que tiene la grilla en pantalla (ver `esSeccionPuertas`).
+   * PUERTAS lleva, además de la columna de siempre, los cajones de C10, C15
+   * y C18 — la misma excepción que tiene la grilla en pantalla (ver
+   * `esSeccionPuertas`).
    */
   const puertas = esSeccionPuertas(seccion.seccion);
 
@@ -194,10 +195,10 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
     return `<td class="${clase}">${esc(valor)}</td>`;
   };
 
-  /** Las dos columnas de cajones (C10, C15) de PUERTAS: dos tds vacíos, o nada si no aplica. */
+  /** Las tres columnas de cajones (C10, C15, C18) de PUERTAS: tres tds vacíos, o nada si no aplica. */
   const celdaCajonVacia = (item: ItemOpcion) =>
     puertas && !esHierro(item)
-      ? `<td class="num cajon"></td><td class="num cajon"></td>`
+      ? `<td class="num cajon"></td><td class="num cajon"></td><td class="num cajon"></td>`
       : "";
 
   const columnasPorItem = (item: ItemOpcion) =>
@@ -206,7 +207,7 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
       : 1 +
         (conMerma(item) ? 1 : 0) +
         (conversionDe(item) !== null ? 1 : 0) +
-        (puertas ? 2 : 0);
+        (puertas ? 3 : 0);
 
   /** Las celdas numéricas vacías de un ítem, todas las que le toquen. */
   const celdasVacias = (item: ItemOpcion) => {
@@ -221,7 +222,7 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
   };
 
   /**
-   * Las celdas de C10 y C15 de una fila (un piso): mismo criterio que en
+   * Las celdas de C10, C15 y C18 de una fila (un piso): mismo criterio que en
    * pantalla —"—" si ningún renglón de esa fila tiene el campo cargado, en vez
    * de un cero que confundiría "no se cargó" con "no lleva cajones"—.
    */
@@ -234,7 +235,10 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
     const c15 = renglones.some((m) => m.cajonC15 !== null)
       ? formatCantidad(cajonesEnFila(item, fila, "cajonC15"))
       : "—";
-    return `<td class="num cajon">${esc(c10)}</td><td class="num cajon">${esc(c15)}</td>`;
+    const c18 = renglones.some((m) => m.cajonC18 !== null)
+      ? formatCantidad(cajonesEnFila(item, fila, "cajonC18"))
+      : "—";
+    return `<td class="num cajon">${esc(c10)}</td><td class="num cajon">${esc(c15)}</td><td class="num cajon">${esc(c18)}</td>`;
   };
 
   /** Lo mismo que `celdasCajonFila`, pero para el total de toda la sección. */
@@ -246,7 +250,10 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
     const c15 = item.mediciones.some((m) => m.cajonC15 !== null)
       ? formatCantidad(totalCajones(item, "cajonC15"))
       : "—";
-    return `<td class="num cajon">${esc(c10)}</td><td class="num cajon">${esc(c15)}</td>`;
+    const c18 = item.mediciones.some((m) => m.cajonC18 !== null)
+      ? formatCantidad(totalCajones(item, "cajonC18"))
+      : "—";
+    return `<td class="num cajon">${esc(c10)}</td><td class="num cajon">${esc(c15)}</td><td class="num cajon">${esc(c18)}</td>`;
   };
 
   /**
@@ -360,7 +367,7 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
               : ""
           }${
             puertas
-              ? `<th class="num cajon">C10</th><th class="num cajon">C15</th>`
+              ? `<th class="num cajon">C10</th><th class="num cajon">C15</th><th class="num cajon">C18</th>`
               : ""
           }`;
         })
@@ -699,7 +706,7 @@ function construirHtml(datos: DatosInformeRubro) {
     /* La columna del material, un tono más marcada: es la que se copia al
        pedido, así que tiene que encontrarse sin buscarla. */
     .material { background: #f0f0f0; font-weight: 600; }
-    /* Los cajones de PUERTAS (C10, C15): un tono propio, para distinguirlos de
+    /* Los cajones de PUERTAS (C10, C15, C18): un tono propio, para distinguirlos de
        la columna del material aunque compartan la misma idea de "dato aparte". */
     .cajon { background: #eef4fb; }
 

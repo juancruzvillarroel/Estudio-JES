@@ -20,6 +20,7 @@
 
 import {
   cantidadFinalCompra,
+  esSeccionPuertas,
   formatCantidad,
   TIPO_COMPUTO_LABEL,
   type ItemOpcion,
@@ -89,7 +90,36 @@ function filaItem(item: ItemOpcion, datos: DatosInformePresupuesto) {
     </tr>`;
 }
 
+/**
+ * El cierre de la sección de PUERTAS: una fila que suma la cantidad final de
+ * compra de todos los tipos de puerta (P1, P2, P3...), porque todos comparten
+ * la misma unidad ("un") y es la única sección donde esa suma es un dato que
+ * se usa de verdad —cuántas puertas en total hay que cotizar, más allá de
+ * cómo se repartan entre tipos. Ningún otro rubro mezcla ítems con la misma
+ * unidad de esta forma, así que no hace falta en ningún otro lado.
+ *
+ * Va en la columna "Unidad" y no en una nueva porque ahí es donde se venía
+ * repitiendo "un" fila tras fila: ese lugar queda libre para el total en
+ * cuanto deja de hacer falta repetirlo en cada tipo.
+ */
+function filaTotalPuertas(seccion: SeccionPresupuesto, datos: DatosInformePresupuesto) {
+  const total = seccion.items.reduce((acc, item) => {
+    const { cantidad } = cantidadFinalCompra(item, datos.totales.get(item.id) ?? 0);
+    return acc + cantidad;
+  }, 0);
+
+  return `
+    <tr class="fila-total">
+      <td class="item-nombre">TOTAL PUERTAS</td>
+      <td class="num"></td>
+      <td class="unidad num">${esc(formatCantidad(total))}</td>
+      <td class="precio"></td>
+      <td class="precio"></td>
+    </tr>`;
+}
+
 function tablaSeccion(seccion: SeccionPresupuesto, datos: DatosInformePresupuesto) {
+  const puertas = esSeccionPuertas(seccion);
   return `
     <section class="bloque">
       <h2>${esc(seccion.nombre)}</h2>
@@ -103,7 +133,10 @@ function tablaSeccion(seccion: SeccionPresupuesto, datos: DatosInformePresupuest
             <th class="precio">Total</th>
           </tr>
         </thead>
-        <tbody>${seccion.items.map((item) => filaItem(item, datos)).join("")}</tbody>
+        <tbody>
+          ${seccion.items.map((item) => filaItem(item, datos)).join("")}
+          ${puertas ? filaTotalPuertas(seccion, datos) : ""}
+        </tbody>
       </table>
     </section>`;
 }
@@ -197,6 +230,18 @@ function construirHtml(datos: DatosInformePresupuesto) {
     }
     .num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; font-weight: 600; }
     .unidad { color: var(--gris); font-size: 10px; }
+    /* La fila de cierre de PUERTAS, con el total sumado en la columna
+       Unidad: un tono de fondo y un borde más grueso arriba para que se lea
+       como el cierre de la tabla y no como un tipo de puerta más. */
+    tr.fila-total td { background: #f0f0f0; border-top: 2px solid var(--oscuro); }
+    tr.fila-total .item-nombre {
+      font-size: 9.5px;
+      font-weight: 600;
+      color: var(--gris);
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    tr.fila-total .unidad { font-size: 11px; color: var(--tinta); }
     /* Las columnas que completa el proveedor van en blanco, con el ancho ya
        reservado: así la hoja se imprime lista para escribir a mano o a
        máquina, sin que el proveedor tenga que adivinar dónde va cada dato. */

@@ -1427,12 +1427,13 @@ model ComputoMedicion {
   // sobrantes. Va acá y no metido en el coeficiente para que en el papel que se
   // manda a cotizar se lea "18.600 + 5%" y no un 15,75 que nadie puede discutir.
   desperdicio Decimal?          @db.Decimal(5, 2)
-  // Cajones de puertas: cantidad de marcos chicos (C10) y grandes (C15) de
-  // esta fila. Sólo se usan en los ítems de la sección PUERTAS (ver
-  // esSeccionPuertas en src/lib/computos.ts); en cualquier otro ítem quedan
-  // en null y no se muestran.
+  // Cajones de puertas: cantidad de marcos chicos (C10), grandes (C15) y de
+  // 18 (C18) de esta fila. Sólo se usan en los ítems de la sección PUERTAS
+  // (ver esSeccionPuertas en src/lib/computos.ts); en cualquier otro ítem
+  // quedan en null y no se muestran.
   cajonC10    Decimal?          @db.Decimal(12, 2)
   cajonC15    Decimal?          @db.Decimal(12, 2)
+  cajonC18    Decimal?          @db.Decimal(12, 2)
   orden       Int               @default(0)
   createdAt   DateTime          @default(now())
 

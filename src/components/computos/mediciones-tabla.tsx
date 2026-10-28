@@ -107,6 +107,7 @@ function parcialDeBorrador(
       repeticiones: 1,
       cajonC10: null,
       cajonC15: null,
+      cajonC18: null,
     },
     item.unidad,
     totalOrigen
