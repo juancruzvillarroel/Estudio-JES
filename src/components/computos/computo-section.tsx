@@ -46,7 +46,12 @@ export async function ComputoSection({
     prisma.computoItem.findMany({
       where: { proyectoId },
       orderBy: { orden: "asc" },
-      include: { mediciones: { orderBy: { orden: "asc" } } },
+      include: {
+        mediciones: {
+          orderBy: { orden: "asc" },
+          include: { nivel: { select: { repeticiones: true } } },
+        },
+      },
     }),
     // Cuándo se tocó por última vez cada cómputo (rubro + lado) de esta obra.
     // Sin fila todavía para el rubro que no se empezó a cargar.

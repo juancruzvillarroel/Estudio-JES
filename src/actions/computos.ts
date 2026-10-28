@@ -37,9 +37,16 @@ type ResultFilaExtra =
   | { success: true; fila: FilaExtraOpcion }
   | { success: false; error: string };
 
-/** Lo que se trae de un ítem en todos lados: sus filas, en orden. */
+/**
+ * Lo que se trae de un ítem en todos lados: sus filas, en orden, con la
+ * cantidad de repeticiones del nivel de cada fila (para "planta tipo" x4,
+ * ver parcialMedicion en lib/computos.ts).
+ */
 const incluirMediciones = {
-  mediciones: { orderBy: { orden: "asc" } as const },
+  mediciones: {
+    orderBy: { orden: "asc" } as const,
+    include: { nivel: { select: { repeticiones: true } } },
+  },
 };
 
 const esUnidad = (v: string): v is UnidadComputo => (UNIDADES as string[]).includes(v);
@@ -764,6 +771,100 @@ export async function guardarCelda(
   } catch (error) {
     console.error("guardarCelda", error);
     return { success: false, error: "No se pudo guardar la medida." };
+  }
+}
+
+/**
+ * Guarda un cajón (C10 o C15) de una celda de la grilla de PUERTAS.
+ *
+ * Vive en la misma fila que la cantidad de puertas de esa celda (ver
+ * ComputoMedicion.cajonC10/cajonC15 en el schema), pero es un número
+ * independiente: una celda puede tener puertas sin cajones contados todavía,
+ * o cajones contados antes que las puertas. Por eso, a diferencia de
+ * `guardarCelda`, esto puede crear una fila sin tocar `cantidad` (queda en 0,
+ * que para cajones no se confunde con "medido": el que se lee como medida es
+ * la columna de puertas, no ésta) y la borra si queda sin nada cargado.
+ */
+export async function guardarCajon(
+  proyectoId: string,
+  itemId: string,
+  fila: ClaveFila,
+  campo: "cajonC10" | "cajonC15",
+  valor: number | null
+): Promise<ResultItem> {
+  await requireSeccion("proyectos");
+
+  if (valor !== null && (!Number.isFinite(valor) || valor <= 0)) {
+    return { success: false, error: "La cantidad tiene que ser mayor a 0." };
+  }
+
+  try {
+    const existe = await prisma.computoItem.findFirst({
+      where: { id: itemId, proyectoId },
+      select: { id: true, seccionId: true },
+    });
+    if (!existe) return { success: false, error: "No se encontró el ítem." };
+
+    const donde = await resolverFila(proyectoId, existe.seccionId, fila);
+    if (!donde.ok) return { success: false, error: donde.error };
+
+    const cargadas = await prisma.computoMedicion.findMany({
+      where: { itemId, nivelId: donde.nivelId, filaExtraId: donde.filaExtraId },
+      orderBy: { orden: "asc" },
+      select: { id: true, origenId: true, cantidad: true, cajonC10: true, cajonC15: true },
+    });
+
+    if (cargadas.some((f) => f.origenId !== null)) {
+      return {
+        success: false,
+        error: "Esta celda sale de una cuenta sobre otro ítem. No se escribe a mano.",
+      };
+    }
+    if (cargadas.length > 1) {
+      return {
+        success: false,
+        error: "Esta celda tiene varias filas cargadas. Editalas desde el detalle.",
+      };
+    }
+
+    const medicion = cargadas[0];
+    if (medicion) {
+      const otroCajon = campo === "cajonC10" ? medicion.cajonC15 : medicion.cajonC10;
+      // Si la fila se queda sin cantidad de puertas, sin el otro cajón y sin
+      // éste, no representa nada: se borra en vez de dejar un renglón vacío.
+      if (valor === null && otroCajon === null && Number(medicion.cantidad) === 0) {
+        await prisma.computoMedicion.delete({ where: { id: medicion.id } });
+      } else {
+        await prisma.computoMedicion.update({
+          where: { id: medicion.id },
+          data: { [campo]: valor },
+        });
+      }
+    } else if (valor !== null) {
+      await prisma.computoMedicion.create({
+        data: {
+          itemId,
+          nivelId: donde.nivelId,
+          filaExtraId: donde.filaExtraId,
+          cantidad: 0,
+          [campo]: valor,
+          orden: await siguienteOrdenMedicion(itemId),
+        },
+      });
+    }
+
+    await tocarFechaComputo(proyectoId, itemId);
+
+    const item = await prisma.computoItem.findUniqueOrThrow({
+      where: { id: itemId },
+      include: incluirMediciones,
+    });
+
+    revalidatePath(`/proyectos/${proyectoId}`);
+    return { success: true, item: mapItem(item) };
+  } catch (error) {
+    console.error("guardarCajon", error);
+    return { success: false, error: "No se pudo guardar el cajón." };
   }
 }
 

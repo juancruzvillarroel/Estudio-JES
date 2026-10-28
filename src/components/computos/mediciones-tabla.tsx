@@ -96,7 +96,18 @@ function parcialDeBorrador(
   const datos = aDatos(borrador);
   const desperdicio = borrador.desperdicio.trim() === "" ? null : parseMedida(borrador.desperdicio);
   return parcialMedicion(
-    { ...datos, id: "", itemId: item.id, filaExtraId: null, origenId, desperdicio, orden: 0 },
+    {
+      ...datos,
+      id: "",
+      itemId: item.id,
+      filaExtraId: null,
+      origenId,
+      desperdicio,
+      orden: 0,
+      repeticiones: 1,
+      cajonC10: null,
+      cajonC15: null,
+    },
     item.unidad,
     totalOrigen
   );

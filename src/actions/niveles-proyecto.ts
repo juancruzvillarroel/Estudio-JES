@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db";
 import { requireSeccion } from "@/lib/dal";
 import { mapNivel, type NivelOpcion } from "@/lib/niveles";
-import { NivelProyectoSchema } from "@/lib/validations/nivel-proyecto";
+import { NivelProyectoSchema, RepeticionesNivelSchema } from "@/lib/validations/nivel-proyecto";
 
 export type Result = { success: true } | { success: false; error: string };
 
@@ -81,6 +81,43 @@ export async function renombrarNivel(
   } catch (error) {
     console.error("renombrarNivel", error);
     return { success: false, error: "Ya hay un nivel con ese nombre en esta obra." };
+  }
+}
+
+/**
+ * Cambia la cantidad de plantas iguales que representa un nivel ("planta
+ * tipo" x4, por ejemplo). Se guarda sola, igual que el nombre: cargar la
+ * cantidad de cada nivel no debería ser una ceremonia aparte con su propio
+ * botón de guardar.
+ */
+export async function actualizarRepeticionesNivel(
+  proyectoId: string,
+  nivelId: string,
+  repeticiones: number
+): Promise<ResultNivel> {
+  await requireSeccion("proyectos");
+
+  const validated = RepeticionesNivelSchema.safeParse({ repeticiones });
+  if (!validated.success) {
+    return { success: false, error: validated.error.issues[0]?.message ?? "Datos inválidos." };
+  }
+
+  try {
+    const existente = await prisma.nivelProyecto.findFirst({
+      where: { id: nivelId, proyectoId },
+      select: { id: true },
+    });
+    if (!existente) return { success: false, error: "No se encontró el nivel." };
+
+    const nivel = await prisma.nivelProyecto.update({
+      where: { id: nivelId },
+      data: { repeticiones: validated.data.repeticiones },
+    });
+    revalidatePath(`/proyectos/${proyectoId}`);
+    return { success: true, nivel: mapNivel(nivel) };
+  } catch (error) {
+    console.error("actualizarRepeticionesNivel", error);
+    return { success: false, error: "No se pudo guardar la cantidad de plantas." };
   }
 }
 

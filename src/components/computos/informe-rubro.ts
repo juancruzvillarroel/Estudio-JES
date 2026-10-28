@@ -21,10 +21,12 @@
 import {
   barrasDeMetros,
   bultosDe,
+  cajonesEnFila,
   conDesperdicio,
   conversionDe,
   esDerivadaEnFila,
   esHierro,
+  esSeccionPuertas,
   etiquetaBultos,
   formatCantidad,
   kgDeMetros,
@@ -34,6 +36,7 @@ import {
   parcialMedicion,
   simboloUnidad,
   tieneMedidoEnFila,
+  totalCajones,
   TIPO_COMPUTO_LABEL,
   type ClaveFila,
   type ItemOpcion,
@@ -115,6 +118,12 @@ function urlLogo() {
 function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
   const { items, filas } = seccion;
 
+  /**
+   * PUERTAS lleva, además de la columna de siempre, los cajones de C10 y C15 —
+   * la misma excepción que tiene la grilla en pantalla (ver `esSeccionPuertas`).
+   */
+  const puertas = esSeccionPuertas(seccion.seccion);
+
   /** ¿Va la columna de la merma de este ítem? Depende de lo que se eligió bajar. */
   const conMerma = (item: ItemOpcion) =>
     datos.conDesperdicio && item.desperdicio !== null;
@@ -185,10 +194,19 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
     return `<td class="${clase}">${esc(valor)}</td>`;
   };
 
+  /** Las dos columnas de cajones (C10, C15) de PUERTAS: dos tds vacíos, o nada si no aplica. */
+  const celdaCajonVacia = (item: ItemOpcion) =>
+    puertas && !esHierro(item)
+      ? `<td class="num cajon"></td><td class="num cajon"></td>`
+      : "";
+
   const columnasPorItem = (item: ItemOpcion) =>
     esHierro(item)
       ? columnasHierro().length
-      : 1 + (conMerma(item) ? 1 : 0) + (conversionDe(item) !== null ? 1 : 0);
+      : 1 +
+        (conMerma(item) ? 1 : 0) +
+        (conversionDe(item) !== null ? 1 : 0) +
+        (puertas ? 2 : 0);
 
   /** Las celdas numéricas vacías de un ítem, todas las que le toquen. */
   const celdasVacias = (item: ItemOpcion) => {
@@ -199,7 +217,36 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
     }
     return `<td class="num"></td>${conMerma(item) ? `<td class="num merma"></td>` : ""}${
       conversionDe(item) !== null ? `<td class="num material"></td>` : ""
-    }`;
+    }${celdaCajonVacia(item)}`;
+  };
+
+  /**
+   * Las celdas de C10 y C15 de una fila (un piso): mismo criterio que en
+   * pantalla —"—" si ningún renglón de esa fila tiene el campo cargado, en vez
+   * de un cero que confundiría "no se cargó" con "no lleva cajones"—.
+   */
+  const celdasCajonFila = (item: ItemOpcion, fila: ClaveFila) => {
+    if (!puertas || esHierro(item)) return "";
+    const renglones = medicionesDeFila(item, fila);
+    const c10 = renglones.some((m) => m.cajonC10 !== null)
+      ? formatCantidad(cajonesEnFila(item, fila, "cajonC10"))
+      : "—";
+    const c15 = renglones.some((m) => m.cajonC15 !== null)
+      ? formatCantidad(cajonesEnFila(item, fila, "cajonC15"))
+      : "—";
+    return `<td class="num cajon">${esc(c10)}</td><td class="num cajon">${esc(c15)}</td>`;
+  };
+
+  /** Lo mismo que `celdasCajonFila`, pero para el total de toda la sección. */
+  const celdasCajonTotal = (item: ItemOpcion) => {
+    if (!puertas || esHierro(item)) return "";
+    const c10 = item.mediciones.some((m) => m.cajonC10 !== null)
+      ? formatCantidad(totalCajones(item, "cajonC10"))
+      : "—";
+    const c15 = item.mediciones.some((m) => m.cajonC15 !== null)
+      ? formatCantidad(totalCajones(item, "cajonC15"))
+      : "—";
+    return `<td class="num cajon">${esc(c10)}</td><td class="num cajon">${esc(c15)}</td>`;
   };
 
   /**
@@ -251,7 +298,9 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
               }
               return `<td class="num">${esc(formatCantidad(parcial))}</td>${
                 conMerma(otro) ? `<td class="num merma"></td>` : ""
-              }${conversionDe(otro) !== null ? `<td class="num material"></td>` : ""}`;
+              }${
+                conversionDe(otro) !== null ? `<td class="num material"></td>` : ""
+              }${celdaCajonVacia(otro)}`;
             })
             .join("");
           return `
@@ -309,6 +358,10 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
                   formatCantidad(conversion.rinde)
                 )} ${esc(simboloUnidad(conversion.unidad))}</th>`
               : ""
+          }${
+            puertas
+              ? `<th class="num cajon">C10</th><th class="num cajon">C15</th>`
+              : ""
           }`;
         })
         .join("")}
@@ -345,7 +398,7 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
                 )}</td>`;
           return `<td class="num${derivada ? " derivada" : ""}">${esc(
             valor
-          )}</td>${merma}${material}`;
+          )}</td>${merma}${material}${celdasCajonFila(item, fila.clave)}`;
         })
         .join("");
 
@@ -397,7 +450,7 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
                 )}</td>`;
           return `<td class="num">${esc(
             vacio ? "—" : formatCantidad(total)
-          )}</td>${merma}${material}`;
+          )}</td>${merma}${material}${celdasCajonTotal(item)}`;
         })
         .join("")}
       ${celdaTotalKg(totalKgGeneral)}
@@ -459,7 +512,7 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
           // el colspan del encabezado.
           if (esHierro(item)) return celdasVacias(item);
           const vacios = `<td></td>${conMerma(item) ? `<td class="merma"></td>` : ""}`;
-          if (conversionDe(item) === null) return vacios;
+          if (conversionDe(item) === null) return `${vacios}${celdaCajonVacia(item)}`;
           const total = datos.totales.get(item.id) ?? 0;
           const bultos =
             item.mediciones.length === 0
@@ -471,7 +524,7 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
               : `<strong>${esc(String(bultos.enteros))}</strong> <span class="exacto">${esc(
                   formatCantidad(bultos.exacto)
                 )}</span>`;
-          return `${vacios}<td class="num material">${texto}</td>`;
+          return `${vacios}<td class="num material">${texto}</td>${celdaCajonVacia(item)}`;
         })
         .join("")}
       ${conTotalKg ? `<td class="total-kg-col"></td>` : ""}
@@ -581,11 +634,21 @@ function construirHtml(datos: DatosInformeRubro) {
       white-space: nowrap;
     }
 
-    table.grilla { width: 100%; border-collapse: collapse; }
+    /* table-layout fijo es lo que hace que el ancho de la tabla sea una
+       promesa y no una sugerencia: con muchas columnas (hierro con varios
+       diámetros, o PUERTAS con sus dos cajones por ítem), una tabla "auto" se
+       estira para que cada número entre sin cortarse, y esa franja de más se
+       sale del margen de la página al imprimir. Fija, el ancho nunca pasa del
+       100% del contenedor -que ya respeta el margen de @page-, y lo que no
+       entra en una celda se recorta con puntos suspensivos en vez de
+       ensanchar la hoja. */
+    table.grilla { width: 100%; border-collapse: collapse; table-layout: fixed; }
     table.grilla th, table.grilla td {
       border: 1px solid var(--linea);
       padding: 2px 4px;
       break-inside: avoid;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     /* La columna de niveles es la que se lee para saber de qué fila es cada
@@ -636,6 +699,9 @@ function construirHtml(datos: DatosInformeRubro) {
     /* La columna del material, un tono más marcada: es la que se copia al
        pedido, así que tiene que encontrarse sin buscarla. */
     .material { background: #f0f0f0; font-weight: 600; }
+    /* Los cajones de PUERTAS (C10, C15): un tono propio, para distinguirlos de
+       la columna del material aunque compartan la misma idea de "dato aparte". */
+    .cajon { background: #eef4fb; }
 
     /* El total en kg de todos los diámetros juntos: va aparte, con un borde
        grueso a la izquierda, porque no es una columna más del ítem de al

@@ -24,6 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tooltip } from "@/components/ui/tooltip";
 import {
+  actualizarRepeticionesNivel,
   crearNivel,
   eliminarNivel,
   renombrarNivel,
@@ -58,6 +59,8 @@ function FilaNivel({
   });
   const [nombre, setNombre] = useState(nivel.nombre);
   const [guardado, setGuardado] = useState(nivel.nombre);
+  const [repeticiones, setRepeticiones] = useState(String(nivel.repeticiones));
+  const [guardadoRepeticiones, setGuardadoRepeticiones] = useState(String(nivel.repeticiones));
   const [prev, setPrev] = useState(nivel);
   const [, startTransition] = useTransition();
 
@@ -65,6 +68,8 @@ function FilaNivel({
     setPrev(nivel);
     setNombre(nivel.nombre);
     setGuardado(nivel.nombre);
+    setRepeticiones(String(nivel.repeticiones));
+    setGuardadoRepeticiones(String(nivel.repeticiones));
   }
 
   const guardar = () => {
@@ -84,6 +89,30 @@ function FilaNivel({
         toast.error(result.error);
         setNombre(guardado);
         setGuardado(guardado);
+        return;
+      }
+      onSaved(result.nivel);
+    });
+  };
+
+  const guardarRepeticiones = () => {
+    const limpio = repeticiones.trim();
+    if (limpio === guardadoRepeticiones) return;
+    const numero = limpio === "" ? 1 : Number(limpio);
+    if (!Number.isFinite(numero) || !Number.isInteger(numero) || numero < 1) {
+      toast.error("La cantidad de plantas tiene que ser un entero mayor o igual a 1.");
+      setRepeticiones(guardadoRepeticiones);
+      return;
+    }
+
+    setGuardadoRepeticiones(String(numero));
+    setRepeticiones(String(numero));
+    startTransition(async () => {
+      const result = await actualizarRepeticionesNivel(proyectoId, nivel.id, numero);
+      if (!result.success) {
+        toast.error(result.error);
+        setRepeticiones(guardadoRepeticiones);
+        setGuardadoRepeticiones(guardadoRepeticiones);
         return;
       }
       onSaved(result.nivel);
@@ -134,8 +163,28 @@ function FilaNivel({
           }
         }}
         aria-label="Nombre del nivel"
-        className="h-8 px-2 text-sm"
+        className="h-8 min-w-0 flex-1 px-2 text-sm"
       />
+
+      <Tooltip content="Cuántas plantas iguales son (planta tipo x4, por ejemplo). El cómputo de este nivel se multiplica por este número.">
+        <span className="flex shrink-0 items-center gap-1 text-xs text-muted-foreground">
+          ×
+          <Input
+            value={repeticiones}
+            onChange={(e) => setRepeticiones(e.target.value)}
+            onBlur={guardarRepeticiones}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                e.currentTarget.blur();
+              }
+            }}
+            inputMode="numeric"
+            aria-label={`Cantidad de plantas iguales de ${nivel.nombre}`}
+            className="h-8 w-14 px-2 text-center text-sm"
+          />
+        </span>
+      </Tooltip>
 
       <Tooltip content={`Eliminar ${nivel.nombre}`}>
         <Button

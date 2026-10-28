@@ -17,6 +17,10 @@ export type NivelOpcion = {
   proyectoId: string;
   nombre: string;
   orden: number;
+  // Cuántas plantas iguales representa ("planta tipo" = varios pisos
+  // idénticos). 1 en un nivel común. El cómputo multiplica cada medida de
+  // este nivel por este número (ver parcialMedicion en lib/computos.ts).
+  repeticiones: number;
 };
 
 /** Cómo se titula el grupo de las filas que no son de ninguna planta. */
@@ -27,6 +31,13 @@ export function mapNivel(n: {
   proyectoId: string;
   nombre: string;
   orden: number;
+  repeticiones: number;
 }): NivelOpcion {
-  return { id: n.id, proyectoId: n.proyectoId, nombre: n.nombre, orden: n.orden };
+  return {
+    id: n.id,
+    proyectoId: n.proyectoId,
+    nombre: n.nombre,
+    orden: n.orden,
+    repeticiones: n.repeticiones,
+  };
 }

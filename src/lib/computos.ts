@@ -610,6 +610,18 @@ export type MedicionOpcion = {
   /** Porcentaje que se le suma a una fila derivada. Sólo tiene sentido con origen. */
   desperdicio: number | null;
   orden: number;
+  /**
+   * Cuántas plantas iguales repite el nivel de esta fila ("planta tipo" x4).
+   * 1 en un nivel común o cuando la fila no tiene nivel (toda la obra,
+   * filas derivadas). Se arrastra desde NivelProyecto.repeticiones para que
+   * parcialMedicion pueda multiplicar sin tener que recibir la lista de
+   * niveles aparte.
+   */
+  repeticiones: number;
+  /** Cajones de puertas (marco chico). Sólo se usa en la sección PUERTAS. */
+  cajonC10: number | null;
+  /** Cajones de puertas (marco grande). Sólo se usa en la sección PUERTAS. */
+  cajonC15: number | null;
 };
 
 export type ItemOpcion = {
@@ -664,6 +676,9 @@ export function mapMedicion(m: {
   origenId: string | null;
   desperdicio: unknown;
   orden: number;
+  cajonC10?: unknown;
+  cajonC15?: unknown;
+  nivel?: { repeticiones: number } | null;
 }): MedicionOpcion {
   return {
     id: m.id,
@@ -679,6 +694,9 @@ export function mapMedicion(m: {
     origenId: m.origenId,
     desperdicio: aNumero(m.desperdicio),
     orden: m.orden,
+    repeticiones: m.nivel?.repeticiones ?? 1,
+    cajonC10: aNumero(m.cajonC10),
+    cajonC15: aNumero(m.cajonC15),
   };
 }
 
@@ -778,7 +796,13 @@ export function parcialMedicion(
   const bruto = medicion.origenId
     ? parcialDerivado(medicion, totalOrigen)
     : parcialMedido(medicion, unidad);
-  return medicion.deduccion ? -bruto : bruto;
+  // Multiplica por la cantidad de plantas que repite el nivel ("planta
+  // tipo" x4): se carga la medida de una sola planta y la tabla siempre
+  // muestra el número ya multiplicado. Las filas derivadas tienen
+  // nivelId null, así que repeticiones queda en 1 y no se multiplican dos
+  // veces (el total de origen ya viene multiplicado).
+  const repetido = bruto * medicion.repeticiones;
+  return medicion.deduccion ? -repetido : repetido;
 }
 
 /**
@@ -1104,4 +1128,45 @@ export function totalPorFila(
   totales?: Map<string, number>
 ): number {
   return items.reduce((acc, item) => acc + medidoEnFila(item, fila, totales), 0);
+}
+
+/**
+ * ¿Esta sección es la grilla de PUERTAS (no HERRAJES, aunque comparten
+ * rubro)? Ahí, y sólo ahí, cada ítem suma dos columnas más: C10 y C15, los
+ * cajones (marcos chico y grande). Se detecta por nombre exacto, igual que
+ * `mostrarTotalPorFila` con HORMIGÓN: no hay un campo "tipo de sección" en la
+ * base, y agregar uno sólo para esto sería más de lo que hace falta.
+ */
+export function esSeccionPuertas(seccion: { nombre: string }): boolean {
+  return seccion.nombre.trim().toUpperCase() === "PUERTAS";
+}
+
+/**
+ * Los cajones (C10 o C15) que tiene cargados un ítem en una fila, sumados.
+ *
+ * Multiplica por las repeticiones del nivel igual que `parcialMedicion`: una
+ * planta tipo x4 tiene que multiplicar también los cajones de esa planta, no
+ * sólo la cantidad de puertas.
+ */
+export function cajonesEnFila(
+  item: ItemOpcion,
+  fila: ClaveFila,
+  campo: "cajonC10" | "cajonC15"
+): number {
+  return medicionesDeFila(item, fila).reduce((acc, m) => {
+    const valor = m[campo];
+    if (valor === null) return acc;
+    const conSigno = m.deduccion ? -valor : valor;
+    return acc + conSigno * m.repeticiones;
+  }, 0);
+}
+
+/** El total de C10 o C15 de un ítem, para el pie de la grilla. */
+export function totalCajones(item: ItemOpcion, campo: "cajonC10" | "cajonC15"): number {
+  return item.mediciones.reduce((acc, m) => {
+    const valor = m[campo];
+    if (valor === null) return acc;
+    const conSigno = m.deduccion ? -valor : valor;
+    return acc + conSigno * m.repeticiones;
+  }, 0);
 }

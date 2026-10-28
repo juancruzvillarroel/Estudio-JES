@@ -28,6 +28,7 @@ import {
   crearFilaExtra,
   eliminarFilaExtra,
   eliminarSeccion,
+  guardarCajon,
   guardarCelda,
   guardarDetalle,
   renombrarFilaExtra,
@@ -38,11 +39,13 @@ import { eliminarNivel, renombrarNivel } from "@/actions/niveles-proyecto";
 import {
   barrasDeMetros,
   bultosDe,
+  cajonesEnFila,
   claveFilaKey,
   conDesperdicio,
   conversionDe,
   esDerivadaEnFila,
   esHierro,
+  esSeccionPuertas,
   etiquetaBultos,
   formatCantidad,
   kgDeMetros,
@@ -59,6 +62,7 @@ import {
   simboloUnidad,
   tieneBultos,
   tieneMedidoEnFila,
+  totalCajones,
   totalPorFila,
   UNIDAD_INFO,
   type ClaveFila,
@@ -161,6 +165,101 @@ function Celda({
       inputMode="decimal"
       placeholder="—"
       aria-label={`${item.nombre} en ${filaNombre}`}
+      disabled={pending}
+      className={cn(
+        "w-full rounded-sm border border-transparent bg-transparent px-2 py-1 text-right text-sm tabular-nums",
+        "transition-colors duration-150",
+        "hover:border-input focus:border-ring focus:bg-background focus:outline-none",
+        "placeholder:text-muted-foreground"
+      )}
+    />
+  );
+}
+
+/**
+ * Una celda de cajón (C10 o C15), sólo en los ítems de la grilla de PUERTAS.
+ *
+ * Va aparte de la cantidad de puertas de la celda, aunque vive en la misma
+ * fila de la base: se puede cargar un cajón antes de saber cuántas puertas
+ * son, o cargar las puertas sin cajones contados todavía. Mismo
+ * comportamiento que `Celda` —se guarda al salir del campo, vacío borra— pero
+ * llama a `guardarCajon` en vez de `guardarCelda`.
+ */
+function CeldaCajon({
+  proyectoId,
+  item,
+  fila,
+  filaNombre,
+  campo,
+  etiqueta,
+  valor,
+  onSaved,
+}: {
+  proyectoId: string;
+  item: ItemOpcion;
+  fila: ClaveFila;
+  filaNombre: string;
+  campo: "cajonC10" | "cajonC15";
+  etiqueta: string;
+  /** El cajón cargado, o null si esta celda todavía no tiene ninguno. */
+  valor: number | null;
+  onSaved: (item: ItemOpcion) => void;
+}) {
+  const inicial = valor === null ? "" : medidaATexto(valor);
+  const [texto, setTexto] = useState(inicial);
+  const [guardado, setGuardado] = useState(inicial);
+  const [prev, setPrev] = useState(valor);
+  const [pending, startTransition] = useTransition();
+
+  if (valor !== prev) {
+    setPrev(valor);
+    setTexto(inicial);
+    setGuardado(inicial);
+  }
+
+  const guardar = () => {
+    const limpio = texto.trim();
+    if (limpio === guardado) return;
+
+    const numero = limpio === "" ? null : parseMedida(limpio);
+    if (limpio !== "" && numero === null) {
+      toast.error("Escribí un número mayor a 0.");
+      setTexto(guardado);
+      return;
+    }
+
+    setGuardado(limpio);
+    startTransition(async () => {
+      const result = await guardarCajon(proyectoId, item.id, fila, campo, numero);
+      if (!result.success) {
+        toast.error(result.error);
+        setTexto(guardado);
+        setGuardado(guardado);
+        return;
+      }
+      onSaved(result.item);
+    });
+  };
+
+  return (
+    <input
+      value={texto}
+      onChange={(e) => setTexto(e.target.value)}
+      onBlur={guardar}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          e.currentTarget.blur();
+        }
+        if (e.key === "Escape") {
+          setTexto(guardado);
+          e.currentTarget.blur();
+        }
+      }}
+      inputMode="decimal"
+      placeholder="—"
+      title={`${item.nombre} en ${filaNombre}: cajones ${etiqueta}`}
+      aria-label={`${item.nombre} en ${filaNombre}, cajones ${etiqueta}`}
       disabled={pending}
       className={cn(
         "w-full rounded-sm border border-transparent bg-transparent px-2 py-1 text-right text-sm tabular-nums",
@@ -770,13 +869,16 @@ function FilaExtraNueva({
  * tienen que estar todos de acuerdo: si uno cuenta distinto, la tabla sale con
  * las celdas corridas y los números quedan abajo de la columna equivocada.
  */
-function subcolumnas(item: ItemOpcion) {
+function subcolumnas(item: ItemOpcion, puertas: boolean) {
   if (esHierro(item)) return 3;
   return (
     1 +
     (item.desperdicio !== null ? 1 : 0) +
     (tieneBultos(item) ? 1 : 0) +
-    (conversionDe(item) !== null ? 1 : 0)
+    (conversionDe(item) !== null ? 1 : 0) +
+    // Sólo en la grilla de PUERTAS: dos columnas más por ítem, los cajones
+    // chico (C10) y grande (C15). Ver esSeccionPuertas.
+    (puertas ? 2 : 0)
   );
 }
 
@@ -919,12 +1021,18 @@ export function SeccionGrilla({
   const totalPorPiso = mostrarTotalPorFila(seccion, items);
   const unidadTotalPorPiso = totalPorPiso ? items[0].unidad : null;
 
+  // Sólo en la grilla de PUERTAS (no en HERRAJES, aunque comparten rubro):
+  // cada ítem suma dos columnas más, C10 y C15, los cajones.
+  const puertas = esSeccionPuertas(seccion);
+
   /**
    * Cuántas columnas tiene la tabla. La necesita el detalle, que se despliega
    * como una fila entera abajo de la que se abrió.
    */
   const columnas =
-    1 + items.reduce((acc, i) => acc + subcolumnas(i), 0) + (totalPorPiso ? 1 : 0);
+    1 +
+    items.reduce((acc, i) => acc + subcolumnas(i, puertas), 0) +
+    (totalPorPiso ? 1 : 0);
 
   const soltar = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -1069,7 +1177,7 @@ export function SeccionGrilla({
               {items.map((item) => (
                 <th
                   key={item.id}
-                  colSpan={subcolumnas(item)}
+                  colSpan={subcolumnas(item, puertas)}
                   className="border-l px-2 pt-2 pb-1 text-center align-bottom"
                 >
                   <span className="flex items-center justify-center gap-1">
@@ -1136,7 +1244,7 @@ export function SeccionGrilla({
             <tr className="border-b bg-muted/25">
               <th />
               {items.map((item) => (
-                <Subencabezados key={item.id} item={item} />
+                <Subencabezados key={item.id} item={item} puertas={puertas} />
               ))}
               {totalPorPiso && (
                 <th className="border-l bg-foreground/[0.04] px-2 pb-1 text-right text-[10px] font-normal text-muted-foreground">
@@ -1174,6 +1282,7 @@ export function SeccionGrilla({
                     totales={totales}
                     columnas={columnas}
                     totalPorPiso={totalPorPiso}
+                    puertas={puertas}
                     abierta={abierta}
                     onAbrir={setAbierta}
                     onItemSaved={onItemSaved}
@@ -1284,6 +1393,22 @@ export function SeccionGrilla({
                         {vacio ? "—" : formatCantidad(materialDe(item, total) ?? 0)}
                       </td>
                     )}
+                    {puertas && (
+                      <Fragment>
+                        <td
+                          title={`Total de cajones C10 de ${item.nombre}`}
+                          className="bg-foreground/[0.04] px-3 py-2 text-right text-sm font-semibold tabular-nums"
+                        >
+                          {formatCantidad(totalCajones(item, "cajonC10"))}
+                        </td>
+                        <td
+                          title={`Total de cajones C15 de ${item.nombre}`}
+                          className="bg-foreground/[0.04] px-3 py-2 text-right text-sm font-semibold tabular-nums"
+                        >
+                          {formatCantidad(totalCajones(item, "cajonC15"))}
+                        </td>
+                      </Fragment>
+                    )}
                   </Fragment>
                 );
               })}
@@ -1329,6 +1454,7 @@ function FilaGrilla({
   totales,
   columnas,
   totalPorPiso,
+  puertas,
   abierta,
   onAbrir,
   onItemSaved,
@@ -1346,6 +1472,8 @@ function FilaGrilla({
   columnas: number;
   /** Si esta sección suma, a la derecha de todo, el total de todos los ítems en este piso. */
   totalPorPiso: boolean;
+  /** Si esta sección es PUERTAS: cada ítem suma las columnas de cajones C10/C15. */
+  puertas: boolean;
   abierta: CeldaAbierta | null;
   onAbrir: (celda: CeldaAbierta | null) => void;
   onItemSaved: (item: ItemOpcion) => void;
@@ -1653,6 +1781,65 @@ function FilaGrilla({
                   {!tiene ? "—" : formatCantidad(materialDe(item, medido) ?? 0)}
                 </td>
               )}
+
+              {puertas &&
+                // Los cajones (C10, C15) de esta celda. Van en la misma fila
+                // que la cantidad de puertas, pero son un número aparte: se
+                // puede cargar uno sin el otro. Derivada o desglosada
+                // (varios renglones) muestran la suma de solo lectura, igual
+                // que la columna de puertas: no hay una fila obvia a la que
+                // mandar un número tipeado ahí.
+                (derivada || desglosada ? (
+                  <Fragment>
+                    <td
+                      title={`Suma de los cajones C10 de ${item.nombre} en ${fila.nombre}`}
+                      className="bg-foreground/[0.04] px-2 py-1 text-right text-sm tabular-nums text-muted-foreground italic"
+                    >
+                      {formatCantidad(cajonesEnFila(item, fila.clave, "cajonC10"))}
+                    </td>
+                    <td
+                      title={`Suma de los cajones C15 de ${item.nombre} en ${fila.nombre}`}
+                      className="bg-foreground/[0.04] px-2 py-1 text-right text-sm tabular-nums text-muted-foreground italic"
+                    >
+                      {formatCantidad(cajonesEnFila(item, fila.clave, "cajonC15"))}
+                    </td>
+                  </Fragment>
+                ) : (
+                  <Fragment>
+                    <td className="bg-foreground/[0.04] px-1 py-0.5">
+                      <CeldaCajon
+                        proyectoId={proyectoId}
+                        item={item}
+                        fila={fila.clave}
+                        filaNombre={fila.nombre}
+                        campo="cajonC10"
+                        etiqueta="C10"
+                        valor={
+                          renglones.some((m) => m.cajonC10 !== null)
+                            ? cajonesEnFila(item, fila.clave, "cajonC10")
+                            : null
+                        }
+                        onSaved={onItemSaved}
+                      />
+                    </td>
+                    <td className="bg-foreground/[0.04] px-1 py-0.5">
+                      <CeldaCajon
+                        proyectoId={proyectoId}
+                        item={item}
+                        fila={fila.clave}
+                        filaNombre={fila.nombre}
+                        campo="cajonC15"
+                        etiqueta="C15"
+                        valor={
+                          renglones.some((m) => m.cajonC15 !== null)
+                            ? cajonesEnFila(item, fila.clave, "cajonC15")
+                            : null
+                        }
+                        onSaved={onItemSaved}
+                      />
+                    </td>
+                  </Fragment>
+                ))}
             </Fragment>
           );
         })}
@@ -2040,8 +2227,32 @@ function RenglonNuevo({
  * Las últimas tres aparecen sólo si el ítem las tiene. Una columna que repite
  * exactamente el número de al lado es una columna que no dice nada.
  */
-function Subencabezados({ item }: { item: ItemOpcion }) {
+function Subencabezados({
+  item,
+  puertas,
+}: {
+  item: ItemOpcion;
+  /** Si esta sección es PUERTAS: dos columnas más, C10 y C15, los cajones. */
+  puertas: boolean;
+}) {
   const conversion = conversionDe(item);
+
+  const cajones = puertas && (
+    <Fragment>
+      <th
+        title="Cajones chicos (C10) de este ítem en esta fila"
+        className="bg-foreground/[0.04] px-2 pb-1 text-right text-[10px] font-normal text-muted-foreground"
+      >
+        C10
+      </th>
+      <th
+        title="Cajones grandes (C15) de este ítem en esta fila"
+        className="bg-foreground/[0.04] px-2 pb-1 text-right text-[10px] font-normal text-muted-foreground"
+      >
+        C15
+      </th>
+    </Fragment>
+  );
 
   // El hierro va en tres subcolumnas, ml, barras y kg, una al lado de la
   // otra: las tres se pueden tipear y se mantienen sincronizadas entre sí
@@ -2068,6 +2279,7 @@ function Subencabezados({ item }: { item: ItemOpcion }) {
         >
           kg
         </th>
+        {cajones}
       </Fragment>
     );
   }
@@ -2107,6 +2319,7 @@ function Subencabezados({ item }: { item: ItemOpcion }) {
           {simboloUnidad(conversion.unidad)}
         </th>
       )}
+      {cajones}
     </Fragment>
   );
 }
