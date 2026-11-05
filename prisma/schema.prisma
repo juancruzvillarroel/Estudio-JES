@@ -506,6 +506,11 @@ model ComputoSeccion {
   // cargadas antes de que el switch existiera.
   tipo       TipoComputo @default(MATERIALES)
   nombre     String
+  // Si esta sección es del área "Cómputos 2": una grilla en paralelo a la de
+  // siempre, para volver a cargar un rubro de cero sin tocar lo ya armado.
+  // Entra en la clave de abajo junto con el nombre para que las dos áreas
+  // puedan tener una sección "HORMIGÓN" cada una sin chocar entre sí.
+  esComputos2 Boolean    @default(false)
   orden      Int         @default(0)
   createdAt  DateTime    @default(now())
   // En qué orden se leen las filas de ESTA grilla: ["nivel:abc", "extra:def"].
@@ -527,9 +532,11 @@ model ComputoSeccion {
   filasExtra ComputoFilaExtra[]
 
   // El tipo entra en la clave: "HORMIGÓN" puede existir de los dos lados, y son
-  // dos secciones distintas con sus propias columnas y su propio total. Lo que
-  // se sigue prohibiendo es repetir el nombre del mismo lado.
-  @@unique([proyectoId, rubroId, tipo, nombre])
+  // dos secciones distintas con sus propias columnas y su propio total. Lo
+  // mismo con esComputos2: "HORMIGÓN" puede repetirse una vez en Cómputo y
+  // otra en Cómputos 2, que son grillas distintas. Lo que se sigue
+  // prohibiendo es repetir el nombre del mismo lado, en la misma área.
+  @@unique([proyectoId, rubroId, tipo, esComputos2, nombre])
   @@index([proyectoId])
   @@index([rubroId])
 }
@@ -554,6 +561,7 @@ model ComputoFilaExtra {
   createdAt DateTime       @default(now())
 
   mediciones ComputoMedicion[]
+  subItemMediciones ComputoSubItemMedicion[]
 
   @@unique([seccionId, nombre])
   @@index([seccionId])
@@ -670,6 +678,7 @@ model NivelProyecto {
   createdAt  DateTime @default(now())
 
   mediciones ComputoMedicion[]
+  subItemMediciones ComputoSubItemMedicion[]
 
   @@unique([proyectoId, nombre])
   @@index([proyectoId])
@@ -1340,6 +1349,9 @@ model ComputoItem {
   // ComputoMedicion.origenId). Está declarada para que borrar un ítem que
   // alimenta a otros sea una decisión explícita y no una sorpresa.
   derivadas  ComputoMedicion[] @relation("MedicionOrigen")
+  // Los sub ítems de este ítem (ver ComputoSubItem). Por ahora sólo se usan
+  // en la sección PUERTAS.
+  subItems   ComputoSubItem[]
 
   @@index([proyectoId])
   @@index([rubroId])
@@ -1439,6 +1451,56 @@ model ComputoMedicion {
 
   @@index([itemId])
   @@index([origenId])
+  @@index([nivelId])
+  @@index([filaExtraId])
+}
+
+// Un sub ítem dentro de un ítem de PUERTAS: una categoría que el usuario
+// nombra libremente ("C10", "Marco de aluminio", lo que haga falta en esa
+// obra), en vez de las tres columnas fijas que tenía antes el cómputo
+// (cajonC10/C15/C18 en ComputoMedicion, hoy sin uso para ítems nuevos).
+//
+// Nace de un pedido puntual: en PUERTAS el ítem ya no tiene una fila con su
+// propia cantidad ("un"); lo único que carga a mano son sus sub ítems, y el
+// total del ítem es la suma de todos ellos. Por ahora existe sólo ahí (ver
+// esSeccionPuertas en src/lib/computos.ts); para el resto de las secciones
+// el ítem sigue funcionando como siempre.
+//
+// Tanto el sub ítem como sus celdas se pueden renombrar y borrar desde la
+// misma grilla, igual que una fila extra de la sección.
+model ComputoSubItem {
+  id        String      @id @default(cuid())
+  itemId    String
+  item      ComputoItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  nombre    String
+  orden     Int         @default(0)
+  createdAt DateTime    @default(now())
+
+  mediciones ComputoSubItemMedicion[]
+
+  @@unique([itemId, nombre])
+  @@index([itemId])
+}
+
+// Una celda cargada de un sub ítem, en un nivel de la obra o en una fila
+// extra de la sección. Excluyente entre nivelId y filaExtraId, igual que en
+// ComputoMedicion.
+//
+// No tiene descripción ni admite desglose por ambiente: un sub ítem de
+// PUERTAS es un número suelto por columna ("4 cajones C10 en planta baja"),
+// no una medida que se arme sumando renglones.
+model ComputoSubItemMedicion {
+  id          String            @id @default(cuid())
+  subItemId   String
+  subItem     ComputoSubItem    @relation(fields: [subItemId], references: [id], onDelete: Cascade)
+  nivelId     String?
+  nivel       NivelProyecto?    @relation(fields: [nivelId], references: [id], onDelete: Restrict)
+  filaExtraId String?
+  filaExtra   ComputoFilaExtra? @relation(fields: [filaExtraId], references: [id], onDelete: Cascade)
+  cantidad    Decimal           @db.Decimal(12, 2)
+  createdAt   DateTime          @default(now())
+
+  @@index([subItemId])
   @@index([nivelId])
   @@index([filaExtraId])
 }

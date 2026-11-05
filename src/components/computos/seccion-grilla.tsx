@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useState, useTransition } from "react";
+import { Fragment, useState, useTransition, type ReactNode } from "react";
 import { ChevronDown, GripVertical, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -27,13 +27,16 @@ import {
   agregarDetalle,
   borrarDetalle,
   crearFilaExtra,
+  crearSubItem,
   eliminarFilaExtra,
   eliminarSeccion,
-  guardarCajon,
+  eliminarSubItem,
   guardarCelda,
   guardarDetalle,
+  guardarSubItemCelda,
   renombrarFilaExtra,
   renombrarSeccion,
+  renombrarSubItem,
   reordenarFilasSeccion,
   reordenarItems,
 } from "@/actions/computos";
@@ -41,7 +44,6 @@ import { eliminarNivel, renombrarNivel } from "@/actions/niveles-proyecto";
 import {
   barrasDeMetros,
   bultosDe,
-  cajonesEnFila,
   claveFilaKey,
   conDesperdicio,
   conversionDe,
@@ -57,22 +59,22 @@ import {
   medidoEnFila,
   metrosDeBarras,
   metrosDeKg,
-  mostrarTotalPorFila,
   ordenarFilas,
   parcialMedicion,
   parseMedida,
   simboloUnidad,
+  subItemEnFila,
+  subItemMedicionesDeFila,
   tieneBultos,
   tieneMedidoEnFila,
-  totalCajones,
-  totalPorFila,
+  totalSubItem,
   UNIDAD_INFO,
-  type CampoCajon,
   type ClaveFila,
   type FilaExtraOpcion,
   type ItemOpcion,
   type MedicionOpcion,
   type SeccionOpcion,
+  type SubItemOpcion,
 } from "@/lib/computos";
 import { SIN_NIVEL, type NivelOpcion } from "@/lib/niveles";
 import { cn } from "@/lib/utils";
@@ -170,7 +172,7 @@ function Celda({
       aria-label={`${item.nombre} en ${filaNombre}`}
       disabled={pending}
       className={cn(
-        "w-full rounded-sm border border-transparent bg-transparent px-2 py-1 text-right text-sm tabular-nums",
+        "w-full rounded-sm border border-transparent bg-transparent px-2 py-1 text-center text-sm tabular-nums",
         "transition-colors duration-150",
         "hover:border-input focus:border-ring focus:bg-background focus:outline-none",
         "placeholder:text-muted-foreground"
@@ -180,31 +182,29 @@ function Celda({
 }
 
 /**
- * Una celda de cajón (C10 o C15), sólo en los ítems de la grilla de PUERTAS.
+ * Una celda de sub ítem, sólo en los ítems de la grilla de PUERTAS.
  *
- * Va aparte de la cantidad de puertas de la celda, aunque vive en la misma
- * fila de la base: se puede cargar un cajón antes de saber cuántas puertas
- * son, o cargar las puertas sin cajones contados todavía. Mismo
- * comportamiento que `Celda` —se guarda al salir del campo, vacío borra— pero
- * llama a `guardarCajon` en vez de `guardarCelda`.
+ * Va aparte de cualquier otra cantidad de la celda: cada sub ítem es
+ * independiente de los demás, así que se puede cargar uno sin tener los
+ * otros todavía. Mismo comportamiento que `Celda` —se guarda al salir del
+ * campo, vacío borra— pero llama a `guardarSubItemCelda` en vez de
+ * `guardarCelda`, y está atada a un sub ítem puntual en vez de al ítem.
  */
-function CeldaCajon({
+function CeldaSubItem({
   proyectoId,
   item,
+  subItem,
   fila,
   filaNombre,
-  campo,
-  etiqueta,
   valor,
   onSaved,
 }: {
   proyectoId: string;
   item: ItemOpcion;
+  subItem: SubItemOpcion;
   fila: ClaveFila;
   filaNombre: string;
-  campo: CampoCajon;
-  etiqueta: string;
-  /** El cajón cargado, o null si esta celda todavía no tiene ninguno. */
+  /** Lo cargado, o null si esta celda todavía no tiene ninguna fila. */
   valor: number | null;
   onSaved: (item: ItemOpcion) => void;
 }) {
@@ -233,7 +233,7 @@ function CeldaCajon({
 
     setGuardado(limpio);
     startTransition(async () => {
-      const result = await guardarCajon(proyectoId, item.id, fila, campo, numero);
+      const result = await guardarSubItemCelda(proyectoId, subItem.id, fila, numero);
       if (!result.success) {
         toast.error(result.error);
         setTexto(guardado);
@@ -261,11 +261,11 @@ function CeldaCajon({
       }}
       inputMode="decimal"
       placeholder="—"
-      title={`${item.nombre} en ${filaNombre}: cajones ${etiqueta}`}
-      aria-label={`${item.nombre} en ${filaNombre}, cajones ${etiqueta}`}
+      title={`${item.nombre} en ${filaNombre}: ${subItem.nombre}`}
+      aria-label={`${item.nombre} en ${filaNombre}, ${subItem.nombre}`}
       disabled={pending}
       className={cn(
-        "w-full rounded-sm border border-transparent bg-transparent px-2 py-1 text-right text-sm tabular-nums",
+        "w-full rounded-sm border border-transparent bg-transparent px-2 py-1 text-center text-sm tabular-nums",
         "transition-colors duration-150",
         "hover:border-input focus:border-ring focus:bg-background focus:outline-none",
         "placeholder:text-muted-foreground"
@@ -275,26 +275,25 @@ function CeldaCajon({
 }
 
 /**
- * La celda de hierro: tres campos en paralelo para el mismo metraje, uno en
- * metros lineales (lo que se mide en obra), otro en barras y otro en kilos
- * (las dos formas en que se pide). Se puede completar cualquiera de los tres;
- * los otros dos se completan solos con la conversión del ítem. Lo que se
- * guarda siempre son los metros —es la única unidad que entiende
- * `guardarCelda`— así que cuando se tipea en barras o en kg se convierte
- * antes de mandarla.
+ * Una celda de hierro que no se mide directamente: "barras" o "kg". Lo que
+ * se tipea se convierte a metros antes de guardar —es la única unidad que
+ * entiende `guardarCelda`— con la conversión del ítem.
  *
- * No hay focus-toggle como en `Celda`: los tres valores están siempre
- * visibles a la vez, que es justo lo que pidió reemplazar esta celda.
+ * A diferencia de la vieja celda de hierro (que tenía los tres campos
+ * apilados adentro de una sola columna), ahora cada unidad es su propia fila
+ * de la tabla: esta celda vive sola, y la de metros lineales es la celda
+ * común `Celda` de más arriba, sin conversión.
  */
-function CeldaHierro({
+function CeldaHierroConvertida({
   proyectoId,
   item,
   fila,
   filaNombre,
   valor,
+  unidad,
+  aTexto,
+  aMetros,
   onSaved,
-  abierto,
-  onAbrir,
 }: {
   proyectoId: string;
   item: ItemOpcion;
@@ -302,208 +301,76 @@ function CeldaHierro({
   filaNombre: string;
   /** Lo medido en metros, o null si esta celda todavía no tiene ninguna fila. */
   valor: number | null;
+  /** Nombre de la unidad de esta celda, para el título y el aria-label. */
+  unidad: string;
+  aTexto: (metros: number) => string;
+  aMetros: (n: number) => number;
   onSaved: (item: ItemOpcion) => void;
-  /** Si el detalle de esta celda está abierto, para la flechita de la columna de kg. */
-  abierto: boolean;
-  onAbrir: () => void;
 }) {
-  const metrosATexto = (m: number | null) => (m === null ? "" : medidaATexto(m));
-  const barrasATexto = (m: number | null) =>
-    m === null ? "" : formatCantidad(barrasDeMetros(item, m));
-  const kgATexto = (m: number | null) => (m === null ? "" : formatCantidad(kgDeMetros(item, m)));
-
-  const [textoMl, setTextoMl] = useState(metrosATexto(valor));
-  const [textoBarras, setTextoBarras] = useState(barrasATexto(valor));
-  const [textoKg, setTextoKg] = useState(kgATexto(valor));
-  const [guardadoMl, setGuardadoMl] = useState(textoMl);
-  const [guardadoBarras, setGuardadoBarras] = useState(textoBarras);
-  const [guardadoKg, setGuardadoKg] = useState(textoKg);
+  const inicial = valor === null ? "" : aTexto(valor);
+  const [texto, setTexto] = useState(inicial);
+  const [guardado, setGuardado] = useState(inicial);
   const [prev, setPrev] = useState(valor);
   const [pending, startTransition] = useTransition();
 
   if (valor !== prev) {
     setPrev(valor);
-    setTextoMl(metrosATexto(valor));
-    setTextoBarras(barrasATexto(valor));
-    setTextoKg(kgATexto(valor));
-    setGuardadoMl(metrosATexto(valor));
-    setGuardadoBarras(barrasATexto(valor));
-    setGuardadoKg(kgATexto(valor));
+    setTexto(inicial);
+    setGuardado(inicial);
   }
 
-  const guardar = (metros: number | null) => {
+  const guardar = () => {
+    const limpio = texto.trim();
+    if (limpio === guardado) return;
+
+    const numero = limpio === "" ? null : parseMedida(limpio);
+    if (limpio !== "" && numero === null) {
+      toast.error("Escribí un número mayor a 0.");
+      setTexto(guardado);
+      return;
+    }
+
+    setGuardado(limpio);
     startTransition(async () => {
+      const metros = numero === null ? null : aMetros(numero);
       const result = await guardarCelda(proyectoId, item.id, fila, metros);
       if (!result.success) {
         toast.error(result.error);
-        setTextoMl(guardadoMl);
-        setTextoBarras(guardadoBarras);
-        setTextoKg(guardadoKg);
+        setTexto(guardado);
+        setGuardado(guardado);
         return;
       }
       onSaved(result.item);
     });
   };
 
-  const porMl = () => {
-    const limpio = textoMl.trim();
-    if (limpio === guardadoMl) return;
-    const numero = limpio === "" ? null : parseMedida(limpio);
-    if (limpio !== "" && numero === null) {
-      toast.error("Escribí un número mayor a 0.");
-      setTextoMl(guardadoMl);
-      return;
-    }
-    const nuevoTextoBarras = barrasATexto(numero);
-    const nuevoTextoKg = kgATexto(numero);
-    setGuardadoMl(limpio);
-    setGuardadoBarras(nuevoTextoBarras);
-    setTextoBarras(nuevoTextoBarras);
-    setGuardadoKg(nuevoTextoKg);
-    setTextoKg(nuevoTextoKg);
-    guardar(numero);
-  };
-
-  const porBarras = () => {
-    const limpio = textoBarras.trim();
-    if (limpio === guardadoBarras) return;
-    const barras = limpio === "" ? null : parseMedida(limpio);
-    if (limpio !== "" && barras === null) {
-      toast.error("Escribí un número mayor a 0.");
-      setTextoBarras(guardadoBarras);
-      return;
-    }
-    const metros = barras === null ? null : metrosDeBarras(item, barras);
-    const nuevoTextoMl = metrosATexto(metros);
-    const nuevoTextoKg = kgATexto(metros);
-    setGuardadoBarras(limpio);
-    setGuardadoMl(nuevoTextoMl);
-    setTextoMl(nuevoTextoMl);
-    setGuardadoKg(nuevoTextoKg);
-    setTextoKg(nuevoTextoKg);
-    guardar(metros);
-  };
-
-  const porKg = () => {
-    const limpio = textoKg.trim();
-    if (limpio === guardadoKg) return;
-    const kg = limpio === "" ? null : parseMedida(limpio);
-    if (limpio !== "" && kg === null) {
-      toast.error("Escribí un número mayor a 0.");
-      setTextoKg(guardadoKg);
-      return;
-    }
-    const metros = kg === null ? null : metrosDeKg(item, kg);
-    const nuevoTextoMl = metrosATexto(metros);
-    const nuevoTextoBarras = barrasATexto(metros);
-    setGuardadoKg(limpio);
-    setGuardadoMl(nuevoTextoMl);
-    setTextoMl(nuevoTextoMl);
-    setGuardadoBarras(nuevoTextoBarras);
-    setTextoBarras(nuevoTextoBarras);
-    guardar(metros);
-  };
-
-  const inputClass = cn(
-    "w-full rounded-sm border border-transparent bg-transparent px-2 py-1 text-right text-sm tabular-nums",
-    "transition-colors duration-150",
-    "hover:border-input focus:border-ring focus:bg-background focus:outline-none",
-    "placeholder:text-muted-foreground"
-  );
-
   return (
-    <Fragment>
-      <td className="group/celda border-l px-1 py-0.5">
-        <input
-          value={textoMl}
-          onChange={(e) => setTextoMl(e.target.value)}
-          onBlur={porMl}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              e.currentTarget.blur();
-            }
-            if (e.key === "Escape") {
-              setTextoMl(guardadoMl);
-              e.currentTarget.blur();
-            }
-          }}
-          inputMode="decimal"
-          placeholder="—"
-          title={`${item.nombre} en ${filaNombre}, en metros lineales`}
-          aria-label={`${item.nombre} en ${filaNombre}, en metros lineales`}
-          disabled={pending}
-          className={inputClass}
-        />
-      </td>
-      <td className="group/celda bg-foreground/[0.04] px-1 py-0.5">
-        <input
-          value={textoBarras}
-          onChange={(e) => setTextoBarras(e.target.value)}
-          onBlur={porBarras}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              e.currentTarget.blur();
-            }
-            if (e.key === "Escape") {
-              setTextoBarras(guardadoBarras);
-              e.currentTarget.blur();
-            }
-          }}
-          inputMode="decimal"
-          placeholder="—"
-          title={`${item.nombre} en ${filaNombre}: cantidad de barras de 12 m, de ${formatCantidad(item.porBulto ?? 0)} kg cada una`}
-          aria-label={`${item.nombre} en ${filaNombre}, en barras`}
-          disabled={pending}
-          className={inputClass}
-        />
-      </td>
-      <td className="group/celda bg-foreground/[0.04] px-1 py-0.5">
-        <span className="flex items-center gap-0.5">
-          <input
-            value={textoKg}
-            onChange={(e) => setTextoKg(e.target.value)}
-            onBlur={porKg}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                e.currentTarget.blur();
-              }
-              if (e.key === "Escape") {
-                setTextoKg(guardadoKg);
-                e.currentTarget.blur();
-              }
-            }}
-            inputMode="decimal"
-            placeholder="—"
-            title={`${item.nombre} en ${filaNombre}: peso total en kilos`}
-            aria-label={`${item.nombre} en ${filaNombre}, en kilos`}
-            disabled={pending}
-            className={cn(inputClass, "min-w-0 flex-1")}
-          />
-          {/* La flechita para abrir el detalle (mismo lugar que en cualquier
-              otro ítem) vive en esta columna y no en las de ml o barras: es
-              la que queda al borde derecho de la celda del ítem. */}
-          <Tooltip content={`Detalle de ${item.nombre} en ${filaNombre}`}>
-            <button
-              type="button"
-              aria-expanded={abierto}
-              aria-label={`Detalle de ${item.nombre} en ${filaNombre}`}
-              onClick={onAbrir}
-              className={cn(
-                "shrink-0 rounded-sm p-0.5 text-muted-foreground transition-all duration-150 hover:bg-muted hover:text-foreground focus:opacity-100",
-                abierto ? "opacity-100" : "opacity-0 group-hover/celda:opacity-100"
-              )}
-            >
-              <ChevronDown
-                className={cn("h-3 w-3 transition-transform duration-200", abierto && "rotate-180")}
-              />
-            </button>
-          </Tooltip>
-        </span>
-      </td>
-    </Fragment>
+    <input
+      value={texto}
+      onChange={(e) => setTexto(e.target.value)}
+      onBlur={guardar}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          e.currentTarget.blur();
+        }
+        if (e.key === "Escape") {
+          setTexto(guardado);
+          e.currentTarget.blur();
+        }
+      }}
+      inputMode="decimal"
+      placeholder="—"
+      title={`${item.nombre} en ${filaNombre}, en ${unidad}`}
+      aria-label={`${item.nombre} en ${filaNombre}, en ${unidad}`}
+      disabled={pending}
+      className={cn(
+        "w-full rounded-sm border border-transparent bg-transparent px-2 py-1 text-center text-sm tabular-nums",
+        "transition-colors duration-150",
+        "hover:border-input focus:border-ring focus:bg-background focus:outline-none",
+        "placeholder:text-muted-foreground"
+      )}
+    />
   );
 }
 
@@ -590,30 +457,35 @@ function FilaExtraNombre({
   }
 
   return (
-    <span className="group flex min-w-0 flex-1 items-start gap-1">
+    // El lápiz y el tacho van absolutos, apoyados en el borde derecho: en el
+    // flujo normal ocupan lugar aunque estén invisibles (opacity-0) y corren
+    // el nombre hacia la izquierda del centro real de la columna.
+    <span className="group relative block w-full">
       {/* Sin truncate: el nombre del nivel se lee entero y si no entra, baja
           de renglón. Es la etiqueta de la fila; cortada no sirve. */}
-      <span className="min-w-0 flex-1 leading-tight break-words">{fila.nombre}</span>
-      <Tooltip content={`Renombrar ${fila.nombre}`}>
-        <button
-          type="button"
-          aria-label={`Renombrar ${fila.nombre}`}
-          onClick={() => setEditando(true)}
-          className="shrink-0 rounded-sm text-muted-foreground opacity-0 transition-all duration-150 group-hover:opacity-100 hover:text-foreground focus:opacity-100"
-        >
-          <Pencil className="h-3 w-3" />
-        </button>
-      </Tooltip>
-      <Tooltip content={`Eliminar ${fila.nombre}`}>
-        <button
-          type="button"
-          aria-label={`Eliminar ${fila.nombre}`}
-          onClick={borrar}
-          className="shrink-0 rounded-sm text-muted-foreground opacity-0 transition-all duration-150 group-hover:opacity-100 hover:text-foreground focus:opacity-100"
-        >
-          <Trash2 className="h-3 w-3" />
-        </button>
-      </Tooltip>
+      <span className="block w-full leading-tight break-words">{fila.nombre}</span>
+      <span className="absolute top-1/2 right-0 flex -translate-y-1/2 gap-0.5">
+        <Tooltip content={`Renombrar ${fila.nombre}`}>
+          <button
+            type="button"
+            aria-label={`Renombrar ${fila.nombre}`}
+            onClick={() => setEditando(true)}
+            className="shrink-0 rounded-sm text-muted-foreground opacity-0 transition-all duration-150 group-hover:opacity-100 hover:text-foreground focus:opacity-100"
+          >
+            <Pencil className="h-3 w-3" />
+          </button>
+        </Tooltip>
+        <Tooltip content={`Eliminar ${fila.nombre}`}>
+          <button
+            type="button"
+            aria-label={`Eliminar ${fila.nombre}`}
+            onClick={borrar}
+            className="shrink-0 rounded-sm text-muted-foreground opacity-0 transition-all duration-150 group-hover:opacity-100 hover:text-foreground focus:opacity-100"
+          >
+            <Trash2 className="h-3 w-3" />
+          </button>
+        </Tooltip>
+      </span>
     </span>
   );
 }
@@ -710,13 +582,15 @@ function NivelNombre({
   }
 
   return (
-    <span className="group flex min-w-0 flex-1 items-start gap-1">
+    // Mismo truco que en `FilaExtraNombre`: el tacho va absoluto para no
+    // correr el nombre del nivel del centro de la columna.
+    <span className="group relative block w-full">
       {/* Sin truncate: el nombre del nivel se lee entero y si no entra, baja
           de renglón. Es la etiqueta de la fila; cortada no sirve. */}
       <span
         onDoubleClick={() => setEditando(true)}
         title="Doble clic para renombrar"
-        className="min-w-0 flex-1 cursor-text leading-tight break-words"
+        className="block w-full cursor-text leading-tight break-words"
       >
         {nivel.nombre}
       </span>
@@ -725,7 +599,7 @@ function NivelNombre({
           type="button"
           aria-label={`Eliminar ${nivel.nombre}`}
           onClick={borrar}
-          className="shrink-0 rounded-sm text-muted-foreground opacity-0 transition-all duration-150 group-hover:opacity-100 hover:text-foreground focus:opacity-100"
+          className="absolute top-1/2 right-0 shrink-0 -translate-y-1/2 rounded-sm text-muted-foreground opacity-0 transition-all duration-150 group-hover:opacity-100 hover:text-foreground focus:opacity-100"
         >
           <Trash2 className="h-3 w-3" />
         </button>
@@ -833,85 +707,59 @@ function FilaExtraNueva({
 }
 
 /**
- * Una sección del cómputo, como grilla: los niveles abajo, los ítems al costado.
+ * Una sección del cómputo, como grilla: los ítems en fila, los niveles al costado.
  *
- * La obra se mide planta por planta —se sube, se cuenta lo que hay en ese piso y
- * se baja—, así que las filas son los niveles y se leen en el orden en que se
- * construye. Cada ítem es una columna, y son dos: lo medido y lo medido con el
- * desperdicio, que es lo que hay que comprar. Al proveedor se le pide la
- * segunda; al contratista se le muestra la primera.
+ * Lo que crece sin límite al cargar un cómputo es la lista de ítems, no la de
+ * niveles —una obra tiene media docena de plantas y puede tener cuarenta
+ * ítems—, así que los niveles van en columnas, fijas, y los ítems en filas:
+ * agregar el ítem cuarenta y uno suma un renglón abajo, no corre toda la
+ * tabla para el costado. Las columnas se leen en el orden en que se construye
+ * la obra, de abajo hacia arriba.
  *
- * La unidad va en el encabezado y no en una columna propia: es del ítem entero,
- * no de cada celda, y repetirla quince veces hacia abajo sólo gasta ancho.
+ * Un ítem puede tener más de un valor —hierro mide en metros, barras y kilos
+ * a la vez; una puerta suma además una fila por cada sub ítem que tenga—, y
+ * cada uno de esos valores es una fila de verdad (ver `lineasDeItem` y `FilaItem`), con su
+ * propia etiqueta a la izquierda: así el alto de la fila lo pone el
+ * navegador, igual para la etiqueta que para los datos, en vez de calcularlo
+ * a mano.
  *
- * Abajo de todo el total de cada columna. No hay total de la fila ni total
- * general a propósito: sumar m² de revoque con unidades de ladrillo da un
- * número que no significa nada.
+ * A la derecha de todo, el total de cada ítem en toda la obra. No hay total
+ * de columna (de nivel): cada celda es de un ítem en un piso, y nada más.
  *
- * La grilla entra siempre en el ancho de la página y nunca scrollea a lo ancho:
- * las columnas se reparten el lugar que hay. Un cómputo se revisa mirando todo
- * junto —qué falta, qué quedó en cero—, y con barra horizontal esa lectura se
- * pierde: los primeros ítems se van de la pantalla justo cuando se está
- * comparando contra ellos. El precio es que muchos ítems en una misma sección
- * quedan angostos; cuando pasa, la respuesta es partir la sección en dos, que
- * es además como está organizada la obra.
+ * La grilla entra siempre en el ancho de la página y nunca scrollea a lo
+ * ancho más que lo que fuerzan los niveles —que no crecen al cargar el
+ * cómputo—, así que el ancho de la tabla queda estable aunque se agreguen
+ * cien ítems.
  */
 
 /**
- * Cuántas columnas de la tabla ocupa un ítem.
- *
- * El hierro es un caso aparte y va siempre en tres: metros lineales, barras y
- * kilos, una al lado de la otra, las tres editables y sincronizadas entre sí
- * (ver CeldaHierro). No necesita además la de la merma ni los bultos por
- * separado porque esas tres columnas ya son justo esa conversión.
- *
- * Para el resto: una siempre —lo medido—, más la de la merma si tiene
- * desperdicio, más la de los bultos (palets, bolsas) si se compra agrupado,
- * más la del material si se compra en otra unidad. Se calcula en un solo
- * lugar porque el encabezado, cada fila, el pie y el colspan del detalle
- * tienen que estar todos de acuerdo: si uno cuenta distinto, la tabla sale con
- * las celdas corridas y los números quedan abajo de la columna equivocada.
+ * El encabezado de una columna: un nivel, una fila extra o "Toda la obra". Se
+ * arrastra entera del agarre de arriba, con desplazamiento horizontal —el
+ * arrastre de los ítems, en cambio, es vertical: ver `FilaItem`.
  */
-function subcolumnas(item: ItemOpcion, puertas: boolean) {
-  if (esHierro(item)) return 3;
-  return (
-    1 +
-    (item.desperdicio !== null ? 1 : 0) +
-    (tieneBultos(item) ? 1 : 0) +
-    (conversionDe(item) !== null ? 1 : 0) +
-    // Sólo en la grilla de PUERTAS: tres columnas más por ítem, los cajones
-    // chico (C10), grande (C15) y de 18 (C18). Ver esSeccionPuertas.
-    (puertas ? 3 : 0)
-  );
-}
-
-/**
- * El encabezado de un ítem: su nombre, el lápiz para editarlo, la unidad y el
- * modelo si tiene. Es una columna (colSpan de `subcolumnas`, no siempre 1) que
- * se arrastra entera del agarre de la izquierda, igual que una fila, sólo que
- * acá el desplazamiento es horizontal y el ícono va girado 90° para avisarlo.
- */
-function EncabezadoItem({
-  item,
+function EncabezadoFila({
   proyectoId,
-  seccionId,
-  seccionNombre,
-  puertas,
+  fila,
+  extra,
   arrastrable,
-  onItemSaved,
-  onItemDeleted,
+  onFilaExtraSaved,
+  onFilaExtraDeleted,
+  onNivelSaved,
+  onNivelDeleted,
 }: {
-  item: ItemOpcion;
   proyectoId: string;
-  seccionId: string;
-  seccionNombre: string;
-  puertas: boolean;
+  fila: Fila;
+  /** La fila extra, si esta columna es una. Los niveles no tienen. */
+  extra: FilaExtraOpcion | undefined;
   arrastrable: boolean;
-  onItemSaved: (item: ItemOpcion) => void;
-  onItemDeleted: (id: string) => void;
+  onFilaExtraSaved: (fila: FilaExtraOpcion) => void;
+  onFilaExtraDeleted: (id: string) => void;
+  onNivelSaved: (nivel: NivelOpcion) => void;
+  onNivelDeleted: (id: string) => void;
 }) {
+  const filaKey = claveFilaKey(fila.clave);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: item.id,
+    id: filaKey,
     disabled: !arrastrable,
   });
 
@@ -919,71 +767,762 @@ function EncabezadoItem({
     <th
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
-      colSpan={subcolumnas(item, puertas)}
       className={cn(
-        "border-l px-2 pt-2 pb-1 text-center align-bottom",
-        isDragging && "relative z-10 bg-background opacity-90 shadow-lg"
+        "relative border-l px-2 py-2 text-center align-middle text-sm font-medium",
+        isDragging && "z-10 bg-background opacity-90 shadow-lg"
       )}
     >
-      <span className="flex items-center justify-center gap-1">
-        {arrastrable && (
-          <Tooltip content="Arrastrar para reordenar">
-            <button
-              type="button"
-              aria-label={`Arrastrar ${item.nombre}`}
-              className="shrink-0 touch-none cursor-grab text-muted-foreground hover:text-foreground active:cursor-grabbing"
-              {...attributes}
-              {...listeners}
-            >
-              <GripVertical className="h-3 w-3 rotate-90" />
-            </button>
-          </Tooltip>
-        )}
-        <span className="min-w-0 truncate text-xs font-medium text-foreground">
-          {item.nombre}
-        </span>
-        <ItemSeccionDialog
-          proyectoId={proyectoId}
-          seccionId={seccionId}
-          seccionNombre={seccionNombre}
-          item={item}
-          onSaved={onItemSaved}
-          onDeleted={onItemDeleted}
-          trigger={
-            <button
-              type="button"
-              aria-label={`Editar ${item.nombre}`}
-              title={`Editar ${item.nombre}`}
-              className="shrink-0 rounded-sm text-muted-foreground transition-colors duration-150 hover:text-foreground"
-            >
-              <Pencil className="h-3 w-3" />
-            </button>
-          }
-        />
-      </span>
-      {/* La unidad baja un punto más: ahora que el nombre del ítem es
-          text-xs, dejarla en text-xs la hacía pesar lo mismo que el nombre y
-          el encabezado se leía como dos renglones de igual rango.
-
-          Para el hierro ya no hace falta un caso especial acá: con las dos
-          columnas (ml y barras) visibles, cada una lleva su propia etiqueta
-          en el subencabezado (ver Subencabezados) y esta de arriba puede
-          decir lo mismo que en cualquier otro ítem. */}
-      <span className="block text-[10px] font-normal text-muted-foreground">
-        {simboloUnidad(item.unidad)}
-      </span>
-      {/* El modelo elegido, si ya se sabe. No entra en ninguna cuenta: es
-          sólo para tenerlo anotado al lado del ítem. */}
-      {item.modelo && (
-        <span
-          title={item.modelo}
-          className="block truncate text-[10px] font-normal text-muted-foreground italic"
-        >
-          {item.modelo}
-        </span>
+      {/* El agarre va absoluto, no en el flujo: así no corre el nombre del
+          medio milímetro que pesa su ancho, y todas las columnas —tengan o
+          no de qué agarrarse— quedan centradas exactamente igual. */}
+      {arrastrable && (
+        <Tooltip content="Arrastrar para reordenar">
+          <button
+            type="button"
+            aria-label={`Arrastrar ${fila.nombre}`}
+            className="absolute top-1/2 left-1 shrink-0 -translate-y-1/2 touch-none cursor-grab text-muted-foreground/60 transition-colors duration-150 hover:text-foreground active:cursor-grabbing"
+            {...attributes}
+            {...listeners}
+          >
+            <GripVertical className="h-3.5 w-3.5" />
+          </button>
+        </Tooltip>
       )}
+      <span className="block w-full px-4">
+        {extra ? (
+          <FilaExtraNombre
+            proyectoId={proyectoId}
+            fila={extra}
+            onSaved={onFilaExtraSaved}
+            onDeleted={onFilaExtraDeleted}
+          />
+        ) : fila.clave.tipo === "nivel" ? (
+          <NivelNombre
+            proyectoId={proyectoId}
+            nivel={{ id: fila.clave.id, nombre: fila.nombre }}
+            onSaved={onNivelSaved}
+            onDeleted={onNivelDeleted}
+          />
+        ) : (
+          <span className="block w-full leading-tight break-words">{fila.nombre}</span>
+        )}
+      </span>
     </th>
   );
+}
+
+/**
+ * Una línea de la fila de un ítem: una unidad (lo medido, la merma, los
+ * bultos, el material, cada cajón...) con su etiqueta y, para esa unidad, el
+ * contenido de la celda de cada columna y del total.
+ *
+ * Cada línea es su propia fila de la tabla (ver `FilaItem`): la etiqueta y
+ * el dato quedan en el mismo `<tr>`, alineados porque los pone el navegador
+ * —la fila mide lo que mide su celda más alta— y no porque un padding
+ * haya quedado igual que otro a mano.
+ */
+type LineaItem = {
+  key: string;
+  etiqueta: ReactNode;
+  /** Si esta línea tiene la flechita para abrir el detalle de la celda. */
+  conChevron?: boolean;
+  celda: (fila: Fila) => ReactNode;
+  /** La celda de la columna de Total: la suma de esta línea en todos los niveles. */
+  total: () => ReactNode;
+};
+
+/**
+ * El nombre de un sub ítem, editable en el lugar. Mismo patrón que
+ * `FilaExtraNombre` (lápiz y tacho visibles al pasar el mouse), pero crear,
+ * renombrar y borrar un sub ítem devuelven el ítem entero —no el sub ítem
+ * suelto ni un id— porque lo que se repinta siempre es el bloque completo del
+ * ítem (ver `lineasSubItems`), con su total ya al día.
+ */
+function SubItemNombre({
+  proyectoId,
+  subItem,
+  onSaved,
+}: {
+  proyectoId: string;
+  subItem: SubItemOpcion;
+  onSaved: (item: ItemOpcion) => void;
+}) {
+  const [editando, setEditando] = useState(false);
+  const [nombre, setNombre] = useState(subItem.nombre);
+  const [prev, setPrev] = useState(subItem);
+  const [, startTransition] = useTransition();
+
+  if (subItem !== prev) {
+    setPrev(subItem);
+    setNombre(subItem.nombre);
+  }
+
+  const guardar = () => {
+    setEditando(false);
+    const limpio = nombre.trim();
+    if (limpio === subItem.nombre) return;
+    // Vaciar el campo es un tipeo a medias, no un pedido de borrar: se vuelve
+    // al nombre anterior en vez de mandar un nombre vacío al servidor.
+    if (limpio === "") {
+      setNombre(subItem.nombre);
+      return;
+    }
+
+    startTransition(async () => {
+      const result = await renombrarSubItem(proyectoId, subItem.id, limpio);
+      if (!result.success) {
+        toast.error(result.error);
+        setNombre(subItem.nombre);
+        return;
+      }
+      onSaved(result.item);
+    });
+  };
+
+  const borrar = () =>
+    startTransition(async () => {
+      const result = await eliminarSubItem(proyectoId, subItem.id);
+      if (!result.success) {
+        toast.error(result.error);
+        return;
+      }
+      onSaved(result.item);
+    });
+
+  if (editando) {
+    return (
+      <input
+        value={nombre}
+        onChange={(e) => setNombre(e.target.value)}
+        onBlur={guardar}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            e.currentTarget.blur();
+          }
+          if (e.key === "Escape") {
+            setNombre(subItem.nombre);
+            setEditando(false);
+          }
+        }}
+        aria-label="Nombre del sub ítem"
+        autoFocus
+        className="w-full min-w-0 rounded-sm border border-input bg-background px-1 py-0.5 text-sm focus:border-ring focus:outline-none"
+      />
+    );
+  }
+
+  return (
+    <span className="group flex min-w-0 flex-1 items-start gap-1">
+      <span className="min-w-0 flex-1 leading-tight break-words">{subItem.nombre}</span>
+      <Tooltip content={`Renombrar ${subItem.nombre}`}>
+        <button
+          type="button"
+          aria-label={`Renombrar ${subItem.nombre}`}
+          onClick={() => setEditando(true)}
+          className="shrink-0 rounded-sm text-muted-foreground opacity-0 transition-all duration-150 group-hover:opacity-100 hover:text-foreground focus:opacity-100"
+        >
+          <Pencil className="h-3 w-3" />
+        </button>
+      </Tooltip>
+      <Tooltip content={`Eliminar ${subItem.nombre}`}>
+        <button
+          type="button"
+          aria-label={`Eliminar ${subItem.nombre}`}
+          onClick={borrar}
+          className="shrink-0 rounded-sm text-muted-foreground opacity-0 transition-all duration-150 group-hover:opacity-100 hover:text-foreground focus:opacity-100"
+        >
+          <Trash2 className="h-3 w-3" />
+        </button>
+      </Tooltip>
+    </span>
+  );
+}
+
+/**
+ * El campo para sumar un sub ítem a este ítem. Mismo patrón que
+ * `FilaExtraNueva` (arranca escondido detrás de un "+" y se abre a un campo
+ * de texto con Agregar/Cancelar), pero crea dentro de un ítem puntual en vez
+ * de una fila de toda la sección.
+ */
+function SubItemNueva({
+  proyectoId,
+  item,
+  onSaved,
+}: {
+  proyectoId: string;
+  item: ItemOpcion;
+  onSaved: (item: ItemOpcion) => void;
+}) {
+  const [abierto, setAbierto] = useState(false);
+  const [nombre, setNombre] = useState("");
+  const [pending, startTransition] = useTransition();
+
+  const guardar = () => {
+    const limpio = nombre.trim();
+    if (!limpio) return;
+
+    startTransition(async () => {
+      const result = await crearSubItem(proyectoId, item.id, limpio);
+      if (!result.success) {
+        toast.error(result.error);
+        return;
+      }
+      onSaved(result.item);
+      setNombre("");
+      setAbierto(false);
+    });
+  };
+
+  if (!abierto) {
+    return (
+      <button
+        type="button"
+        aria-label={`Agregar sub ítem a ${item.nombre}`}
+        onClick={() => setAbierto(true)}
+        className="flex items-center gap-1 rounded-sm text-muted-foreground transition-colors duration-150 hover:text-foreground"
+      >
+        <Plus className="h-3 w-3" />
+        Sub ítem
+      </button>
+    );
+  }
+
+  return (
+    <span className="flex min-w-0 flex-1 items-center gap-1">
+      <input
+        value={nombre}
+        onChange={(e) => setNombre(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            guardar();
+          }
+          if (e.key === "Escape") {
+            setNombre("");
+            setAbierto(false);
+          }
+        }}
+        placeholder="C10"
+        aria-label="Nombre del sub ítem nuevo"
+        autoFocus
+        className="w-full min-w-0 rounded-sm border border-input bg-background px-1 py-0.5 text-sm focus:border-ring focus:outline-none"
+      />
+      <Tooltip content="Agregar">
+        <button
+          type="button"
+          aria-label="Agregar sub ítem"
+          disabled={pending}
+          onClick={guardar}
+          className="shrink-0 rounded-sm text-muted-foreground transition-colors duration-150 hover:text-foreground disabled:opacity-50"
+        >
+          <Plus className="h-3 w-3" />
+        </button>
+      </Tooltip>
+      <Tooltip content="Cancelar">
+        <button
+          type="button"
+          aria-label="Cancelar"
+          onClick={() => {
+            setNombre("");
+            setAbierto(false);
+          }}
+          className="shrink-0 rounded-sm text-muted-foreground transition-colors duration-150 hover:text-foreground"
+        >
+          <Trash2 className="h-3 w-3" />
+        </button>
+      </Tooltip>
+    </span>
+  );
+}
+
+/**
+ * Las líneas de los sub ítems de un ítem de PUERTAS: una por cada sub ítem
+ * que ya tenga, con su nombre editable y su propio total, y al final siempre
+ * una más para agregar el próximo (ver `SubItemNueva`). Reemplazan a las
+ * viejas tres líneas fijas de cajones (C10, C15, C18) por una cantidad libre
+ * de renglones con el nombre que elija el que carga el cómputo.
+ *
+ * Siempre devuelve al menos una línea —la de "agregar"— aunque el ítem no
+ * tenga ningún sub ítem todavía: así el bloque del ítem nunca queda sin
+ * ninguna fila de datos en la grilla de PUERTAS, y la columna de Unidad (ver
+ * `FilaItem`) siempre tiene dónde apoyarse.
+ */
+function lineasSubItems({
+  item,
+  proyectoId,
+  onItemSaved,
+}: {
+  item: ItemOpcion;
+  proyectoId: string;
+  onItemSaved: (item: ItemOpcion) => void;
+}): LineaItem[] {
+  const lineas: LineaItem[] = item.subItems.map((subItem) => ({
+    key: subItem.id,
+    etiqueta: <SubItemNombre proyectoId={proyectoId} subItem={subItem} onSaved={onItemSaved} />,
+    celda: (fila: Fila) => {
+      const cargado = subItemMedicionesDeFila(subItem, fila.clave).length > 0;
+      return (
+        <CeldaSubItem
+          proyectoId={proyectoId}
+          item={item}
+          subItem={subItem}
+          fila={fila.clave}
+          filaNombre={fila.nombre}
+          valor={cargado ? subItemEnFila(subItem, fila.clave) : null}
+          onSaved={onItemSaved}
+        />
+      );
+    },
+    total: () => {
+      const total = totalSubItem(subItem);
+      return (
+        <span className="block text-center text-sm font-medium tabular-nums">
+          {total > 0 ? formatCantidad(total) : "—"}
+        </span>
+      );
+    },
+  }));
+
+  lineas.push({
+    key: "nuevo-sub-item",
+    etiqueta: <SubItemNueva proyectoId={proyectoId} item={item} onSaved={onItemSaved} />,
+    celda: () => null,
+    total: () => null,
+  });
+
+  return lineas;
+}
+
+/**
+ * Las líneas de la fila de un ítem (ver `LineaItem`). El hierro siempre
+ * tiene tres: ml, barras y kg, los mismos metros en paralelo. El resto
+ * arranca con lo medido y agrega merma, bultos y material según tenga
+ * desperdicio, se compre agrupado o se compre en otra unidad —salvo en
+ * PUERTAS, que no tiene esa primera línea—. Los sub ítems van al final en
+ * las dos, sólo en la grilla de PUERTAS (ver `lineasSubItems`).
+ */
+function lineasDeItem({
+  proyectoId,
+  item,
+  totales,
+  puertas,
+  abierta,
+  onAbrir,
+  onItemSaved,
+}: {
+  proyectoId: string;
+  item: ItemOpcion;
+  totales: Map<string, number>;
+  puertas: boolean;
+  abierta: CeldaAbierta | null;
+  onAbrir: (celda: CeldaAbierta | null) => void;
+  onItemSaved: (item: ItemOpcion) => void;
+}): LineaItem[] {
+  const totalBase = totales.get(item.id) ?? 0;
+  const vacio = item.mediciones.length === 0;
+  // Los bultos se redondean para arriba una sola vez, en el total de toda la
+  // obra: hacerlo por nivel y después sumar daría de más una vez por planta.
+  const bultosTotal = tieneBultos(item) ? bultosDe(item, materialDe(item, totalBase)) : null;
+
+  // Una celda que sale de una cuenta sobre otro ítem no se escribe ni se
+  // desglosa: el número viene de otro lado y pisarlo borraría la cuenta sin
+  // que se vea.
+  const estado = (fila: Fila) => {
+    const filaKey = claveFilaKey(fila.clave);
+    const tiene = tieneMedidoEnFila(item, fila.clave);
+    const medido = medidoEnFila(item, fila.clave, totales);
+    const renglones = medicionesDeFila(item, fila.clave);
+    const derivada = esDerivadaEnFila(item, fila.clave);
+    const desglosada = renglones.length > 1;
+    const abierto = abierta?.itemId === item.id && abierta.filaKey === filaKey;
+    const alternar = () => onAbrir(abierto ? null : { itemId: item.id, filaKey });
+    return { tiene, medido, derivada, desglosada, abierto, alternar };
+  };
+
+  if (esHierro(item)) {
+    // Lo que se lee en barras/kg por nivel es la cantidad sin redondear,
+    // como toda celda de nivel (ver bultosDe): el redondeo es sólo del total.
+    const barrasEnNivel = (ml: number) =>
+      formatCantidad(bultosDe(item, materialDe(item, ml))?.exacto ?? 0);
+    const kgEnNivel = (ml: number) => formatCantidad(materialDe(item, ml) ?? 0);
+
+    const lineas: LineaItem[] = [
+      {
+        key: "ml",
+        etiqueta: (
+          <span title="Lo que se mide en obra, en metros lineales. Se puede completar en ml, en barras o en kg: lo que no se toque sale solo de lo que sí.">
+            ml
+          </span>
+        ),
+        celda: (fila) => {
+          const { tiene, medido, derivada, desglosada, abierto, alternar } = estado(fila);
+          if (derivada) {
+            return (
+              <span
+                title="Sale de una cuenta sobre otro ítem"
+                className="block text-center text-sm tabular-nums text-muted-foreground italic"
+              >
+                {formatCantidad(medido)}
+              </span>
+            );
+          }
+          if (desglosada) {
+            return (
+              <Tooltip content="Metros, sin redondear. Tocá para ver el detalle de cada renglón.">
+                <button
+                  type="button"
+                  aria-expanded={abierto}
+                  aria-label={`Detalle de ${item.nombre} en ${fila.nombre}`}
+                  onClick={alternar}
+                  className="w-full rounded-sm px-2 py-1 text-center text-sm font-medium tabular-nums transition-colors duration-150 hover:bg-muted"
+                >
+                  {formatCantidad(medido)}
+                </button>
+              </Tooltip>
+            );
+          }
+          return (
+            <Celda
+              proyectoId={proyectoId}
+              item={item}
+              fila={fila.clave}
+              filaNombre={fila.nombre}
+              valor={tiene ? medido : null}
+              onSaved={onItemSaved}
+            />
+          );
+        },
+        total: () => (
+          <span className="block text-center text-sm font-medium tabular-nums">
+            {vacio ? "—" : formatCantidad(totalBase)}
+          </span>
+        ),
+      },
+      {
+        key: "barras",
+        etiqueta: (
+          <span
+            title={`Cantidad de barras de 12 m, de ${formatCantidad(item.porBulto ?? 0)} kg cada una.`}
+          >
+            barras
+          </span>
+        ),
+        celda: (fila) => {
+          const { medido, derivada, desglosada, abierto, alternar } = estado(fila);
+          if (derivada) {
+            return (
+              <span
+                title="Sale de una cuenta sobre otro ítem"
+                className="block text-center text-sm tabular-nums text-muted-foreground italic"
+              >
+                {barrasEnNivel(medido)}
+              </span>
+            );
+          }
+          if (desglosada) {
+            return (
+              <Tooltip content="Cantidad de barras, sin redondear (se redondea sólo en el Total). Tocá para ver el detalle de cada renglón.">
+                <button
+                  type="button"
+                  aria-expanded={abierto}
+                  aria-label={`Detalle de ${item.nombre} en ${fila.nombre}`}
+                  onClick={alternar}
+                  className="w-full rounded-sm px-2 py-1 text-center text-sm font-medium tabular-nums transition-colors duration-150 hover:bg-muted"
+                >
+                  {barrasEnNivel(medido)}
+                </button>
+              </Tooltip>
+            );
+          }
+          const { tiene } = estado(fila);
+          return (
+            <CeldaHierroConvertida
+              proyectoId={proyectoId}
+              item={item}
+              fila={fila.clave}
+              filaNombre={fila.nombre}
+              valor={tiene ? medido : null}
+              unidad="barras"
+              aTexto={(m) => formatCantidad(barrasDeMetros(item, m))}
+              aMetros={(barras) => metrosDeBarras(item, barras)}
+              onSaved={onItemSaved}
+            />
+          );
+        },
+        // Las barras se redondean para arriba sólo acá, en el total: por
+        // nivel se compra en conjunto y no tiene sentido pedir "media barra"
+        // de más en cada planta (ver el comentario de `bultosTotal`).
+        total: () => (
+          <span className="block text-center text-sm font-medium tabular-nums">
+            {vacio ? "—" : formatCantidad(bultosDe(item, materialDe(item, totalBase))?.enteros ?? 0)}
+          </span>
+        ),
+      },
+      {
+        key: "kg",
+        etiqueta: <span title="Peso total del hierro, en kilos.">kg</span>,
+        conChevron: true,
+        celda: (fila) => {
+          const { tiene, medido, derivada, desglosada, abierto, alternar } = estado(fila);
+          if (derivada) {
+            return (
+              <span
+                title="Sale de una cuenta sobre otro ítem"
+                className="block text-center text-sm tabular-nums text-muted-foreground italic"
+              >
+                {kgEnNivel(medido)}
+              </span>
+            );
+          }
+          if (desglosada) {
+            return (
+              <Tooltip content="Peso en kilos, sin redondear. Tocá para ver el detalle de cada renglón.">
+                <button
+                  type="button"
+                  aria-expanded={abierto}
+                  aria-label={`Detalle de ${item.nombre} en ${fila.nombre}`}
+                  onClick={alternar}
+                  className="w-full rounded-sm px-2 py-1 text-center text-sm font-medium tabular-nums transition-colors duration-150 hover:bg-muted"
+                >
+                  {kgEnNivel(medido)}
+                </button>
+              </Tooltip>
+            );
+          }
+          return (
+            <span className="group/celda flex items-center gap-0.5">
+              <CeldaHierroConvertida
+                proyectoId={proyectoId}
+                item={item}
+                fila={fila.clave}
+                filaNombre={fila.nombre}
+                valor={tiene ? medido : null}
+                unidad="kilos"
+                aTexto={(m) => formatCantidad(kgDeMetros(item, m))}
+                aMetros={(kg) => metrosDeKg(item, kg)}
+                onSaved={onItemSaved}
+              />
+              {/* La flechita para abrir el detalle vive en esta línea, al
+                  borde derecho de la celda. */}
+              <Tooltip content={`Detalle de ${item.nombre} en ${fila.nombre}`}>
+                <button
+                  type="button"
+                  aria-expanded={abierto}
+                  aria-label={`Detalle de ${item.nombre} en ${fila.nombre}`}
+                  onClick={alternar}
+                  className={cn(
+                    "shrink-0 rounded-sm p-0.5 text-muted-foreground transition-all duration-150 hover:bg-muted hover:text-foreground focus:opacity-100",
+                    abierto ? "opacity-100" : "opacity-0 group-hover/celda:opacity-100"
+                  )}
+                >
+                  <ChevronDown
+                    className={cn("h-3 w-3 transition-transform duration-200", abierto && "rotate-180")}
+                  />
+                </button>
+              </Tooltip>
+            </span>
+          );
+        },
+        total: () => (
+          <span className="block text-center text-sm font-medium tabular-nums">
+            {vacio ? "—" : formatCantidad(kgDeMetros(item, totalBase))}
+          </span>
+        ),
+      },
+    ];
+
+    if (puertas) {
+      lineas.push(...lineasSubItems({ item, proyectoId, onItemSaved }));
+    }
+
+    return lineas;
+  }
+
+  const conversion = conversionDe(item);
+  const lineas: LineaItem[] = [];
+
+  // Un ítem de PUERTAS no tiene cantidad propia: lo que antes era esta
+  // primera línea ("lo que se carga a mano") queda reemplazado del todo por
+  // los sub ítems, cada uno con su propia fila más abajo (ver
+  // `lineasSubItems`). Por eso no hay ningún renglón con la unidad del ítem
+  // en esta grilla.
+  if (!puertas) {
+    lineas.push({
+      key: "medido",
+      // La etiqueta de esta primera línea es la unidad en la que se carga
+      // ("ml", "m²", "kg"...) y no la palabra genérica "medido": así queda
+      // claro de entrada qué es lo único que hay que tipear.
+      etiqueta: (
+        <span title={`Lo que se carga a mano, en ${UNIDAD_INFO[item.unidad].nombre.toLowerCase()}`}>
+          {simboloUnidad(item.unidad)}
+        </span>
+      ),
+      conChevron: true,
+      celda: (fila) => {
+        const { tiene, medido, derivada, desglosada, abierto, alternar } = estado(fila);
+        return (
+          <span className="group/celda flex items-center gap-0.5">
+            {derivada ? (
+              <span
+                title="Sale de una cuenta sobre otro ítem"
+                className="min-w-0 flex-1 px-2 py-1 text-center text-sm tabular-nums text-muted-foreground italic"
+              >
+                {formatCantidad(medido)}
+              </span>
+            ) : desglosada ? (
+              // Con varios renglones el número de la celda es la suma, y una
+              // suma no se tipea: se toca y se corrige adentro.
+              <Tooltip content="Suma de los renglones. Tocá para ver el detalle.">
+                <button
+                  type="button"
+                  aria-expanded={abierto}
+                  aria-label={`Detalle de ${item.nombre} en ${fila.nombre}`}
+                  onClick={alternar}
+                  className="min-w-0 flex-1 rounded-sm px-2 py-1 text-center text-sm font-medium tabular-nums transition-colors duration-150 hover:bg-muted"
+                >
+                  {formatCantidad(medido)}
+                </button>
+              </Tooltip>
+            ) : (
+              <Celda
+                proyectoId={proyectoId}
+                item={item}
+                fila={fila.clave}
+                filaNombre={fila.nombre}
+                valor={tiene ? medido : null}
+                onSaved={onItemSaved}
+              />
+            )}
+
+            {!derivada && !desglosada && (
+              // El desplegado arranca invisible: la mayoría de las celdas son
+              // un número suelto y una flechita en cada fila taparía la
+              // lectura de la planilla, que es para lo que se abre.
+              <Tooltip content={`Detalle de ${item.nombre} en ${fila.nombre}`}>
+                <button
+                  type="button"
+                  aria-expanded={abierto}
+                  aria-label={`Detalle de ${item.nombre} en ${fila.nombre}`}
+                  onClick={alternar}
+                  className={cn(
+                    "shrink-0 rounded-sm p-0.5 text-muted-foreground transition-all duration-150 hover:bg-muted hover:text-foreground focus:opacity-100",
+                    abierto ? "opacity-100" : "opacity-0 group-hover/celda:opacity-100"
+                  )}
+                >
+                  <ChevronDown
+                    className={cn("h-3 w-3 transition-transform duration-200", abierto && "rotate-180")}
+                  />
+                </button>
+              </Tooltip>
+            )}
+          </span>
+        );
+      },
+      total: () => (
+        <span className="block text-center text-sm font-medium tabular-nums">
+          {vacio ? "—" : formatCantidad(totalBase)}
+        </span>
+      ),
+    });
+  }
+
+  if (item.desperdicio !== null) {
+    const desperdicio = item.desperdicio;
+    lineas.push({
+      key: "merma",
+      etiqueta: <span>+{formatCantidad(desperdicio)}%</span>,
+      celda: (fila) => {
+        const { tiene, medido } = estado(fila);
+        return (
+          <span className="block text-center text-sm tabular-nums text-muted-foreground">
+            {!tiene ? "—" : formatCantidad(conDesperdicio(medido, desperdicio))}
+          </span>
+        );
+      },
+      total: () => (
+        <span className="block text-center text-sm tabular-nums text-muted-foreground">
+          {vacio ? "—" : formatCantidad(conDesperdicio(totalBase, desperdicio))}
+        </span>
+      ),
+    });
+  }
+
+  if (tieneBultos(item)) {
+    const etiquetaBulto = etiquetaBultos([item]);
+    lineas.push({
+      key: "bultos",
+      etiqueta: (
+        <span
+          title={`Cantidad de ${etiquetaBulto}, de ${formatCantidad(item.porBulto!)} ${simboloUnidad(item.rindeUnidad!)} cada una`}
+        >
+          {etiquetaBulto}
+        </span>
+      ),
+      celda: (fila) => {
+        const { tiene, medido } = estado(fila);
+        return (
+          <span
+            title={`${item.nombre} en ${fila.nombre}: cantidad de ${etiquetaBulto}, sin redondear`}
+            className="block text-center text-sm tabular-nums text-muted-foreground"
+          >
+            {!tiene ? "—" : formatCantidad(bultosDe(item, materialDe(item, medido))?.exacto ?? 0)}
+          </span>
+        );
+      },
+      // Acá sí van redondeados para arriba (ver `bultosTotal`): un palet se
+      // pide una vez para toda la obra, no planta por planta.
+      total: () => (
+        <span className="block text-center text-sm tabular-nums">
+          {vacio || !bultosTotal ? (
+            <span className="text-muted-foreground">—</span>
+          ) : (
+            <>
+              <span className="font-medium">{bultosTotal.enteros}</span>{" "}
+              <span className="text-xs text-muted-foreground">
+                ({formatCantidad(bultosTotal.exacto)})
+              </span>
+            </>
+          )}
+        </span>
+      ),
+    });
+  }
+
+  if (conversion) {
+    lineas.push({
+      key: "material",
+      etiqueta: (
+        <span
+          title={`Cada ${simboloUnidad(item.unidad)} son ${formatCantidad(conversion.rinde)} ${simboloUnidad(conversion.unidad)}`}
+        >
+          {simboloUnidad(conversion.unidad)}
+        </span>
+      ),
+      celda: (fila) => {
+        const { tiene, medido } = estado(fila);
+        return (
+          <span
+            title={`${item.nombre} en ${fila.nombre}, en la unidad en que se compra`}
+            className="block text-center text-sm font-medium tabular-nums"
+          >
+            {!tiene ? "—" : formatCantidad(materialDe(item, medido) ?? 0)}
+          </span>
+        );
+      },
+      total: () => (
+        <span className="block text-center text-sm font-medium tabular-nums">
+          {vacio ? "—" : formatCantidad(materialDe(item, totalBase) ?? 0)}
+        </span>
+      ),
+    });
+  }
+
+  if (puertas) {
+    lineas.push(...lineasSubItems({ item, proyectoId, onItemSaved }));
+  }
+
+  return lineas;
 }
 
 export function SeccionGrilla({
@@ -1024,15 +1563,16 @@ export function SeccionGrilla({
 }) {
   const [renombrando, setRenombrando] = useState(false);
   const [nombre, setNombre] = useState(seccion.nombre);
-  // El orden de las filas se mantiene acá además de en el servidor para que el
-  // bloque quede donde lo soltaron apenas se suelta, sin esperar la ida y
-  // vuelta. Si el guardado falla se vuelve al anterior.
+  // El orden de las columnas (los niveles, las filas extra y "Toda la obra")
+  // se mantiene acá además de en el servidor para que la columna quede donde
+  // la soltaron apenas se suelta, sin esperar la ida y vuelta. Si el guardado
+  // falla se vuelve al anterior.
   const [orden, setOrden] = useState(seccion.ordenFilas);
   const [abierta, setAbierta] = useState<CeldaAbierta | null>(null);
   const [prev, setPrev] = useState(seccion);
-  // El orden de las columnas (los ítems) se mantiene acá por la misma razón
-  // que el de las filas: para que la columna quede donde se soltó sin
-  // esperar la ida y vuelta, y se vuelva atrás si el guardado falla.
+  // El orden de las filas (los ítems) se mantiene acá por la misma razón que
+  // el de las columnas: para que la fila quede donde se soltó sin esperar la
+  // ida y vuelta, y se vuelva atrás si el guardado falla.
   //
   // No se puede usar la posición de `items` tal cual llega: un ítem nuevo o
   // borrado tiene que entrar o salir de esta lista sin perder el orden ya
@@ -1137,37 +1677,39 @@ export function SeccionGrilla({
   );
   const extraPorId = new Map(filasExtra.map((f) => [f.id, f]));
 
-  /** Las que se pueden arrastrar: todas menos "Toda la obra", que va fija al pie. */
+  /** Las que se pueden arrastrar: todas menos "Toda la obra", que va fija al final. */
   const arrastrables = filas
     .filter((f) => f.clave.tipo !== "general")
     .map((f) => claveFilaKey(f.clave));
 
-  // Hormigón es la única sección, por ahora, que además del total por ítem
-  // (al pie) necesita el total por piso (a la derecha): ver el comentario de
-  // `mostrarTotalPorFila`.
-  const totalPorPiso = mostrarTotalPorFila(seccion, items);
-  const unidadTotalPorPiso = totalPorPiso ? items[0].unidad : null;
-
   // Sólo en la grilla de PUERTAS (no en HERRAJES, aunque comparten rubro):
-  // cada ítem suma dos columnas más, C10 y C15, los cajones.
+  // cada ítem reemplaza su línea de cantidad por una línea por cada sub
+  // ítem que tenga, más una columna angosta con su unidad (ver `FilaItem`).
   const puertas = esSeccionPuertas(seccion);
 
   /**
-   * Cuántas columnas tiene la tabla. La necesita el detalle, que se despliega
-   * como una fila entera abajo de la que se abrió.
+   * Cuántas columnas tiene la tabla: la del nombre del ítem y una por cada
+   * nivel/fila extra/"Toda la obra". La necesita el detalle, que se
+   * despliega como una fila entera abajo de la que se abrió.
+   *
+   * A diferencia de la versión anterior (ítems en columna), acá cada ítem
+   * ocupa siempre una sola columna por fila, sin colspan variable: lo que
+   * antes eran subcolumnas (merma, bultos, material, los tres del hierro)
+   * ahora son filas propias dentro del bloque del ítem (ver `lineasDeItem`),
+   * así que no hace falta calcularlas acá. En PUERTAS se suma una columna
+   * más, angosta, con la unidad de cada ítem (ver el `<thead>` y `FilaItem`).
+   * La última, siempre, es la del Total.
    */
-  const columnas =
-    1 +
-    items.reduce((acc, i) => acc + subcolumnas(i, puertas), 0) +
-    (totalPorPiso ? 1 : 0);
+  const totalColumnas = (puertas ? 2 : 1) + filas.length + 1;
 
-  // Ancho mínimo de la tabla, para que con muchas columnas (hierro con sus
-  // tres, puertas con sus cajones) cada una conserve un ancho legible en vez
-  // de achicarse hasta que los números se encimen. 176px es el ancho fijo de
-  // la columna de niveles (w-44) y 64px es lo que ocupa cómoda una columna de
-  // número; por debajo de eso `table-fixed` ya reparte bien y no hace falta
-  // forzar nada, así que el mínimo nunca empuja una tabla que ya entraba.
-  const anchoMinimoPx = 176 + (columnas - 1) * 64;
+  // Ancho mínimo de la tabla, para que con muchos niveles cada columna
+  // conserve un ancho legible en vez de achicarse hasta que los números se
+  // encimen. 176px es el ancho fijo de la columna del ítem (w-44) y 64px es
+  // lo que ocupa cómoda una columna de nivel (o la del Total, del mismo
+  // ancho); por debajo de eso `table-fixed` ya reparte bien y no hace falta
+  // forzar nada, así que el mínimo nunca empuja una tabla que ya entraba. En
+  // PUERTAS se suma el ancho fijo de la columna angosta de Unidad (48px, w-12).
+  const anchoMinimoPx = 176 + (puertas ? 48 : 0) + (filas.length + 1) * 64;
 
   const soltar = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -1192,7 +1734,7 @@ export function SeccionGrilla({
     });
   };
 
-  /** Igual que `soltar`, pero para las columnas: reordena los ítems. */
+  /** Igual que `soltar`, pero para las filas: reordena los ítems. */
   const soltarItem = (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
@@ -1297,19 +1839,9 @@ export function SeccionGrilla({
         </Tooltip>
       </div>
 
-      {items.length === 0 ? (
-        <div className="px-3 py-6 text-center">
-          <p className="text-sm text-muted-foreground">
-            Esta sección no tiene ítems todavía.
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Cada ítem es una columna, con una celda por nivel. Al crearlo se le
-            indica en qué se mide y cuánto desperdicio lleva.
-          </p>
-        </div>
-      ) : filas.length === 0 ? (
+      {filas.length === 0 ? (
         <p className="px-3 py-6 text-center text-sm text-muted-foreground">
-          Esta obra no tiene niveles cargados, así que la grilla no tiene filas.
+          Esta obra no tiene niveles cargados, así que la grilla no tiene columnas.
         </p>
       ) : (
         // El `div` de afuera es lo que permite una barra horizontal cuando la
@@ -1318,350 +1850,212 @@ export function SeccionGrilla({
         // la tarjeta y lo que sobra se recorre con scroll. El mínimo de abajo
         // (`anchoMinimoPx`) es lo que fuerza esa situación cuando hay muchas
         // columnas; con pocas, la tabla sigue entrando al 100% como siempre.
-        <div className="overflow-x-auto">
-          <table
-            className="table-fixed border-collapse text-sm"
-            style={{ width: "100%", minWidth: anchoMinimoPx }}
-          >
-            <thead>
-              <tr className="border-b bg-muted/50">
-                {/* La de los niveles es la única con ancho propio: es la que se
-                    lee para saber de qué fila es cada número, y si se achicara
-                    junto con las demás "PLANTA BAJA" terminaría partido en tres
-                    renglones. Las de los ítems se reparten lo que queda. */}
-                {/* Escalón 3 de 3, el de los rótulos de columna. "Nivel" y los
-                    nombres de los ítems son lo mismo —el rótulo de un eje de la
-                    tabla— así que van iguales: chicos, de peso medio y en caja
-                    normal. La caja normal es lo que más los separa de la sección,
-                    que va en mayúsculas. */}
-                <th className="w-44 px-3 py-2 text-left align-bottom text-xs font-medium text-muted-foreground">
-                  Nivel
-                </th>
-                <DndContext
-                  sensors={sensores}
-                  collisionDetection={closestCenter}
-                  onDragEnd={soltarItem}
-                >
-                  <SortableContext items={ordenItems} strategy={horizontalListSortingStrategy}>
-                    {itemsOrdenados.map((item) => (
-                      <EncabezadoItem
-                        key={item.id}
-                        item={item}
+        <DndContext sensors={sensores} collisionDetection={closestCenter} onDragEnd={soltar}>
+          <SortableContext items={arrastrables} strategy={horizontalListSortingStrategy}>
+            <div className="overflow-x-auto">
+              {/* El `DndContext`/`SortableContext` del encabezado envuelve toda
+                  la tabla, no sólo el `<tr>`: metido adentro de la fila, los
+                  elementos de accesibilidad que agrega (anuncios para lectores
+                  de pantalla) quedan como hijos sueltos del `<tr>` —inválido en
+                  HTML— y eso le hacía creer al navegador que había una columna
+                  de más al calcular los anchos con `table-fixed`, dejando un
+                  espacio en blanco a la derecha. */}
+              <table
+                className="table-fixed border-collapse text-sm"
+                style={{ width: "100%", minWidth: anchoMinimoPx }}
+              >
+                <thead>
+                  <tr className="border-b bg-muted/80">
+                    {/* La del ítem es la única con ancho propio: es la que se lee
+                        para saber de qué fila es cada número, y si se achicara
+                        junto con las demás un nombre largo terminaría partido en
+                        varios renglones. Las de los niveles se reparten lo que
+                        queda. */}
+                    <th className="w-44 px-3 py-2 text-center align-middle text-xs font-medium text-muted-foreground">
+                      Ítem
+                    </th>
+                    {/* Columna angosta y fija, sólo en PUERTAS: la unidad de cada
+                        ítem, que ya no tiene una fila propia (ver `FilaItem`). */}
+                    {puertas && (
+                      <th className="w-12 border-l px-1 py-2 text-center align-middle text-xs font-medium text-muted-foreground">
+                        Unidad
+                      </th>
+                    )}
+                    {filas.map((fila) => (
+                      <EncabezadoFila
+                        key={claveFilaKey(fila.clave)}
                         proyectoId={proyectoId}
-                        seccionId={seccion.id}
-                        seccionNombre={seccion.nombre}
-                        puertas={puertas}
-                        arrastrable={itemsOrdenados.length > 1}
-                        onItemSaved={onItemSaved}
-                        onItemDeleted={onItemDeleted}
+                        fila={fila}
+                        extra={
+                          fila.clave.tipo === "extra"
+                            ? extraPorId.get(fila.clave.id)
+                            : undefined
+                        }
+                        arrastrable={fila.clave.tipo !== "general"}
+                        onFilaExtraSaved={onFilaExtraSaved}
+                        onFilaExtraDeleted={onFilaExtraDeleted}
+                        onNivelSaved={onNivelSaved}
+                        onNivelDeleted={onNivelDeleted}
                       />
                     ))}
-                  </SortableContext>
-                </DndContext>
-                {totalPorPiso && (
-                  // Va aparte de los ítems, con su propio fondo, para que se lea
-                  // de entrada que no es un ítem más: es la cuenta de todos
-                  // juntos, que es la que de verdad se usa para programar un
-                  // pozo de hormigón piso por piso.
-                  <th
-                    title="Suma de todos los ítems de esta sección, piso por piso: lo que de verdad hace falta para programar un pozo de hormigón."
-                    className="border-l bg-foreground/[0.04] px-2 pt-2 pb-1 text-center align-bottom text-xs font-medium text-foreground"
-                  >
-                    Total
-                  </th>
-                )}
-              </tr>
-              <tr className="border-b bg-muted/25">
-                <th />
-                {itemsOrdenados.map((item) => (
-                  <Subencabezados key={item.id} item={item} puertas={puertas} />
-                ))}
-                {totalPorPiso && (
-                  <th className="border-l bg-foreground/[0.04] px-2 pb-1 text-right text-[10px] font-normal text-muted-foreground">
-                    {simboloUnidad(unidadTotalPorPiso!)}
-                  </th>
-                )}
-              </tr>
-            </thead>
+                    {/* Fija al final, fuera del `SortableContext`: suma todos
+                        los niveles y no se arrastra como ellos. */}
+                    <th className="w-16 border-l-2 px-1 py-2 text-center align-middle text-xs font-medium text-muted-foreground">
+                      Total
+                    </th>
+                  </tr>
+                </thead>
 
-            <tbody>
-              <DndContext
-                sensors={sensores}
-                collisionDetection={closestCenter}
-                // El detalle abierto es una fila aparte que no acompaña al
-                // bloque mientras se arrastra: se cierra al empezar para que
-                // no quede colgado debajo de una fila que ya no está ahí.
-                onDragStart={() => setAbierta(null)}
-                onDragEnd={soltar}
-              >
-                <SortableContext
-                  items={arrastrables}
-                  strategy={verticalListSortingStrategy}
-                >
-                  {filas.map((fila) => (
-                    <FilaGrilla
-                      key={claveFilaKey(fila.clave)}
-                      proyectoId={proyectoId}
-                      fila={fila}
-                      extra={
-                        fila.clave.tipo === "extra"
-                          ? extraPorId.get(fila.clave.id)
-                          : undefined
-                      }
-                      items={itemsOrdenados}
-                      totales={totales}
-                      columnas={columnas}
-                      totalPorPiso={totalPorPiso}
-                      puertas={puertas}
-                      abierta={abierta}
-                      onAbrir={setAbierta}
-                      onItemSaved={onItemSaved}
-                      onFilaExtraSaved={onFilaExtraSaved}
-                      onFilaExtraDeleted={onFilaExtraDeleted}
-                      onNivelSaved={onNivelSaved}
-                      onNivelDeleted={onNivelDeleted}
-                    />
-                  ))}
-                </SortableContext>
-              </DndContext>
-            </tbody>
-
-            <tfoot>
-              <tr className="border-t-2 border-border bg-muted/80">
-                <th
-                  scope="row"
-                  className="px-3 py-2 text-left text-xs font-semibold tracking-wide text-foreground uppercase"
-                >
-                  Total
-                </th>
-                {itemsOrdenados.map((item) => {
-                  const total = totales.get(item.id) ?? 0;
-                  const vacio = item.mediciones.length === 0;
-                  const hierro = esHierro(item);
-                  // Los bultos (barras, palets, etc.) se redondean para arriba
-                  // una sola vez, acá en el total de toda la obra: hacerlo por
-                  // nivel y después sumar daría de más una vez por planta, que
-                  // en una obra de seis plantas son cinco palets comprados de
-                  // más (o, en hierro, barras de sobra en cada piso).
-                  const bultos = tieneBultos(item)
-                    ? bultosDe(item, materialDe(item, total))
-                    : null;
-
-                  // El hierro en el total muestra las tres columnas, igual que
-                  // en cada nivel: los metros totales, al lado las barras a
-                  // pedir redondeadas para arriba (acá sí tiene sentido
-                  // redondear, a diferencia de cada nivel por separado: ver el
-                  // comentario de arriba sobre por qué vive acá y no en cada
-                  // fila) y por último el peso total en kilos.
-                  if (hierro) {
-                    return (
-                      <Fragment key={item.id}>
-                        <td className="border-l px-3 py-2 text-right text-sm font-semibold tabular-nums">
-                          {vacio ? "—" : formatCantidad(total)}
-                        </td>
-                        <td className="bg-foreground/[0.04] px-3 py-2 text-right">
-                          {vacio || bultos === null ? (
-                            <span className="text-sm text-muted-foreground">—</span>
-                          ) : (
-                            <span
-                              title={`${formatCantidad(bultos.exacto)} barras exactas`}
-                              className="flex flex-col items-end leading-tight"
-                            >
-                              <span className="text-sm font-semibold tabular-nums">
-                                {bultos.enteros}
-                              </span>
-                              <span className="text-[10px] tabular-nums text-muted-foreground">
-                                {formatCantidad(bultos.exacto)}
-                              </span>
-                            </span>
-                          )}
-                        </td>
-                        <td className="bg-foreground/[0.04] px-3 py-2 text-right text-sm font-semibold tabular-nums">
-                          {vacio ? "—" : formatCantidad(materialDe(item, total) ?? 0)}
-                        </td>
-                      </Fragment>
-                    );
-                  }
-
-                  return (
-                    <Fragment key={item.id}>
-                      <td className="border-l px-3 py-2 text-right text-sm font-semibold tabular-nums">
-                        {vacio ? "—" : formatCantidad(total)}
+                <tbody>
+                  {itemsOrdenados.length === 0 ? (
+                    <tr>
+                      <td colSpan={totalColumnas} className="px-3 py-6 text-center">
+                        <p className="text-sm text-muted-foreground">
+                          Esta sección no tiene ítems todavía.
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Cada ítem es una fila, con una celda por nivel. Al
+                          crearlo se le indica en qué se mide y cuánto desperdicio
+                          lleva.
+                        </p>
                       </td>
-                      {item.desperdicio !== null && (
-                        // La del desperdicio va un tono más apagada también acá:
-                        // el total que se mira es el medido, y el otro es el que
-                        // se copia a la orden de compra.
-                        <td className="bg-foreground/[0.04] px-3 py-2 text-right text-sm font-semibold tabular-nums text-muted-foreground">
-                          {vacio ? "—" : formatCantidad(conDesperdicio(total, item.desperdicio))}
-                        </td>
-                      )}
-                      {tieneBultos(item) && (
-                        <td className="bg-foreground/[0.04] px-3 py-2 text-right">
-                          {vacio || bultos === null ? (
-                            <span className="text-sm text-muted-foreground">—</span>
-                          ) : (
-                            <span
-                              title={`${formatCantidad(bultos.exacto)} ${etiquetaBultos([item])} exactos`}
-                              className="flex flex-col items-end leading-tight"
-                            >
-                              <span className="text-sm font-semibold tabular-nums">
-                                {bultos.enteros}
-                              </span>
-                              {/* El exacto al lado del entero: 6,26 dice que
-                                  sobran tres cuartos del último, y eso a veces
-                                  cambia la decisión de cuántos pedir. */}
-                              <span className="text-[10px] tabular-nums text-muted-foreground">
-                                {formatCantidad(bultos.exacto)}
-                              </span>
-                            </span>
-                          )}
-                        </td>
-                      )}
-                      {conversionDe(item) !== null && (
-                        <td className="bg-foreground/[0.06] px-3 py-2 text-right text-sm font-semibold tabular-nums">
-                          {vacio ? "—" : formatCantidad(materialDe(item, total) ?? 0)}
-                        </td>
-                      )}
-                      {puertas && (
-                        <Fragment>
-                          <td
-                            title={`Total de cajones C10 de ${item.nombre}`}
-                            className="bg-foreground/[0.04] px-3 py-2 text-right text-sm font-semibold tabular-nums"
-                          >
-                            {formatCantidad(totalCajones(item, "cajonC10"))}
-                          </td>
-                          <td
-                            title={`Total de cajones C15 de ${item.nombre}`}
-                            className="bg-foreground/[0.04] px-3 py-2 text-right text-sm font-semibold tabular-nums"
-                          >
-                            {formatCantidad(totalCajones(item, "cajonC15"))}
-                          </td>
-                          <td
-                            title={`Total de cajones C18 de ${item.nombre}`}
-                            className="bg-foreground/[0.04] px-3 py-2 text-right text-sm font-semibold tabular-nums"
-                          >
-                            {formatCantidad(totalCajones(item, "cajonC18"))}
-                          </td>
-                        </Fragment>
-                      )}
-                    </Fragment>
-                  );
-                })}
-                {totalPorPiso && (
-                  // El mismo número que daría sumar la columna nueva de todos
-                  // los pisos: la cuenta de toda la obra, para chequear de un
-                  // vistazo que el total por piso y el total por ítem cierran
-                  // igual.
-                  <td className="border-l bg-foreground/[0.04] px-3 py-2 text-right text-sm font-semibold tabular-nums">
-                    {items.every((i) => i.mediciones.length === 0)
-                      ? "—"
-                      : formatCantidad(
-                          items.reduce((acc, i) => acc + (totales.get(i.id) ?? 0), 0)
-                        )}
-                  </td>
-                )}
-              </tr>
-            </tfoot>
-          </table>
-        </div>
+                    </tr>
+                  ) : (
+                    <DndContext
+                      sensors={sensores}
+                      collisionDetection={closestCenter}
+                      // El detalle abierto es una fila aparte que no acompaña al
+                      // bloque mientras se arrastra: se cierra al empezar para que
+                      // no quede colgado debajo de una fila que ya no está ahí.
+                      onDragStart={() => setAbierta(null)}
+                      onDragEnd={soltarItem}
+                    >
+                      <SortableContext items={ordenItems} strategy={verticalListSortingStrategy}>
+                        {itemsOrdenados.map((item) => (
+                          <FilaItem
+                            key={item.id}
+                            proyectoId={proyectoId}
+                            item={item}
+                            filas={filas}
+                            totales={totales}
+                            totalColumnas={totalColumnas}
+                            puertas={puertas}
+                            arrastrable={itemsOrdenados.length > 1}
+                            abierta={abierta}
+                            onAbrir={setAbierta}
+                            seccionId={seccion.id}
+                            seccionNombre={seccion.nombre}
+                            onItemSaved={onItemSaved}
+                            onItemDeleted={onItemDeleted}
+                          />
+                        ))}
+                      </SortableContext>
+                    </DndContext>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </SortableContext>
+        </DndContext>
       )}
     </div>
   );
 }
 
 /**
- * Una fila de la grilla: el nivel a la izquierda y una celda por cada ítem.
+ * Una fila de la grilla: el ítem a la izquierda y una celda por cada columna
+ * (nivel, fila extra o "Toda la obra"), más el total a la derecha.
  *
- * Se mueve entera, del agarre, y no celda por celda: un piso es un bloque, y lo
- * que se reordena es en qué orden se recorre la obra, no dónde cae un número
- * suelto. Arrastrar una celda sola dejaría los m³ de bases en la planta baja y
- * los de columnas en el 1° piso, que es un dato roto.
+ * Se mueve entera, del agarre, y no celda por celda: un ítem es un bloque, y
+ * lo que se reordena es en qué orden se lee la lista de ítems de la sección,
+ * no dónde cae un número suelto.
  *
  * Abajo puede desplegarse el detalle de UNA celda. Va como fila entera y no
- * dentro de la columna porque una columna de la grilla mide dos centímetros: el
- * desglose necesita el ancho de la tabla para que entren la descripción y el
- * número.
+ * dentro de la columna porque una columna de la grilla mide dos centímetros:
+ * el desglose necesita el ancho de la tabla para que entren la descripción y
+ * el número.
  */
-function FilaGrilla({
+function FilaItem({
   proyectoId,
-  fila,
-  extra,
-  items,
+  item,
+  filas,
   totales,
-  columnas,
-  totalPorPiso,
+  totalColumnas,
   puertas,
+  arrastrable,
   abierta,
   onAbrir,
+  seccionId,
+  seccionNombre,
   onItemSaved,
-  onFilaExtraSaved,
-  onFilaExtraDeleted,
-  onNivelSaved,
-  onNivelDeleted,
+  onItemDeleted,
 }: {
   proyectoId: string;
-  fila: Fila;
-  /** La fila extra, si esta fila es una. Los niveles no tienen. */
-  extra: FilaExtraOpcion | undefined;
-  items: ItemOpcion[];
+  item: ItemOpcion;
+  filas: Fila[];
   totales: Map<string, number>;
-  columnas: number;
-  /** Si esta sección suma, a la derecha de todo, el total de todos los ítems en este piso. */
-  totalPorPiso: boolean;
-  /** Si esta sección es PUERTAS: cada ítem suma las columnas de cajones C10/C15. */
+  totalColumnas: number;
+  /** Si esta sección es PUERTAS: cada ítem reemplaza su cantidad por sus sub ítems. */
   puertas: boolean;
+  arrastrable: boolean;
   abierta: CeldaAbierta | null;
   onAbrir: (celda: CeldaAbierta | null) => void;
+  seccionId: string;
+  seccionNombre: string;
   onItemSaved: (item: ItemOpcion) => void;
-  onFilaExtraSaved: (fila: FilaExtraOpcion) => void;
-  onFilaExtraDeleted: (id: string) => void;
-  onNivelSaved: (nivel: NivelOpcion) => void;
-  onNivelDeleted: (id: string) => void;
+  onItemDeleted: (id: string) => void;
 }) {
-  const filaKey = claveFilaKey(fila.clave);
-  // "Toda la obra" no se arrastra: no es una planta, es el resto, y entre las
-  // plantas no significaría nada.
-  const arrastrable = fila.clave.tipo !== "general";
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: filaKey, disabled: !arrastrable });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: item.id,
+    disabled: !arrastrable,
+  });
 
-  const itemAbierto =
-    abierta && abierta.filaKey === filaKey
-      ? items.find((i) => i.id === abierta.itemId)
+  // Sólo en PUERTAS: cada ítem puede desplegar u ocultar el bloque de sus
+  // sub ítems desde la flechita de su propia fila. Arranca desplegado para
+  // no esconder de entrada algo que el que carga el cómputo recién hizo.
+  const [expandido, setExpandido] = useState(true);
+
+  const filaAbierta =
+    abierta && abierta.itemId === item.id
+      ? filas.find((f) => claveFilaKey(f.clave) === abierta.filaKey)
       : undefined;
 
-  // La suma de todos los ítems en este piso, sólo si la sección la pidió (ver
-  // `mostrarTotalPorFila`). "Vacío" es que ningún ítem tenga nada cargado en
-  // esta fila todavía, no que la suma dé 0 —un piso sin excavar en la fila de
-  // bases es "—", no "0 m³".
-  const tieneAlgo = items.some((i) => tieneMedidoEnFila(i, fila.clave));
-  const totalFila = totalPorPiso ? totalPorFila(items, fila.clave, totales) : 0;
+  // El ítem se pinta en una fila "de título" (nombre, lápiz, modelo, a todo
+  // el ancho, vacía de datos) y después una fila de verdad por cada unidad
+  // (ml/barras/kg, unidad, +desperdicio%, bultos, material, sub ítems...). Cada
+  // una es un <tr> entero, con su <th> de etiqueta y una <td> por columna: el
+  // alto de la fila lo decide el navegador como el máximo de esas celdas, así
+  // que la etiqueta queda alineada con sus datos sin tener que igualar a mano
+  // paddings ni alturas de línea.
+  const lineas = lineasDeItem({ proyectoId, item, totales, puertas, abierta, onAbrir, onItemSaved });
+  // En PUERTAS, colapsar el ítem esconde el bloque entero de sus sub ítems
+  // (no tiene ninguna otra línea): queda sólo la fila de título, con la
+  // flechita para volver a abrirlo.
+  const lineasVisibles = puertas && !expandido ? [] : lineas;
+  const filaStyle = { transform: CSS.Transform.toString(transform), transition };
+  const filaClase = cn(
+    "group/fila bg-muted/20 transition-colors duration-150",
+    isDragging ? "relative z-10 bg-background shadow-md" : "hover:bg-muted/40"
+  );
 
   return (
     <Fragment>
-      <tr
-        ref={setNodeRef}
-        style={{ transform: CSS.Transform.toString(transform), transition }}
-        className={cn(
-          "group/fila border-b transition-colors duration-150 last:border-b-0",
-          isDragging ? "relative z-10 bg-background shadow-md" : "hover:bg-muted/30"
-        )}
-      >
-        {/* La columna de los niveles va en gris y con el texto entero: es el
-            encabezado de la fila, no un dato, y cortar "SALA DE MÁQUINAS" en
-            "SALA DE MÁQ…" obliga a adivinar de qué fila es cada número. Si el
-            nombre es largo, baja de renglón. */}
+      <tr ref={setNodeRef} style={filaStyle} className={filaClase}>
+        {/* La columna del ítem va en gris y con el texto entero: es el
+            encabezado de la fila, no un dato, y cortarlo obligaría a
+            adivinar de qué ítem es cada número. Si el nombre es largo, baja
+            de renglón. */}
         <th
           scope="row"
-          className="bg-muted/40 px-3 py-1 text-left text-sm font-medium transition-colors duration-150 group-hover/fila:bg-muted/60"
+          colSpan={totalColumnas}
+          className="bg-muted/50 px-3 pt-1 text-left transition-colors duration-150 group-hover/fila:bg-muted/70"
         >
           <span className="flex min-w-0 items-start gap-1">
             {arrastrable ? (
               <Tooltip content="Arrastrar para reordenar">
                 <button
                   type="button"
-                  aria-label={`Mover ${fila.nombre}`}
+                  aria-label={`Mover ${item.nombre}`}
                   className="mt-0.5 shrink-0 touch-none cursor-grab rounded-sm text-muted-foreground/60 transition-colors duration-150 hover:text-foreground active:cursor-grabbing group-hover/fila:text-muted-foreground"
                   {...attributes}
                   {...listeners}
@@ -1670,357 +2064,122 @@ function FilaGrilla({
                 </button>
               </Tooltip>
             ) : (
-              // Hueco del mismo ancho que el agarre, para que el nombre de
-              // "Toda la obra" no quede corrido respecto de las plantas.
+              // Hueco del mismo ancho que el agarre, para que el nombre no
+              // quede corrido respecto de los demás ítems.
               <span className="w-3.5 shrink-0" aria-hidden />
             )}
-            {extra ? (
-              <FilaExtraNombre
-                proyectoId={proyectoId}
-                fila={extra}
-                onSaved={onFilaExtraSaved}
-                onDeleted={onFilaExtraDeleted}
-              />
-            ) : fila.clave.tipo === "nivel" ? (
-              <NivelNombre
-                proyectoId={proyectoId}
-                nivel={{ id: fila.clave.id, nombre: fila.nombre }}
-                onSaved={onNivelSaved}
-                onDeleted={onNivelDeleted}
-              />
-            ) : (
-              <span className="min-w-0 flex-1 leading-tight break-words">
-                {fila.nombre}
+            <span className="min-w-0 flex-1">
+              <span className="flex items-start gap-1">
+                {puertas && (
+                  <Tooltip content={expandido ? "Ocultar sub ítems" : "Mostrar sub ítems"}>
+                    <button
+                      type="button"
+                      aria-expanded={expandido}
+                      aria-label={
+                        expandido
+                          ? `Ocultar sub ítems de ${item.nombre}`
+                          : `Mostrar sub ítems de ${item.nombre}`
+                      }
+                      onClick={() => setExpandido((v) => !v)}
+                      className="mt-0.5 shrink-0 rounded-sm text-muted-foreground transition-colors duration-150 hover:text-foreground"
+                    >
+                      <ChevronDown
+                        className={cn(
+                          "h-3.5 w-3.5 transition-transform duration-200",
+                          !expandido && "-rotate-90"
+                        )}
+                      />
+                    </button>
+                  </Tooltip>
+                )}
+                <span className="min-w-0 flex-1 text-sm font-medium leading-tight break-words">
+                  {item.nombre}
+                </span>
+                <ItemSeccionDialog
+                  proyectoId={proyectoId}
+                  seccionId={seccionId}
+                  seccionNombre={seccionNombre}
+                  item={item}
+                  onSaved={onItemSaved}
+                  onDeleted={onItemDeleted}
+                  trigger={
+                    <button
+                      type="button"
+                      aria-label={`Editar ${item.nombre}`}
+                      title={`Editar ${item.nombre}`}
+                      className="shrink-0 rounded-sm text-muted-foreground opacity-0 transition-all duration-150 group-hover/fila:opacity-100 hover:text-foreground focus:opacity-100"
+                    >
+                      <Pencil className="h-3 w-3" />
+                    </button>
+                  }
+                />
               </span>
-            )}
+              {/* El modelo elegido, si ya se sabe. No entra en ninguna
+                  cuenta: es sólo para tenerlo anotado al lado del ítem. */}
+              {item.modelo && (
+                <span
+                  title={item.modelo}
+                  className="block truncate text-[10px] font-normal text-muted-foreground italic"
+                >
+                  {item.modelo}
+                </span>
+              )}
+            </span>
           </span>
         </th>
-
-        {items.map((item) => {
-          const tiene = tieneMedidoEnFila(item, fila.clave);
-          const medido = medidoEnFila(item, fila.clave, totales);
-          const renglones = medicionesDeFila(item, fila.clave);
-          // Una celda que sale de una cuenta sobre otro ítem no se escribe ni
-          // se desglosa: el número viene de otro lado y pisarlo borraría la
-          // cuenta sin que se vea.
-          const derivada = esDerivadaEnFila(item, fila.clave);
-          const desglosada = renglones.length > 1;
-          const abierto = abierta?.itemId === item.id && abierta.filaKey === filaKey;
-          const hierro = esHierro(item);
-          // Lo que se lee en la celda de hierro es la cantidad de barras, no
-          // los metros: acá sólo interesa cuánto pedir. Sin redondear, como
-          // toda celda de nivel (ver bultosDe) — el redondeo es sólo del
-          // total, al pie.
-          const barrasEnNivel = (ml: number) =>
-            formatCantidad(bultosDe(item, materialDe(item, ml))?.exacto ?? 0);
-          const kgEnNivel = (ml: number) => formatCantidad(materialDe(item, ml) ?? 0);
-
-          if (hierro) {
-            // El hierro va en tres columnas (ml, barras y kg) en vez de la
-            // celda única del resto de los ítems. Derivada y desglosada
-            // muestran las tres, de solo lectura; la simple delega en
-            // CeldaHierro, que ya trae sus tres <td> con los tres campos
-            // sincronizados.
-            if (derivada) {
-              return (
-                <Fragment key={item.id}>
-                  <td className="border-l px-1 py-0.5">
-                    <span
-                      title="Sale de una cuenta sobre otro ítem"
-                      className="block px-2 py-1 text-right text-sm tabular-nums text-muted-foreground italic"
-                    >
-                      {formatCantidad(medido)}
-                    </span>
-                  </td>
-                  <td className="bg-foreground/[0.04] px-1 py-0.5">
-                    <span
-                      title="Sale de una cuenta sobre otro ítem"
-                      className="block px-2 py-1 text-right text-sm tabular-nums text-muted-foreground italic"
-                    >
-                      {barrasEnNivel(medido)}
-                    </span>
-                  </td>
-                  <td className="bg-foreground/[0.04] px-1 py-0.5">
-                    <span
-                      title="Sale de una cuenta sobre otro ítem"
-                      className="block px-2 py-1 text-right text-sm tabular-nums text-muted-foreground italic"
-                    >
-                      {kgEnNivel(medido)}
-                    </span>
-                  </td>
-                </Fragment>
-              );
-            }
-
-            if (desglosada) {
-              // Con varios renglones el número de la celda es la suma, y una
-              // suma no se tipea: se toca y se corrige adentro, en cualquiera
-              // de las tres columnas.
-              return (
-                <Fragment key={item.id}>
-                  <td className="border-l px-1 py-0.5">
-                    <Tooltip content="Metros, sin redondear. Tocá para ver el detalle de cada renglón.">
-                      <button
-                        type="button"
-                        aria-expanded={abierto}
-                        aria-label={`Detalle de ${item.nombre} en ${fila.nombre}`}
-                        onClick={() => onAbrir(abierto ? null : { itemId: item.id, filaKey })}
-                        className="w-full rounded-sm px-2 py-1 text-right text-sm font-medium tabular-nums transition-colors duration-150 hover:bg-muted"
-                      >
-                        {formatCantidad(medido)}
-                      </button>
-                    </Tooltip>
-                  </td>
-                  <td className="bg-foreground/[0.04] px-1 py-0.5">
-                    <Tooltip content="Cantidad de barras, sin redondear (se redondea sólo en el Total). Tocá para ver el detalle de cada renglón.">
-                      <button
-                        type="button"
-                        aria-expanded={abierto}
-                        aria-label={`Detalle de ${item.nombre} en ${fila.nombre}`}
-                        onClick={() => onAbrir(abierto ? null : { itemId: item.id, filaKey })}
-                        className="w-full rounded-sm px-2 py-1 text-right text-sm font-medium tabular-nums transition-colors duration-150 hover:bg-muted"
-                      >
-                        {barrasEnNivel(medido)}
-                      </button>
-                    </Tooltip>
-                  </td>
-                  <td className="bg-foreground/[0.04] px-1 py-0.5">
-                    <Tooltip content="Peso en kilos, sin redondear. Tocá para ver el detalle de cada renglón.">
-                      <button
-                        type="button"
-                        aria-expanded={abierto}
-                        aria-label={`Detalle de ${item.nombre} en ${fila.nombre}`}
-                        onClick={() => onAbrir(abierto ? null : { itemId: item.id, filaKey })}
-                        className="w-full rounded-sm px-2 py-1 text-right text-sm font-medium tabular-nums transition-colors duration-150 hover:bg-muted"
-                      >
-                        {kgEnNivel(medido)}
-                      </button>
-                    </Tooltip>
-                  </td>
-                </Fragment>
-              );
-            }
-
-            return (
-              <CeldaHierro
-                key={item.id}
-                proyectoId={proyectoId}
-                item={item}
-                fila={fila.clave}
-                filaNombre={fila.nombre}
-                valor={tiene ? medido : null}
-                onSaved={onItemSaved}
-                abierto={abierto}
-                onAbrir={() => onAbrir(abierto ? null : { itemId: item.id, filaKey })}
-              />
-            );
-          }
-
-          return (
-            <Fragment key={item.id}>
-              <td className="group/celda border-l px-1 py-0.5">
-                <span className="flex items-center gap-0.5">
-                  {derivada ? (
-                    <span
-                      title="Sale de una cuenta sobre otro ítem"
-                      className="min-w-0 flex-1 px-2 py-1 text-right text-sm tabular-nums text-muted-foreground italic"
-                    >
-                      {formatCantidad(medido)}
-                    </span>
-                  ) : desglosada ? (
-                    // Con varios renglones el número de la celda es la suma, y
-                    // una suma no se tipea: se toca y se corrige adentro.
-                    <Tooltip content="Suma de los renglones. Tocá para ver el detalle.">
-                      <button
-                        type="button"
-                        aria-expanded={abierto}
-                        aria-label={`Detalle de ${item.nombre} en ${fila.nombre}`}
-                        onClick={() =>
-                          onAbrir(abierto ? null : { itemId: item.id, filaKey })
-                        }
-                        className="min-w-0 flex-1 rounded-sm px-2 py-1 text-right text-sm font-medium tabular-nums transition-colors duration-150 hover:bg-muted"
-                      >
-                        {formatCantidad(medido)}
-                      </button>
-                    </Tooltip>
-                  ) : (
-                    <Celda
-                      proyectoId={proyectoId}
-                      item={item}
-                      fila={fila.clave}
-                      filaNombre={fila.nombre}
-                      valor={tiene ? medido : null}
-                      onSaved={onItemSaved}
-                    />
-                  )}
-
-                  {!derivada && !desglosada && (
-                    // El desplegado arranca invisible: la mayoría de las celdas
-                    // son un número suelto y quince flechitas por fila taparían
-                    // la lectura de la planilla, que es para lo que se abre.
-                    <Tooltip content={`Detalle de ${item.nombre} en ${fila.nombre}`}>
-                      <button
-                        type="button"
-                        aria-expanded={abierto}
-                        aria-label={`Detalle de ${item.nombre} en ${fila.nombre}`}
-                        onClick={() =>
-                          onAbrir(abierto ? null : { itemId: item.id, filaKey })
-                        }
-                        className={cn(
-                          "shrink-0 rounded-sm p-0.5 text-muted-foreground transition-all duration-150 hover:bg-muted hover:text-foreground focus:opacity-100",
-                          abierto ? "opacity-100" : "opacity-0 group-hover/celda:opacity-100"
-                        )}
-                      >
-                        <ChevronDown
-                          className={cn(
-                            "h-3 w-3 transition-transform duration-200",
-                            abierto && "rotate-180"
-                          )}
-                        />
-                      </button>
-                    </Tooltip>
-                  )}
-                </span>
-              </td>
-
-              {item.desperdicio !== null && (
-                // Un tono más apagada que la de al lado: no es un dato medido,
-                // es el mismo número con la merma encima. Se lee de reojo al
-                // armar la compra, no al computar.
-                <td className="bg-foreground/[0.03] px-2 py-1 text-right text-sm tabular-nums text-muted-foreground">
-                  {!tiene ? "—" : formatCantidad(conDesperdicio(medido, item.desperdicio))}
-                </td>
-              )}
-
-              {tieneBultos(item) && (
-                // El exacto de este nivel, sin redondear: redondear acá y
-                // sumar los niveles después compraría de más, una vez por
-                // nivel (ver el comentario de `bultosDe`). El número que se
-                // usa para pedir es el redondeado del total, al pie.
-                <td
-                  title={`${item.nombre} en ${fila.nombre}: cantidad de ${etiquetaBultos([item])}, sin redondear`}
-                  className="bg-foreground/[0.04] px-2 py-1 text-right text-sm tabular-nums text-muted-foreground"
-                >
-                  {!tiene
-                    ? "—"
-                    : formatCantidad(bultosDe(item, materialDe(item, medido))?.exacto ?? 0)}
-                </td>
-              )}
-
-              {conversionDe(item) !== null && (
-                // El material del nivel. No se puede escribir: sale de lo medido
-                // y pisarlo a mano rompería la única regla del módulo, que es
-                // que ningún total se carga a dedo.
-                <td
-                  title={`${item.nombre} en ${fila.nombre}, en la unidad en que se compra`}
-                  className="bg-foreground/[0.05] px-2 py-1 text-right text-sm font-medium tabular-nums"
-                >
-                  {!tiene ? "—" : formatCantidad(materialDe(item, medido) ?? 0)}
-                </td>
-              )}
-
-              {puertas &&
-                // Los cajones (C10, C15, C18) de esta celda. Van en la misma
-                // fila que la cantidad de puertas, pero son números aparte: se
-                // puede cargar uno sin los otros. Derivada o desglosada
-                // (varios renglones) muestran la suma de solo lectura, igual
-                // que la columna de puertas: no hay una fila obvia a la que
-                // mandar un número tipeado ahí.
-                (derivada || desglosada ? (
-                  <Fragment>
-                    <td
-                      title={`Suma de los cajones C10 de ${item.nombre} en ${fila.nombre}`}
-                      className="bg-foreground/[0.04] px-2 py-1 text-right text-sm tabular-nums text-muted-foreground italic"
-                    >
-                      {formatCantidad(cajonesEnFila(item, fila.clave, "cajonC10"))}
-                    </td>
-                    <td
-                      title={`Suma de los cajones C15 de ${item.nombre} en ${fila.nombre}`}
-                      className="bg-foreground/[0.04] px-2 py-1 text-right text-sm tabular-nums text-muted-foreground italic"
-                    >
-                      {formatCantidad(cajonesEnFila(item, fila.clave, "cajonC15"))}
-                    </td>
-                    <td
-                      title={`Suma de los cajones C18 de ${item.nombre} en ${fila.nombre}`}
-                      className="bg-foreground/[0.04] px-2 py-1 text-right text-sm tabular-nums text-muted-foreground italic"
-                    >
-                      {formatCantidad(cajonesEnFila(item, fila.clave, "cajonC18"))}
-                    </td>
-                  </Fragment>
-                ) : (
-                  <Fragment>
-                    <td className="bg-foreground/[0.04] px-1 py-0.5">
-                      <CeldaCajon
-                        proyectoId={proyectoId}
-                        item={item}
-                        fila={fila.clave}
-                        filaNombre={fila.nombre}
-                        campo="cajonC10"
-                        etiqueta="C10"
-                        valor={
-                          renglones.some((m) => m.cajonC10 !== null)
-                            ? cajonesEnFila(item, fila.clave, "cajonC10")
-                            : null
-                        }
-                        onSaved={onItemSaved}
-                      />
-                    </td>
-                    <td className="bg-foreground/[0.04] px-1 py-0.5">
-                      <CeldaCajon
-                        proyectoId={proyectoId}
-                        item={item}
-                        fila={fila.clave}
-                        filaNombre={fila.nombre}
-                        campo="cajonC15"
-                        etiqueta="C15"
-                        valor={
-                          renglones.some((m) => m.cajonC15 !== null)
-                            ? cajonesEnFila(item, fila.clave, "cajonC15")
-                            : null
-                        }
-                        onSaved={onItemSaved}
-                      />
-                    </td>
-                    <td className="bg-foreground/[0.04] px-1 py-0.5">
-                      <CeldaCajon
-                        proyectoId={proyectoId}
-                        item={item}
-                        fila={fila.clave}
-                        filaNombre={fila.nombre}
-                        campo="cajonC18"
-                        etiqueta="C18"
-                        valor={
-                          renglones.some((m) => m.cajonC18 !== null)
-                            ? cajonesEnFila(item, fila.clave, "cajonC18")
-                            : null
-                        }
-                        onSaved={onItemSaved}
-                      />
-                    </td>
-                  </Fragment>
-                ))}
-            </Fragment>
-          );
-        })}
-
-        {totalPorPiso && (
-          <td
-            title={`Suma de todos los ítems de esta sección en ${fila.nombre}`}
-            className="border-l bg-foreground/[0.04] px-2 py-1 text-right text-sm font-semibold tabular-nums"
-          >
-            {!tieneAlgo ? "—" : formatCantidad(totalFila)}
-          </td>
-        )}
       </tr>
 
-      {itemAbierto && (
+      {lineasVisibles.map((linea, i) => (
+        <tr
+          key={linea.key}
+          style={filaStyle}
+          className={cn(
+            filaClase,
+            i === lineasVisibles.length - 1 && "border-b last:border-b-0"
+          )}
+        >
+          <th
+            scope="row"
+            className="bg-muted/50 px-3 py-0.5 text-left align-middle text-xs font-medium text-muted-foreground transition-colors duration-150 group-hover/fila:bg-muted/70"
+          >
+            <span className="flex min-w-0 items-center gap-1">
+              <span className="w-3.5 shrink-0" aria-hidden />
+              {puertas && <span className="w-3.5 shrink-0" aria-hidden />}
+              {linea.etiqueta}
+            </span>
+          </th>
+
+          {/* La unidad del ítem, repetida en cada línea (no con rowSpan):
+              así cada <tr> queda completo por su cuenta y no depende de que
+              la primera línea del bloque sea siempre la misma, algo que deja
+              de ser cierto apenas se suma o se borra un sub ítem. */}
+          {puertas && (
+            <td className="border-l bg-muted/30 px-1 py-0.5 text-center align-middle text-xs text-muted-foreground">
+              {simboloUnidad(item.unidad)}
+            </td>
+          )}
+
+          {filas.map((fila) => (
+            <td
+              key={claveFilaKey(fila.clave)}
+              className="group/celda border-l px-1 py-0.5 align-middle"
+            >
+              {linea.celda(fila)}
+            </td>
+          ))}
+
+          <td className="border-l-2 bg-muted/30 px-1 py-0.5 align-middle">{linea.total()}</td>
+        </tr>
+      ))}
+
+      {filaAbierta && (
         <tr className="border-b bg-muted/50 duration-150 animate-in fade-in">
-          <td colSpan={columnas} className="px-3 py-2">
+          <td colSpan={totalColumnas} className="px-3 py-2">
             <DetalleCelda
               proyectoId={proyectoId}
-              item={itemAbierto}
-              fila={fila.clave}
-              filaNombre={fila.nombre}
+              item={item}
+              fila={filaAbierta.clave}
+              filaNombre={filaAbierta.nombre}
               onSaved={onItemSaved}
               onCerrar={() => onAbrir(null)}
             />
@@ -2097,9 +2256,9 @@ function DetalleCelda({
         )}
       >
         <span />
-        <span className="text-right">{simboloUnidad(item.unidad)}</span>
-        {hierro && <span className="text-right">barras</span>}
-        {hierro && <span className="text-right">kg</span>}
+        <span className="text-center">{simboloUnidad(item.unidad)}</span>
+        {hierro && <span className="text-center">barras</span>}
+        {hierro && <span className="text-center">kg</span>}
         <span />
       </div>
 
@@ -2221,7 +2380,7 @@ function RenglonDetalle({
       {/* El valor tipeado y, si corresponde, lo que aporta debajo: van juntos
           en la misma columna porque son la misma medida, una cargada y otra
           calculada a partir de ella (ver el comentario de `aporta` arriba). */}
-      <span className="flex flex-col items-end">
+      <span className="flex flex-col items-center">
         <input
           value={valor}
           onChange={(e) => setValor(e.target.value)}
@@ -2235,10 +2394,10 @@ function RenglonDetalle({
           inputMode="decimal"
           aria-label="Cantidad del renglón"
           disabled={pending}
-          className="w-full rounded-sm border border-transparent bg-transparent px-2 py-1 text-right text-sm tabular-nums transition-colors duration-150 hover:border-input focus:border-ring focus:bg-background focus:outline-none"
+          className="w-full rounded-sm border border-transparent bg-transparent px-2 py-1 text-center text-sm tabular-nums transition-colors duration-150 hover:border-input focus:border-ring focus:bg-background focus:outline-none"
         />
         {conMedidas && (
-          <span className="pr-2 text-right text-[10px] text-muted-foreground tabular-nums">
+          <span className="block text-center text-[10px] text-muted-foreground tabular-nums">
             = {formatCantidad(aporta)}
           </span>
         )}
@@ -2246,7 +2405,7 @@ function RenglonDetalle({
       {hierro && (
         <span
           title={`${formatCantidad(aporta)} m ÷ 12 m por barra`}
-          className="text-right text-sm text-muted-foreground tabular-nums"
+          className="text-center text-sm text-muted-foreground tabular-nums"
         >
           {formatCantidad(barras ?? 0)}
         </span>
@@ -2254,7 +2413,7 @@ function RenglonDetalle({
       {hierro && (
         <span
           title={`${formatCantidad(barras ?? 0)} barras × ${formatCantidad(item.porBulto ?? 0)} kg cada una`}
-          className="text-right text-sm text-muted-foreground tabular-nums"
+          className="text-center text-sm text-muted-foreground tabular-nums"
         >
           {formatCantidad(kg ?? 0)}
         </span>
@@ -2360,7 +2519,7 @@ function RenglonNuevo({
           inputMode="decimal"
           placeholder="0,58"
           aria-label="Cantidad del renglón nuevo"
-          className="rounded-sm border border-input bg-background px-2 py-1 text-right text-sm tabular-nums focus:border-ring focus:outline-none"
+          className="rounded-sm border border-input bg-background px-2 py-1 text-center text-sm tabular-nums focus:border-ring focus:outline-none"
         />
       </div>
       <div className="flex justify-end">
@@ -2373,118 +2532,3 @@ function RenglonNuevo({
   );
 }
 
-/**
- * Las subcolumnas de un ítem: lo medido, lo medido con la merma, los bultos
- * (si se compra agrupado) y el material.
- *
- * El porcentaje y el rinde van acá arriba, en el encabezado, y no repetidos en
- * cada celda: son propiedades del ítem, y verlos quince veces hacia abajo no
- * agrega nada. De paso el encabezado deja la cuenta a la vista —"medido",
- * "+10%", "×15 un"— así que la tercera columna no aparece como un número
- * mágico: se lee de izquierda a derecha de dónde salió.
- *
- * Las últimas tres aparecen sólo si el ítem las tiene. Una columna que repite
- * exactamente el número de al lado es una columna que no dice nada.
- */
-function Subencabezados({
-  item,
-  puertas,
-}: {
-  item: ItemOpcion;
-  /** Si esta sección es PUERTAS: tres columnas más, C10, C15 y C18, los cajones. */
-  puertas: boolean;
-}) {
-  const conversion = conversionDe(item);
-
-  const cajones = puertas && (
-    <Fragment>
-      <th
-        title="Cajones chicos (C10) de este ítem en esta fila"
-        className="bg-foreground/[0.04] px-2 pb-1 text-right text-[10px] font-normal text-muted-foreground"
-      >
-        C10
-      </th>
-      <th
-        title="Cajones grandes (C15) de este ítem en esta fila"
-        className="bg-foreground/[0.04] px-2 pb-1 text-right text-[10px] font-normal text-muted-foreground"
-      >
-        C15
-      </th>
-      <th
-        title="Cajones de 18 (C18) de este ítem en esta fila"
-        className="bg-foreground/[0.04] px-2 pb-1 text-right text-[10px] font-normal text-muted-foreground"
-      >
-        C18
-      </th>
-    </Fragment>
-  );
-
-  // El hierro va en tres subcolumnas, ml, barras y kg, una al lado de la
-  // otra: las tres se pueden tipear y se mantienen sincronizadas entre sí
-  // (ver CeldaHierro). Barras y kg llevan fondo gris como las demás columnas
-  // calculadas, aunque acá también se pueda escribir directamente.
-  if (esHierro(item)) {
-    return (
-      <Fragment>
-        <th
-          title="Lo que se mide en obra, en metros lineales. Se puede completar acá, en barras o en kg: lo que no se toque sale solo de lo que sí."
-          className="border-l px-2 pb-1 text-right text-[10px] font-normal text-muted-foreground"
-        >
-          ml
-        </th>
-        <th
-          title={`Cantidad de barras de 12 m, de ${formatCantidad(item.porBulto!)} kg cada una. Se puede completar acá, en ml o en kg: lo que no se toque sale solo de lo que sí.`}
-          className="bg-foreground/[0.04] px-2 pb-1 text-right text-[10px] font-normal text-muted-foreground"
-        >
-          barras
-        </th>
-        <th
-          title="Peso total del hierro, en kilos. Se puede completar acá, en ml o en barras: lo que no se toque sale solo de lo que sí."
-          className="bg-foreground/[0.04] px-2 pb-1 text-right text-[10px] font-normal text-muted-foreground"
-        >
-          kg
-        </th>
-        {cajones}
-      </Fragment>
-    );
-  }
-
-  return (
-    <Fragment>
-      {/* El rótulo de esta primera columna es la unidad en la que se carga
-          ("ml", "m²", "kg"...) y no la palabra genérica "medido": así queda
-          claro de entrada qué es lo único que hay que tipear. */}
-      <th
-        title={`Lo que se carga a mano, en ${UNIDAD_INFO[item.unidad].nombre.toLowerCase()}`}
-        className="border-l px-2 pb-1 text-right text-[10px] font-normal text-muted-foreground"
-      >
-        {simboloUnidad(item.unidad)}
-      </th>
-      {item.desperdicio !== null && (
-        <th className="px-2 pb-1 text-right text-[10px] font-normal text-muted-foreground">
-          +{formatCantidad(item.desperdicio)}%
-        </th>
-      )}
-      {tieneBultos(item) && (
-        <th
-          title={`Cantidad de ${etiquetaBultos([item])}, de ${formatCantidad(item.porBulto!)} ${simboloUnidad(item.rindeUnidad!)} cada una`}
-          className="bg-foreground/[0.04] px-2 pb-1 text-right text-[10px] font-normal text-muted-foreground"
-        >
-          {etiquetaBultos([item])}
-        </th>
-      )}
-      {conversion && (
-        // El rótulo es la unidad del material ("kg"), no la fórmula: la
-        // fórmula (cuánto rinde cada unidad medida) queda en el title, para
-        // quien la quiera ver sin ocupar el ancho de la columna.
-        <th
-          title={`Cada ${simboloUnidad(item.unidad)} son ${formatCantidad(conversion.rinde)} ${simboloUnidad(conversion.unidad)}`}
-          className="bg-foreground/[0.05] px-2 pb-1 text-right text-[10px] font-normal text-muted-foreground"
-        >
-          {simboloUnidad(conversion.unidad)}
-        </th>
-      )}
-      {cajones}
-    </Fragment>
-  );
-}

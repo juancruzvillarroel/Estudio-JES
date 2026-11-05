@@ -1,6 +1,6 @@
 /**
  * El cómputo de un rubro en papel, con la misma forma que tiene en pantalla:
- * los niveles como filas, los ítems como columnas.
+ * los ítems como filas, los niveles como columnas.
  *
  * Es distinto del informe general (informe-computo.ts), que lista ítem por ítem
  * hacia abajo con todo su detalle. Los dos sirven, para cosas distintas: el
@@ -8,20 +8,26 @@
  * sale cada número—, y éste es el que se lleva a la obra o a una reunión, donde
  * lo que se busca es leer de un vistazo cuánto va en cada planta.
  *
- * Va apaisado. Un cómputo es ancho por naturaleza: seis ítems con su columna de
- * desperdicio son trece columnas, y en A4 vertical eso entra ilegible. Apaisado
- * entran cómodos hasta ocho o nueve ítems por sección; pasando eso conviene
- * partir la sección, que es además como está organizada la obra.
+ * Va apaisado. Un cómputo es ancho por naturaleza cuando los niveles son
+ * columnas: seis niveles con sus subtotales son columnas de sobra para A4
+ * vertical. Apaisado entran cómodos hasta ocho o nueve niveles por sección;
+ * pasando eso, la fila de cada ítem crece hacia abajo con sub-líneas en vez de
+ * la tabla crecer para el costado, que es justo lo que esta forma evita.
  *
- * Quien llama ya decide qué entra: las secciones y las filas llegan filtradas y
- * en orden. Acá no se elige nada, sólo se dibuja. Así el diálogo de descarga es
- * el único lugar donde vive esa decisión.
+ * Cada ítem con más de un valor por celda —el hierro mide en metros, barras y
+ * kilos a la vez; una puerta suma además uno por cada sub ítem que tenga—
+ * apila esos valores en líneas dentro de la misma celda, con su etiqueta una
+ * sola vez en la columna del ítem (ver `etiquetasItem`) en vez de abrir una
+ * columna más por cada uno.
+ *
+ * Quien llama ya decide qué entra: las secciones, las filas y los ítems llegan
+ * filtrados y en orden. Acá no se elige nada, sólo se dibuja. Así el diálogo de
+ * descarga es el único lugar donde vive esa decisión.
  */
 
 import {
   barrasDeMetros,
   bultosDe,
-  cajonesEnFila,
   conDesperdicio,
   conversionDe,
   esDerivadaEnFila,
@@ -35,8 +41,11 @@ import {
   medidoEnFila,
   parcialMedicion,
   simboloUnidad,
+  subItemEnFila,
+  subItemMedicionesDeFila,
+  tieneBultos,
   tieneMedidoEnFila,
-  totalCajones,
+  totalSubItem,
   TIPO_COMPUTO_LABEL,
   type ClaveFila,
   type ItemOpcion,
@@ -119,22 +128,22 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
   const { items, filas } = seccion;
 
   /**
-   * PUERTAS lleva, además de la columna de siempre, los cajones de C10, C15
-   * y C18 — la misma excepción que tiene la grilla en pantalla (ver
-   * `esSeccionPuertas`).
+   * PUERTAS no tiene línea de cantidad propia —en vez de eso, una línea por
+   * cada sub ítem que tenga cada puerta— la misma excepción que tiene la
+   * grilla en pantalla (ver `esSeccionPuertas`).
    */
   const puertas = esSeccionPuertas(seccion.seccion);
 
-  /** ¿Va la columna de la merma de este ítem? Depende de lo que se eligió bajar. */
+  /** ¿Va la línea de la merma de este ítem? Depende de lo que se eligió bajar. */
   const conMerma = (item: ItemOpcion) =>
     datos.conDesperdicio && item.desperdicio !== null;
 
   /**
-   * Las columnas del hierro que van impresas, en orden fijo (ml, barras, kg).
+   * Las lecturas del hierro que van impresas, en orden fijo (ml, barras, kg).
    *
-   * Si no se eligió ninguna (se destildaron las tres) cae en ml y nada más: una
-   * columna sola, pero una, que cero columnas dejaría al ítem sin dónde poner su
-   * número.
+   * Si no se eligió ninguna (se destildaron las tres) cae en ml y nada más:
+   * una línea sola, pero una, que ninguna línea dejaría al ítem sin dónde
+   * poner su número.
    */
   const columnasHierro = () => {
     const elegidas = UNIDADES_HIERRO.filter((u) => datos.unidadesHierro[u]);
@@ -150,10 +159,10 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
 
   /**
    * Lo mismo que `valoresHierro`, pero con las barras ya redondeadas para
-   * arriba. Sólo tiene sentido en una fila de TOTAL (o en la de +10%, que es
-   * un total con otro número adentro): las barras se compran una vez para
-   * toda la obra, así que ahí —y sólo ahí— corresponde el redondeo. Por eso
-   * ya no hace falta una fila aparte debajo del total.
+   * arriba. Sólo tiene sentido en el total de la columna (o en la línea de
+   * +10%, que es un total con otro número adentro): las barras se compran
+   * una vez para toda la obra, así que ahí —y sólo ahí— corresponde el
+   * redondeo.
    */
   const valoresHierroRedondeado = (item: ItemOpcion, medido: number) => {
     const kg = kgDeMetros(item, medido);
@@ -161,11 +170,11 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
     return { ml: medido, barras: bultos?.enteros ?? 0, kg };
   };
 
-  /** Los ítems de hierro de esta sección: son los que alimentan la columna del total en kg. */
+  /** Los ítems de hierro de esta sección: son los que alimentan la fila del total en kg. */
   const hierroItems = items.filter((i) => esHierro(i));
   const conTotalKg = hierroItems.length > 0;
 
-  /** Cuántos kg suman, entre todos los diámetros, lo cargado en esta fila (un piso). */
+  /** Cuántos kg suman, entre todos los diámetros, lo cargado en esta columna (un piso). */
   const totalKgFila = (fila: ClaveFila): number | null => {
     const algo = hierroItems.some((i) => tieneMedidoEnFila(i, fila));
     if (!algo) return null;
@@ -175,148 +184,234 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
     }, 0);
   };
 
-  /** La celda de la columna del total en kg, o nada si esta sección no tiene hierro. */
-  const celdaTotalKg = (valor: number | null) =>
-    conTotalKg
-      ? `<td class="num total-kg-col">${esc(valor === null ? "—" : formatCantidad(valor))}</td>`
-      : "";
-
   /**
-   * Una celda de hierro para una de sus columnas elegidas. `valores` null es la
-   * fila sin nada cargado: pinta raya, igual que cualquier otra celda vacía.
+   * Una línea de hierro para una de sus lecturas elegidas. `valores` null es
+   * la celda sin nada cargado: pinta raya, igual que cualquier otra línea
+   * vacía.
    */
-  const celdaHierro = (
+  const lineaHierro = (
     unidad: UnidadHierro,
     valores: { ml: number; barras: number; kg: number } | null,
     derivada = false
   ) => {
-    const clase = `num${unidad === "ml" ? "" : " material"}${derivada ? " derivada" : ""}`;
+    const clase = `sub-linea num${unidad === "ml" ? "" : " material"}${derivada ? " derivada" : ""}`;
     const valor = valores === null ? "—" : formatCantidad(valores[unidad]);
-    return `<td class="${clase}">${esc(valor)}</td>`;
+    return `<span class="${clase}">${esc(valor)}</span>`;
   };
 
-  /** Las tres columnas de cajones (C10, C15, C18) de PUERTAS: tres tds vacíos, o nada si no aplica. */
-  const celdaCajonVacia = (item: ItemOpcion) =>
-    puertas && !esHierro(item)
-      ? `<td class="num cajon"></td><td class="num cajon"></td><td class="num cajon"></td>`
-      : "";
-
-  const columnasPorItem = (item: ItemOpcion) =>
-    esHierro(item)
-      ? columnasHierro().length
-      : 1 +
-        (conMerma(item) ? 1 : 0) +
-        (conversionDe(item) !== null ? 1 : 0) +
-        (puertas ? 3 : 0);
-
-  /** Las celdas numéricas vacías de un ítem, todas las que le toquen. */
-  const celdasVacias = (item: ItemOpcion) => {
+  /**
+   * Las etiquetas apiladas de la columna del ítem: una por cada línea que su
+   * celda va a apilar a la derecha, para no tener que repetirla en cada nivel.
+   */
+  const etiquetasItem = (item: ItemOpcion) => {
     if (esHierro(item)) {
       return columnasHierro()
-        .map((u) => `<td class="num${u === "ml" ? "" : " material"}"></td>`)
+        .map((u) => `<span class="etiqueta">${esc(ETIQUETA_UNIDAD_HIERRO[u])}</span>`)
         .join("");
     }
-    return `<td class="num"></td>${conMerma(item) ? `<td class="num merma"></td>` : ""}${
-      conversionDe(item) !== null ? `<td class="num material"></td>` : ""
-    }${celdaCajonVacia(item)}`;
+    const conversion = conversionDe(item);
+    return `${
+      // Un ítem de PUERTAS no tiene cantidad propia: no hay etiqueta de
+      // unidad del ítem, sólo una por cada sub ítem (ver más abajo).
+      puertas ? "" : `<span class="etiqueta">${esc(simboloUnidad(item.unidad))}</span>`
+    }${
+      conMerma(item)
+        ? `<span class="etiqueta">+${esc(formatCantidad(item.desperdicio ?? 0))}%</span>`
+        : ""
+    }${
+      tieneBultos(item)
+        ? `<span class="etiqueta">${esc(etiquetaBultos([item]))}</span>`
+        : ""
+    }${
+      conversion
+        ? `<span class="etiqueta">${esc(simboloUnidad(conversion.unidad))}</span>`
+        : ""
+    }${
+      puertas
+        ? item.subItems.map((s) => `<span class="etiqueta">${esc(s.nombre)}</span>`).join("")
+        : ""
+    }`;
   };
 
   /**
-   * Las celdas de C10, C15 y C18 de una fila (un piso): mismo criterio que en
-   * pantalla —"—" si ningún renglón de esa fila tiene el campo cargado, en vez
-   * de un cero que confundiría "no se cargó" con "no lleva cajones"—.
+   * Las líneas de los sub ítems de PUERTAS de una celda, o nada si no
+   * aplica. Mismo criterio que en pantalla —"—" si el sub ítem no tiene nada
+   * cargado en esa fila, en vez de un cero que confundiría "no se cargó" con
+   * "no lleva este sub ítem"—.
    */
-  const celdasCajonFila = (item: ItemOpcion, fila: ClaveFila) => {
+  const lineasSubItemFila = (item: ItemOpcion, fila: ClaveFila) => {
     if (!puertas || esHierro(item)) return "";
-    const renglones = medicionesDeFila(item, fila);
-    const c10 = renglones.some((m) => m.cajonC10 !== null)
-      ? formatCantidad(cajonesEnFila(item, fila, "cajonC10"))
-      : "—";
-    const c15 = renglones.some((m) => m.cajonC15 !== null)
-      ? formatCantidad(cajonesEnFila(item, fila, "cajonC15"))
-      : "—";
-    const c18 = renglones.some((m) => m.cajonC18 !== null)
-      ? formatCantidad(cajonesEnFila(item, fila, "cajonC18"))
-      : "—";
-    return `<td class="num cajon">${esc(c10)}</td><td class="num cajon">${esc(c15)}</td><td class="num cajon">${esc(c18)}</td>`;
+    return item.subItems
+      .map((subItem) => {
+        const cargado = subItemMedicionesDeFila(subItem, fila).length > 0;
+        return `<span class="sub-linea num cajon">${
+          cargado ? esc(formatCantidad(subItemEnFila(subItem, fila))) : "—"
+        }</span>`;
+      })
+      .join("");
   };
 
-  /** Lo mismo que `celdasCajonFila`, pero para el total de toda la sección. */
-  const celdasCajonTotal = (item: ItemOpcion) => {
+  /** Lo mismo que `lineasSubItemFila`, pero para el total de toda la sección. */
+  const lineasSubItemTotal = (item: ItemOpcion) => {
     if (!puertas || esHierro(item)) return "";
-    const c10 = item.mediciones.some((m) => m.cajonC10 !== null)
-      ? formatCantidad(totalCajones(item, "cajonC10"))
-      : "—";
-    const c15 = item.mediciones.some((m) => m.cajonC15 !== null)
-      ? formatCantidad(totalCajones(item, "cajonC15"))
-      : "—";
-    const c18 = item.mediciones.some((m) => m.cajonC18 !== null)
-      ? formatCantidad(totalCajones(item, "cajonC18"))
-      : "—";
-    return `<td class="num cajon">${esc(c10)}</td><td class="num cajon">${esc(c15)}</td><td class="num cajon">${esc(c18)}</td>`;
+    return item.subItems
+      .map((subItem) => {
+        const total = totalSubItem(subItem);
+        return `<span class="sub-linea num cajon">${
+          total > 0 ? esc(formatCantidad(total)) : "—"
+        }</span>`;
+      })
+      .join("");
+  };
+
+  /** El contenido de una celda (un ítem, un nivel): las líneas que le toquen, apiladas. */
+  const celdaItem = (item: ItemOpcion, fila: ClaveFila) => {
+    const tiene = tieneMedidoEnFila(item, fila);
+    const medido = medidoEnFila(item, fila, datos.totales);
+    const derivada = esDerivadaEnFila(item, fila);
+    if (esHierro(item)) {
+      const valores = tiene ? valoresHierro(item, medido) : null;
+      return columnasHierro()
+        .map((u) => lineaHierro(u, valores, derivada))
+        .join("");
+    }
+    // Lo que no se computó va con raya y no con cero. En el papel esa
+    // diferencia es la que dice qué falta todavía. Un ítem de PUERTAS no
+    // tiene esta línea: queda reemplazada del todo por sus sub ítems (ver
+    // `lineasSubItemFila`).
+    const linea = puertas
+      ? ""
+      : `<span class="sub-linea num${derivada ? " derivada" : ""}">${esc(
+          tiene ? formatCantidad(medido) : "—"
+        )}</span>`;
+    const merma = !conMerma(item)
+      ? ""
+      : `<span class="sub-linea num merma">${esc(
+          tiene ? formatCantidad(conDesperdicio(medido, item.desperdicio)) : "—"
+        )}</span>`;
+    const material =
+      conversionDe(item) === null
+        ? ""
+        : `<span class="sub-linea num material">${esc(
+            tiene ? formatCantidad(materialDe(item, medido) ?? 0) : "—"
+          )}</span>`;
+    return `${linea}${merma}${material}${lineasSubItemFila(item, fila)}`;
   };
 
   /**
-   * Los renglones que hay detrás de las celdas desglosadas de una fila, cada uno
-   * como su propia fila de la tabla.
+   * El contenido de la celda de Total de un ítem: lo que antes se repartía
+   * entre la fila de Total, la de +10% y la de bultos, ahora apilado en la
+   * única celda que le queda a cada ítem del lado derecho de su fila.
+   */
+  const celdaItemTotal = (item: ItemOpcion) => {
+    const vacio = item.mediciones.length === 0;
+    const total = datos.totales.get(item.id) ?? 0;
+    if (esHierro(item)) {
+      // Acá, y sólo acá, las barras ya van redondeadas para arriba: es lo
+      // que efectivamente se compra.
+      const valores = vacio ? null : valoresHierroRedondeado(item, total);
+      const base = columnasHierro()
+        .map((u) => lineaHierro(u, valores))
+        .join("");
+      // El margen de obra sobre el hierro: 10% fijo arriba del total, aparte
+      // de la merma propia de cada diámetro (que ya está adentro del número
+      // de arriba). Es el número con el que se termina pidiendo en la
+      // práctica, así que va en su propia línea y no reemplaza al total.
+      const valores10 = vacio ? null : valoresHierroRedondeado(item, total * 1.1);
+      const extra = `<span class="sub-linea extra">+10%: ${
+        valores10 === null ? "—" : esc(formatCantidad(valores10.barras))
+      } barras · ${
+        valores10 === null ? "—" : esc(formatCantidad(valores10.kg))
+      } kg</span>`;
+      return `${base}${extra}`;
+    }
+    const linea = puertas
+      ? ""
+      : `<span class="sub-linea num">${esc(vacio ? "—" : formatCantidad(total))}</span>`;
+    const merma = !conMerma(item)
+      ? ""
+      : `<span class="sub-linea num merma">${esc(
+          vacio ? "—" : formatCantidad(conDesperdicio(total, item.desperdicio))
+        )}</span>`;
+    const material =
+      conversionDe(item) === null
+        ? ""
+        : `<span class="sub-linea num material">${esc(
+            vacio ? "—" : formatCantidad(materialDe(item, total) ?? 0)
+          )}</span>`;
+    // Los bultos, sólo si hay algo que pedir por bulto. Junto al entero va el
+    // exacto, más chico, que es el que dice cuánto sobra del último. Va acá y
+    // no por nivel por la misma razón que en pantalla: un palet se compra una
+    // vez para toda la obra, y redondear para arriba planta por planta daría
+    // de más una vez por planta.
+    const bultos = !tieneBultos(item)
+      ? ""
+      : (() => {
+          const b = vacio ? null : bultosDe(item, materialDe(item, total));
+          const texto =
+            b === null
+              ? "—"
+              : `<strong>${esc(String(b.enteros))}</strong> <span class="exacto">${esc(
+                  formatCantidad(b.exacto)
+                )}</span>`;
+          return `<span class="sub-linea num material bultos">${texto}</span>`;
+        })();
+    return `${linea}${merma}${material}${bultos}${lineasSubItemTotal(item)}`;
+  };
+
+  /**
+   * Los renglones que hay detrás de las celdas desglosadas de un ítem, cada
+   * uno como su propia fila de la tabla.
    *
-   * Si las columnas de la planta baja se cargaron como C1, C2 y C3, en el papel
-   * aparecen las tres abajo de PLANTA BAJA, cada una con su número en la columna
-   * del ítem del que salió. Así se puede tildar una por una en la obra —que es
-   * para lo que se lleva esta hoja— y la cuenta queda a la vista: los renglones
-   * tienen que dar el número de arriba.
+   * Si las columnas de la planta baja se cargaron como C1, C2 y C3, en el
+   * papel aparecen las tres abajo de la fila del ítem, cada una con su
+   * número en la columna del nivel del que salió. Así se puede tildar una
+   * por una en la obra —que es para lo que se lleva esta hoja— y la cuenta
+   * queda a la vista: los renglones tienen que dar el número de arriba.
    *
    * Justamente por eso se imprime el parcial ya resuelto y no el campo
-   * `cantidad`: un renglón viejo que tiene largo y ancho, o uno que descuenta,
-   * aporta algo distinto de lo que dice ese campo. Una columna de números que no
-   * cierran con su total es peor que no imprimir el detalle.
+   * `cantidad`: un renglón viejo que tiene largo y ancho, o uno que
+   * descuenta, aporta algo distinto de lo que dice ese campo. Una fila de
+   * números que no cierran con su total es peor que no imprimir el detalle.
    *
-   * El nombre del renglón va en la columna de los niveles y el número en la del
-   * ítem: alcanza para saber de qué ítem es sin repetir su nombre en cada línea,
-   * y deja las columnas derechas, que es lo que permite seguir leyendo la hoja.
+   * El nombre del renglón va en la columna del ítem y el número en la del
+   * nivel: alcanza para saber de qué nivel es sin repetir su nombre en cada
+   * línea, y deja las demás celdas de la fila en blanco.
    *
-   * Sólo se desglosan las celdas de dos renglones o más. Una celda de un solo
-   * renglón ya es su propio detalle: repetirla abajo es imprimir dos veces el
-   * mismo número. La excepción es cuando ese renglón único tiene una
-   * descripción propia (por ejemplo "Base B1"): ahí el renglón no es un
+   * Sólo se desglosan las celdas de dos renglones o más. Una celda de un
+   * solo renglón ya es su propio detalle: repetirla abajo es imprimir dos
+   * veces el mismo número. La excepción es cuando ese renglón único tiene
+   * una descripción propia (por ejemplo "Base B1"): ahí el renglón no es un
    * simple duplicado del total, es la única referencia escrita a qué
    * corresponde ese número, y perderla en el papel deja la cuenta sin
-   * explicación. Las derivadas no se tocan, que no tienen renglones que mostrar.
+   * explicación.
    */
-  const renglonesDe = (fila: ClaveFila) =>
-    items
-      .flatMap((item, indice) => {
-        const renglones = medicionesDeFila(item, fila).filter(
+  const renglonesDeItem = (item: ItemOpcion) =>
+    filas
+      .flatMap((fila) => {
+        const renglones = medicionesDeFila(item, fila.clave).filter(
           (m) => m.origenId === null
         );
         const tieneDescripcionPropia =
           renglones.length === 1 && !!renglones[0].descripcion?.trim();
         if (renglones.length < 2 && !tieneDescripcionPropia) return [];
         return renglones.map((medicion) => {
-          const celdas = items
-            .map((otro, i) => {
-              if (i !== indice) return celdasVacias(otro);
-              const parcial = parcialMedicion(medicion, item.unidad);
-              if (esHierro(otro)) {
-                const valores = valoresHierro(otro, parcial);
-                return columnasHierro()
-                  .map((u) => celdaHierro(u, valores))
-                  .join("");
-              }
-              return `<td class="num">${esc(formatCantidad(parcial))}</td>${
-                conMerma(otro) ? `<td class="num merma"></td>` : ""
-              }${
-                conversionDe(otro) !== null ? `<td class="num material"></td>` : ""
-              }${celdaCajonVacia(otro)}`;
-            })
+          const parcial = parcialMedicion(medicion, item.unidad);
+          const valorCelda = esHierro(item)
+            ? columnasHierro()
+                .map((u) => lineaHierro(u, valoresHierro(item, parcial)))
+                .join("")
+            : `<span class="sub-linea num">${esc(formatCantidad(parcial))}</span>`;
+          const celdas = filas
+            .map((f) => (f === fila ? `<td>${valorCelda}</td>` : `<td></td>`))
             .join("");
           return `
         <tr class="renglon">
-          <th class="nivel-col renglon-nombre" scope="row">${esc(
+          <th class="item-col renglon-nombre" scope="row">${esc(
             medicion.descripcion ?? "—"
           )}</th>
           ${celdas}
-          ${conTotalKg ? `<td class="total-kg-col"></td>` : ""}
+          <td class="total-col"></td>
         </tr>`;
         });
       })
@@ -324,98 +419,27 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
 
   const encabezado = `
     <tr>
-      <th class="nivel-col">Nivel</th>
-      ${items
-        .map(
-          (item) => `
-        <th class="item" colspan="${columnasPorItem(item)}">
-          <div class="item-nombre">${esc(item.nombre)}</div>
-          ${
-            esHierro(item)
-              ? ""
-              : `<div class="item-unidad">${esc(simboloUnidad(item.unidad))}</div>`
-          }
-        </th>`
-        )
-        .join("")}
-      ${conTotalKg ? `<th class="item total-kg-col">Total kg</th>` : ""}
-    </tr>
-    <tr class="sub">
-      <th></th>
-      ${items
-        .map((item) => {
-          if (esHierro(item)) {
-            return columnasHierro()
-              .map(
-                (u) =>
-                  `<th class="num${u === "ml" ? "" : " material"}">${esc(
-                    ETIQUETA_UNIDAD_HIERRO[u]
-                  )}</th>`
-              )
-              .join("");
-          }
-          const conversion = conversionDe(item);
-          return `<th class="num">medido</th>${
-            conMerma(item)
-              ? `<th class="num merma">+${esc(formatCantidad(item.desperdicio ?? 0))}%</th>`
-              : ""
-          }${
-            conversion
-              ? `<th class="num material">×${esc(
-                  formatCantidad(conversion.rinde)
-                )} ${esc(simboloUnidad(conversion.unidad))}</th>`
-              : ""
-          }${
-            puertas
-              ? `<th class="num cajon">C10</th><th class="num cajon">C15</th><th class="num cajon">C18</th>`
-              : ""
-          }`;
-        })
-        .join("")}
-      ${conTotalKg ? `<th class="total-kg-col"></th>` : ""}
+      <th class="item-col">Ítem</th>
+      ${filas.map((fila) => `<th class="nivel">${esc(fila.nombre)}</th>`).join("")}
+      <th class="total-col">Total</th>
     </tr>`;
 
-  const cuerpo = filas
-    .map((fila) => {
-      const celdas = items
-        .map((item) => {
-          const tiene = tieneMedidoEnFila(item, fila.clave);
-          const medido = medidoEnFila(item, fila.clave, datos.totales);
-          const derivada = esDerivadaEnFila(item, fila.clave);
-          if (esHierro(item)) {
-            const valores = tiene ? valoresHierro(item, medido) : null;
-            return columnasHierro()
-              .map((u) => celdaHierro(u, valores, derivada))
-              .join("");
-          }
-          // Lo que no se computó va con raya y no con cero. En el papel esa
-          // diferencia es la que dice qué falta todavía.
-          const valor = tiene ? formatCantidad(medido) : "—";
-          const merma =
-            !conMerma(item)
-              ? ""
-              : `<td class="num merma">${esc(
-                  tiene ? formatCantidad(conDesperdicio(medido, item.desperdicio)) : "—"
-                )}</td>`;
-          const material =
-            conversionDe(item) === null
-              ? ""
-              : `<td class="num material">${esc(
-                  tiene ? formatCantidad(materialDe(item, medido) ?? 0) : "—"
-                )}</td>`;
-          return `<td class="num${derivada ? " derivada" : ""}">${esc(
-            valor
-          )}</td>${merma}${material}${celdasCajonFila(item, fila.clave)}`;
-        })
+  const cuerpo = items
+    .map((item) => {
+      const celdas = filas
+        .map((fila) => `<td>${celdaItem(item, fila.clave)}</td>`)
         .join("");
-
       return `
-        <tr>
-          <th class="nivel-col" scope="row">${esc(fila.nombre)}</th>
-          ${celdas}
-          ${celdaTotalKg(totalKgFila(fila.clave))}
-        </tr>
-        ${datos.conDetalle ? renglonesDe(fila.clave) : ""}`;
+      <tr class="fila-item">
+        <th class="item-col" scope="row">
+          <div class="item-nombre">${esc(item.nombre)}</div>
+          ${item.modelo ? `<div class="item-modelo">${esc(item.modelo)}</div>` : ""}
+          <div class="etiquetas">${etiquetasItem(item)}</div>
+        </th>
+        ${celdas}
+        <td class="total-col">${celdaItemTotal(item)}</td>
+      </tr>
+      ${datos.conDetalle ? renglonesDeItem(item) : ""}`;
     })
     .join("");
 
@@ -428,116 +452,27 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
         return acc + kgDeMetros(item, datos.totales.get(item.id) ?? 0);
       }, 0);
 
-  const filaTotal = `
-    <tr class="total">
-      <th class="nivel-col" scope="row">Total</th>
-      ${items
-        .map((item) => {
-          const total = datos.totales.get(item.id) ?? 0;
-          const vacio = item.mediciones.length === 0;
-          if (esHierro(item)) {
-            // Acá, y sólo acá, las barras ya van redondeadas para arriba: es
-            // lo que efectivamente se compra, y así no hace falta una fila
-            // aparte debajo con la misma cuenta.
-            const valores = vacio ? null : valoresHierroRedondeado(item, total);
-            return columnasHierro()
-              .map((u) => celdaHierro(u, valores))
-              .join("");
-          }
-          const merma = !conMerma(item)
-            ? ""
-            : `<td class="num merma">${esc(
-                vacio ? "—" : formatCantidad(conDesperdicio(total, item.desperdicio))
-              )}</td>`;
-          const material =
-            conversionDe(item) === null
-              ? ""
-              : `<td class="num material">${esc(
-                  vacio ? "—" : formatCantidad(materialDe(item, total) ?? 0)
-                )}</td>`;
-          return `<td class="num">${esc(
-            vacio ? "—" : formatCantidad(total)
-          )}</td>${merma}${material}${celdasCajonTotal(item)}`;
-        })
-        .join("")}
-      ${celdaTotalKg(totalKgGeneral)}
-    </tr>`;
-
   /**
-   * El margen de obra sobre el hierro: 10% fijo arriba del total, aparte de la
-   * merma propia de cada diámetro (que ya está adentro de cada número de
-   * arriba). Es el número con el que se termina pidiendo en la práctica, así
-   * que va en su propia fila y no reemplaza al Total, que sigue siendo lo que
-   * dice el cómputo sin margen.
+   * El total en kg de todos los diámetros juntos, por nivel: es una suma
+   * cruzada entre los ítems de hierro de cada columna, así que no tiene
+   * lugar en la celda de Total de ningún ítem en particular. Por eso es la
+   * única fila del pie.
    */
-  const filaDesperdicio10 =
-    hierroItems.length === 0
-      ? ""
-      : `
-    <tr class="extra">
-      <th class="nivel-col" scope="row">Total +10%</th>
-      ${items
-        .map((item) => {
-          if (!esHierro(item)) return celdasVacias(item);
-          const vacio = item.mediciones.length === 0;
-          const total = datos.totales.get(item.id) ?? 0;
-          const valores = vacio ? null : valoresHierroRedondeado(item, total * 1.1);
-          return columnasHierro()
-            .map((u) => celdaHierro(u, valores))
-            .join("");
+  const pie = !conTotalKg
+    ? ""
+    : `
+    <tr class="total-kg-fila">
+      <th class="item-col" scope="row">Total kg</th>
+      ${filas
+        .map((fila) => {
+          const valor = totalKgFila(fila.clave);
+          return `<td class="num">${esc(valor === null ? "—" : formatCantidad(valor))}</td>`;
         })
         .join("")}
-      ${celdaTotalKg(totalKgGeneral === null ? null : totalKgGeneral * 1.1)}
+      <td class="total-col">${esc(
+        totalKgGeneral === null ? "—" : formatCantidad(totalKgGeneral)
+      )}</td>
     </tr>`;
-
-  /**
-   * La fila de los bultos, sólo si hay algo que pedir por bulto.
-   *
-   * Va abajo del total y no por nivel por la misma razón que en pantalla: un
-   * palet se compra una vez para toda la obra, y redondear para arriba planta
-   * por planta daría de más una vez por planta. Junto al entero va el exacto,
-   * más chico, que es el que dice cuánto sobra del último.
-   *
-   * El hierro no entra acá: su redondeo ya va directo en la fila de Total, así
-   * que repetirlo acá sería la misma cuenta dos veces.
-   */
-  const conBulto = items.filter(
-    (i) => !esHierro(i) && i.porBulto !== null && conversionDe(i) !== null
-  );
-  const etiquetaBulto = etiquetaBultos(conBulto);
-
-  const filaBultos =
-    conBulto.length === 0
-      ? ""
-      : `
-    <tr class="bultos">
-      <th class="nivel-col" scope="row">${esc(etiquetaBulto)}</th>
-      ${items
-        .map((item) => {
-          // Esta fila ya no dice nada del hierro (ver conBulto arriba): sus
-          // columnas quedan en blanco, tantas como le tocan, para no romper
-          // el colspan del encabezado.
-          if (esHierro(item)) return celdasVacias(item);
-          const vacios = `<td></td>${conMerma(item) ? `<td class="merma"></td>` : ""}`;
-          if (conversionDe(item) === null) return `${vacios}${celdaCajonVacia(item)}`;
-          const total = datos.totales.get(item.id) ?? 0;
-          const bultos =
-            item.mediciones.length === 0
-              ? null
-              : bultosDe(item, materialDe(item, total));
-          const texto =
-            bultos === null
-              ? "—"
-              : `<strong>${esc(String(bultos.enteros))}</strong> <span class="exacto">${esc(
-                  formatCantidad(bultos.exacto)
-                )}</span>`;
-          return `${vacios}<td class="num material">${texto}</td>${celdaCajonVacia(item)}`;
-        })
-        .join("")}
-      ${conTotalKg ? `<td class="total-kg-col"></td>` : ""}
-    </tr>`;
-
-  const pie = `${filaTotal}${filaDesperdicio10}${filaBultos}`;
 
   return `
     <section class="bloque">
@@ -555,7 +490,7 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
       <table class="grilla">
         <thead>${encabezado}</thead>
         <tbody>${cuerpo}</tbody>
-        <tfoot>${pie}</tfoot>
+        ${pie ? `<tfoot>${pie}</tfoot>` : ""}
       </table>
     </section>`;
 }
@@ -643,7 +578,7 @@ function construirHtml(datos: DatosInformeRubro) {
 
     /* table-layout fijo es lo que hace que el ancho de la tabla sea una
        promesa y no una sugerencia: con muchas columnas (hierro con varios
-       diámetros, o PUERTAS con sus dos cajones por ítem), una tabla "auto" se
+       diámetros, o PUERTAS con varios sub ítems por puerta), una tabla "auto" se
        estira para que cada número entre sin cortarse, y esa franja de más se
        sale del margen de la página al imprimir. Fija, el ancho nunca pasa del
        100% del contenedor -que ya respeta el margen de @page-, y lo que no
@@ -658,27 +593,53 @@ function construirHtml(datos: DatosInformeRubro) {
       text-overflow: ellipsis;
     }
 
-    /* La columna de niveles es la que se lee para saber de qué fila es cada
-       número: va en gris, alineada a la izquierda, y no se corta. */
-    .nivel-col {
+    /* La fila de cada ítem, con un fondo propio para que se distinga de
+       entrada de la fila de al lado: ya no alcanza con que sólo la columna
+       del ítem tenga su gris, toda la fila lo lleva. */
+    tr.fila-item { background: #ebebeb; }
+
+    /* La columna del ítem es la que se lee para saber de qué fila es cada
+       número: va en gris más oscuro que el resto de la fila, alineada
+       arriba a la izquierda, y no se corta. Más ancha que una columna de
+       nivel común, porque ahora también lleva el nombre del ítem, su modelo
+       cuando tiene, y las etiquetas apiladas de lo que mide cada línea de
+       sus celdas. */
+    .item-col {
       text-align: left;
+      vertical-align: top;
+      background: #e0e0e0;
+      width: 34mm;
+    }
+    /* El encabezado de la columna del ítem se centra, como cualquier título
+       de columna; el pie no —"Total kg" o "Total" son títulos de fila, y los
+       títulos de fila siempre van a la izquierda, igual que en pantalla. */
+    thead .item-col {
       font-weight: 600;
-      background: #f2f2f2;
-      width: 22mm;
-      font-size: 8.5px;
       text-transform: uppercase;
       letter-spacing: 0.03em;
+      font-size: 8.5px;
+      vertical-align: middle;
+      text-align: center;
+      background: #cfcfcf;
     }
+    tfoot .item-col {
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+      font-size: 8.5px;
+      vertical-align: middle;
+      text-align: left;
+    }
+    tbody th.item-col { font-weight: 400; }
+    .item-nombre { font-weight: 700; font-size: 9.5px; }
+    .item-modelo { color: var(--gris); font-size: 8px; }
 
-    thead th.item {
-      background: #ebebeb;
-      font-size: 9.5px;
-      vertical-align: bottom;
-    }
-    thead th.item .item-nombre { font-weight: 700; }
-    thead th.item .item-unidad { font-weight: 400; color: var(--gris); font-size: 8px; }
-    thead tr.sub th {
-      background: #f7f7f7;
+    /* Las etiquetas apiladas debajo del nombre: dicen, una sola vez, qué es
+       cada línea que se apila en las celdas de la derecha, en vez de abrir
+       una columna de más por cada una. */
+    .etiquetas { margin-top: 2px; }
+    .etiqueta {
+      display: block;
       font-size: 7.5px;
       font-weight: 500;
       color: var(--gris);
@@ -686,58 +647,65 @@ function construirHtml(datos: DatosInformeRubro) {
       letter-spacing: 0.04em;
     }
 
-    /* Los números son lo que más se amontona: una grilla de hierro con siete
-       diámetros por dos columnas ya son quince columnas de datos, y en A4
-       apaisado eso es poco ancho por celda. Achicar la fuente acá, y no en
-       toda la tabla, es lo que deja los números sueltos y legibles sin perder
-       los títulos, que necesitan su tamaño para leerse de lejos. */
-    .num {
-      text-align: right;
+    thead th.nivel {
+      background: #cfcfcf;
+      font-size: 9.5px;
+      text-align: center;
+    }
+
+    /* Los números son lo que más se amontona: un ítem con varias líneas por
+       celda —hierro en ml, barras y kilos a la vez; una puerta que suma
+       además una por cada sub ítem— ya mete varias líneas de texto en el
+       alto de una sola fila. Achicar la fuente de las líneas, y no de toda
+       la tabla, es lo que las deja sueltas y legibles sin perder los
+       títulos, que necesitan su tamaño para leerse de lejos. */
+    .sub-linea {
+      display: block;
+      text-align: center;
       white-space: nowrap;
       font-variant-numeric: tabular-nums;
       font-size: 9px;
     }
-    /* La columna del desperdicio, más clara: es la derivada de al lado, no un
+    .num { text-align: center; }
+    /* La línea del desperdicio, más clara: es la derivada de al lado, no un
        dato independiente, y en gris se lee como lo que es. */
-    .merma { background: #fafafa; color: var(--gris); }
-    /* Las celdas que salen de una cuenta sobre otro ítem, en bastardilla: se ve
-       de un vistazo qué se midió en obra y qué se calculó. */
+    .merma { color: var(--gris); }
+    /* Las líneas que salen de una cuenta sobre otro ítem, en bastardilla: se
+       ve de un vistazo qué se midió en obra y qué se calculó. */
     .derivada { font-style: italic; color: var(--gris); }
-    /* La columna del material, un tono más marcada: es la que se copia al
-       pedido, así que tiene que encontrarse sin buscarla. */
-    .material { background: #f0f0f0; font-weight: 600; }
-    /* Los cajones de PUERTAS (C10, C15, C18): un tono propio, para distinguirlos de
-       la columna del material aunque compartan la misma idea de "dato aparte". */
-    .cajon { background: #eef4fb; }
+    /* La línea del material, más marcada: es la que se copia al pedido, así
+       que tiene que encontrarse sin buscarla. */
+    .material { font-weight: 600; }
+    /* Los sub ítems de PUERTAS: un tono propio, para distinguirlos de la
+       línea del material aunque compartan la misma idea de "dato aparte". */
+    .cajon { color: #2b5f8f; }
+    .bultos .exacto { font-weight: 400; font-size: 8px; color: var(--gris); }
+    /* El margen del 10% sobre el hierro: un color propio, para que se lea
+       como lo que es —un extra sobre el número de arriba— y no se confunda
+       con el total sin margen. */
+    .extra { color: #8a5a00; font-weight: 700; }
 
-    /* El total en kg de todos los diámetros juntos: va aparte, con un borde
-       grueso a la izquierda, porque no es una columna más del ítem de al
-       lado —es la suma de toda la fila— y tiene que leerse como tal. */
-    .total-kg-col {
+    /* La columna de Total, al final de cada fila: va aparte, con un borde
+       grueso a la izquierda, porque no es una celda más del nivel de al
+       lado —es la suma de toda la fila del ítem— y tiene que leerse como
+       tal. */
+    .total-col {
       border-left: 2px solid var(--oscuro);
       background: #f3f3f3;
       font-weight: 700;
+      text-align: center;
     }
-    thead th.total-kg-col { font-size: 8.5px; }
+    thead th.total-col { font-size: 9.5px; background: #cfcfcf; }
 
-    tfoot tr.total th, tfoot tr.total td {
+    /* La fila del total en kg de todos los diámetros juntos: la única fila
+       del pie, porque es una suma cruzada entre los ítems de hierro de cada
+       columna y no tiene lugar en la celda de Total de ningún ítem en
+       particular. */
+    tfoot tr.total-kg-fila th, tfoot tr.total-kg-fila td {
       background: #e2e2e2;
       font-weight: 700;
       border-top: 2px solid var(--oscuro);
     }
-    /* El margen del 10% sobre el hierro: un escalón más claro que el Total,
-       para que se lea como lo que es —un extra sobre el número de arriba— y
-       no se confunda con el cómputo sin margen. */
-    tfoot tr.extra th, tfoot tr.extra td {
-      background: #fff6e8;
-      font-weight: 700;
-      color: #8a5a00;
-    }
-    tfoot tr.extra td.total-kg-col { background: #fdeccb; }
-    tfoot tr.bultos th, tfoot tr.bultos td { background: #ededed; }
-    tfoot tr.bultos th.nivel-col { font-size: 8.5px; }
-    tfoot tr.bultos td.material { font-size: 11px; }
-    tfoot tr.bultos .exacto { font-weight: 400; font-size: 8px; color: var(--gris); }
 
     /* Los renglones de una celda desglosada: la misma grilla, un escalón más
        claro y un cuerpo más chico. Se leen como lo que son —de dónde sale el
@@ -754,7 +722,7 @@ function construirHtml(datos: DatosInformeRubro) {
       text-transform: none;
       letter-spacing: 0;
       /* La sangría es lo que dice, sin escribirlo, que cuelga de la fila de
-         arriba y no es un nivel más. */
+         arriba y no es un ítem más. */
       padding-left: 14px;
     }
 

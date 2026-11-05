@@ -241,6 +241,8 @@ export type SeccionOpcion = {
   rubroId: string;
   tipo: TipoComputo;
   nombre: string;
+  /** Si es del área "Cómputos 2", la grilla en paralelo. */
+  esComputos2: boolean;
   orden: number;
   /** El orden en que se leen sus filas. Vacío = el de la obra. Ver ordenarFilas. */
   ordenFilas: string[];
@@ -252,6 +254,7 @@ export function mapSeccion(s: {
   rubroId: string;
   tipo: string;
   nombre: string;
+  esComputos2: boolean;
   orden: number;
   ordenFilas: string[];
 }): SeccionOpcion {
@@ -261,6 +264,7 @@ export function mapSeccion(s: {
     rubroId: s.rubroId,
     tipo: s.tipo as TipoComputo,
     nombre: s.nombre,
+    esComputos2: s.esComputos2,
     orden: s.orden,
     ordenFilas: s.ordenFilas,
   };
@@ -369,7 +373,13 @@ function esDeLaFila(medicion: MedicionOpcion, fila: ClaveFila) {
  * computar.
  */
 export function tieneMedidoEnFila(item: ItemOpcion, fila: ClaveFila) {
-  return item.mediciones.some((m) => esDeLaFila(m, fila));
+  // Un ítem de PUERTAS no tiene mediciones propias: lo cargado vive entero en
+  // los sub ítems (ver `esSeccionPuertas`). Sin este chequeo, toda fila de un
+  // ítem así se lee "sin cargar" aunque tenga datos reales.
+  return (
+    item.mediciones.some((m) => esDeLaFila(m, fila)) ||
+    item.subItems.some((si) => subItemMedicionesDeFila(si, fila).length > 0)
+  );
 }
 
 /**
@@ -651,6 +661,11 @@ export type ItemOpcion = {
   notas: string | null;
   orden: number;
   mediciones: MedicionOpcion[];
+  /**
+   * Los sub ítems de este ítem (ver `SubItemOpcion`). Por ahora sólo tienen
+   * contenido en la sección PUERTAS; en el resto queda en lista vacía.
+   */
+  subItems: SubItemOpcion[];
 };
 
 export type ItemTipoOpcion = {
@@ -704,6 +719,32 @@ export function mapMedicion(m: {
   };
 }
 
+/**
+ * Lo que se trae de un ítem en todos lados: sus filas, en orden, con la
+ * cantidad de repeticiones del nivel de cada fila (para "planta tipo" x4,
+ * ver parcialMedicion más abajo), y sus sub ítems con sus propias celdas.
+ *
+ * Centralizado acá porque antes cada consulta armaba su propio `include` y
+ * se olvidaba de traer `subItems`: el sub ítem se creaba bien en la base,
+ * pero la próxima vez que la pantalla se servía de cero (otra pestaña,
+ * F5, el `revalidatePath` de cualquier otra acción) esa consulta
+ * incompleta lo volvía a tapar, y parecía que se había borrado solo.
+ */
+export const incluirMediciones = {
+  mediciones: {
+    orderBy: { orden: "asc" } as const,
+    include: { nivel: { select: { repeticiones: true } } },
+  },
+  subItems: {
+    orderBy: { orden: "asc" } as const,
+    include: {
+      mediciones: {
+        include: { nivel: { select: { repeticiones: true } } },
+      },
+    },
+  },
+};
+
 export function mapItem(p: {
   id: string;
   proyectoId: string;
@@ -722,6 +763,7 @@ export function mapItem(p: {
   notas: string | null;
   orden: number;
   mediciones?: Parameters<typeof mapMedicion>[0][];
+  subItems?: Parameters<typeof mapSubItem>[0][];
 }): ItemOpcion {
   return {
     id: p.id,
@@ -741,6 +783,7 @@ export function mapItem(p: {
     notas: p.notas,
     orden: p.orden,
     mediciones: (p.mediciones ?? []).map(mapMedicion),
+    subItems: (p.subItems ?? []).map(mapSubItem),
   };
 }
 
@@ -839,6 +882,11 @@ export function calcularTotales(items: ItemOpcion[]): Map<string, number> {
     for (const m of item.mediciones) {
       suma += parcialMedicion(m, item.unidad, m.origenId ? calcular(m.origenId) : 0);
     }
+    // En PUERTAS el ítem ya no tiene una fila de cantidad propia: lo único
+    // que se carga son sus sub ítems, y el total del ítem es la suma de
+    // todos ellos. En el resto de las secciones no hay sub ítems y esto suma
+    // cero.
+    suma += totalSubItems(item);
     enCurso.delete(id);
 
     totales.set(id, suma);
@@ -856,7 +904,10 @@ export function calcularTotales(items: ItemOpcion[]): Map<string, number> {
  * derivadas hay que usar `calcularTotales`, que conoce al resto.
  */
 export function totalItem(item: ItemOpcion) {
-  return item.mediciones.reduce((acc, m) => acc + parcialMedicion(m, item.unidad), 0);
+  return (
+    item.mediciones.reduce((acc, m) => acc + parcialMedicion(m, item.unidad), 0) +
+    totalSubItems(item)
+  );
 }
 
 /**
@@ -975,10 +1026,14 @@ export type ResumenComputo = {
 };
 
 export function resumirComputo(items: ItemOpcion[]): ResumenComputo {
+  // En PUERTAS lo cargado vive en los sub ítems y no en item.mediciones (ver
+  // "Sub ítems" más abajo), así que cuentan las dos listas.
+  const filasDe = (i: ItemOpcion) =>
+    i.mediciones.length + i.subItems.reduce((acc, si) => acc + si.mediciones.length, 0);
   return {
     items: items.length,
-    computados: items.filter((i) => i.mediciones.length > 0).length,
-    filas: items.reduce((acc, i) => acc + i.mediciones.length, 0),
+    computados: items.filter((i) => filasDe(i) > 0).length,
+    filas: items.reduce((acc, i) => acc + filasDe(i), 0),
   };
 }
 
@@ -1087,91 +1142,126 @@ export function metrosDeKg(
 }
 
 /**
- * ¿Esta sección necesita, además del total por ítem al pie, el total por
- * piso a la derecha?
- *
- * Hoy es sólo HORMIGÓN de ESTRUCTURA_H°A: columnas, vigas, losas, escaleras,
- * tabiques y bases son items distintos, pero lo que de verdad se usa para
- * programar un pozo de hormigón es cuánto hay que colar ESE piso en total, no
- * cuánto hay de cada tipo de pieza. El resto de las secciones no tiene esta
- * necesidad —no se vacía "todo lo medido de un piso" junto, cada ítem se pide
- * por separado— así que no hace falta una columna que nadie va a mirar.
- *
- * Se exige que los ítems compartan unidad y que ninguno convierta a otra
- * (hierro, ladrillos en palets, etc.): sumar m³ de hormigón con barras de
- * hierro sería un número sin sentido, y esta columna existe justamente para
- * lo contrario, un número que se pueda leer de una.
- */
-export function mostrarTotalPorFila(
-  seccion: { nombre: string },
-  items: {
-    unidad: UnidadComputo;
-    rinde: number | null;
-    rindeUnidad: UnidadComputo | null;
-    porBulto: number | null;
-    bultoNombre: string | null;
-  }[]
-): boolean {
-  if (seccion.nombre.trim().toUpperCase() !== "HORMIGÓN") return false;
-  if (items.length === 0) return false;
-  const unidad = items[0].unidad;
-  return items.every(
-    (i) => i.unidad === unidad && conversionDe(i) === null && !esHierro(i)
-  );
-}
-
-/**
- * La suma de lo medido de todos los ítems de la sección, para una fila (un
- * piso, una fila extra, o "Toda la obra"). Sólo tiene sentido llamarla cuando
- * `mostrarTotalPorFila` ya dijo que sí: ahí todos los ítems comparten unidad,
- * así que sumarlos da un número y no una mezcla.
- */
-export function totalPorFila(
-  items: ItemOpcion[],
-  fila: ClaveFila,
-  totales?: Map<string, number>
-): number {
-  return items.reduce((acc, item) => acc + medidoEnFila(item, fila, totales), 0);
-}
-
-/** Los tres cajones de puertas que existen: marco chico, grande y de 18. */
-export type CampoCajon = "cajonC10" | "cajonC15" | "cajonC18";
-
-/**
  * ¿Esta sección es la grilla de PUERTAS (no HERRAJES, aunque comparten
- * rubro)? Ahí, y sólo ahí, cada ítem suma tres columnas más: C10, C15 y C18,
- * los cajones (marcos chico, grande y de 18). Se detecta por nombre exacto,
- * igual que `mostrarTotalPorFila` con HORMIGÓN: no hay un campo "tipo de
- * sección" en la base, y agregar uno sólo para esto sería más de lo que hace
- * falta.
+ * rubro)? Ahí, y sólo ahí, cada ítem se carga por sub ítems (ver
+ * `SubItemOpcion`) en vez de tener su propia fila de cantidad. Se detecta por
+ * nombre exacto, no hay un campo "tipo de sección" en la base, y agregar uno
+ * sólo para esto sería más de lo que hace falta.
  */
 export function esSeccionPuertas(seccion: { nombre: string }): boolean {
   return seccion.nombre.trim().toUpperCase() === "PUERTAS";
 }
 
+// ---------------------------------------------------------------------------
+// Sub ítems (por ahora sólo en la grilla de PUERTAS)
+// ---------------------------------------------------------------------------
+//
+// Antes, cada ítem de PUERTAS tenía su propia fila de cantidad (la unidad,
+// "un") más tres columnas fijas de cajones (C10, C15, C18). El pedido fue
+// sacar esa fila de cantidad —no tiene que existir ninguna fila con la
+// unidad del ítem— y en su lugar dejar que cada ítem tenga la cantidad de
+// sub ítems que haga falta, con el nombre que el usuario quiera, editables y
+// borrables igual que una fila extra de la sección.
+//
+// El total del ítem (lo que se usa en el resto del cómputo: derivadas,
+// desperdicio, conversión a material) ya no sale de sus propias mediciones
+// —en PUERTAS esa lista queda vacía— sino de la suma de sus sub ítems. Esto
+// se resuelve en `calcularTotales`/`totalItem`, no acá: estas funciones sólo
+// calculan el sub ítem en sí.
+
+/** Una celda cargada de un sub ítem: un número suelto en un nivel o fila extra. */
+export type SubItemMedicionOpcion = {
+  id: string;
+  subItemId: string;
+  nivelId: string | null;
+  filaExtraId: string | null;
+  cantidad: number;
+  /** Repeticiones del nivel de esta celda, igual que en `MedicionOpcion`. */
+  repeticiones: number;
+};
+
 /**
- * Los cajones (C10, C15 o C18) que tiene cargados un ítem en una fila,
- * sumados.
- *
- * Multiplica por las repeticiones del nivel igual que `parcialMedicion`: una
- * planta tipo x4 tiene que multiplicar también los cajones de esa planta, no
- * sólo la cantidad de puertas.
+ * Un sub ítem de PUERTAS: una categoría que el usuario crea, renombra y
+ * borra dentro de un ítem ("C10", "Marco de aluminio", lo que haga falta),
+ * con su propia celda por nivel y su propio total.
  */
-export function cajonesEnFila(item: ItemOpcion, fila: ClaveFila, campo: CampoCajon): number {
-  return medicionesDeFila(item, fila).reduce((acc, m) => {
-    const valor = m[campo];
-    if (valor === null) return acc;
-    const conSigno = m.deduccion ? -valor : valor;
-    return acc + conSigno * m.repeticiones;
-  }, 0);
+export type SubItemOpcion = {
+  id: string;
+  itemId: string;
+  nombre: string;
+  orden: number;
+  mediciones: SubItemMedicionOpcion[];
+};
+
+export function mapSubItemMedicion(m: {
+  id: string;
+  subItemId: string;
+  nivelId: string | null;
+  filaExtraId: string | null;
+  cantidad: unknown;
+  nivel?: { repeticiones: number } | null;
+}): SubItemMedicionOpcion {
+  return {
+    id: m.id,
+    subItemId: m.subItemId,
+    nivelId: m.nivelId,
+    filaExtraId: m.filaExtraId,
+    cantidad: Number(m.cantidad),
+    repeticiones: m.nivel?.repeticiones ?? 1,
+  };
 }
 
-/** El total de C10, C15 o C18 de un ítem, para el pie de la grilla. */
-export function totalCajones(item: ItemOpcion, campo: CampoCajon): number {
-  return item.mediciones.reduce((acc, m) => {
-    const valor = m[campo];
-    if (valor === null) return acc;
-    const conSigno = m.deduccion ? -valor : valor;
-    return acc + conSigno * m.repeticiones;
-  }, 0);
+export function mapSubItem(s: {
+  id: string;
+  itemId: string;
+  nombre: string;
+  orden: number;
+  mediciones?: Parameters<typeof mapSubItemMedicion>[0][];
+}): SubItemOpcion {
+  return {
+    id: s.id,
+    itemId: s.itemId,
+    nombre: s.nombre,
+    orden: s.orden,
+    mediciones: (s.mediciones ?? []).map(mapSubItemMedicion),
+  };
+}
+
+/** ¿Esta celda de un sub ítem cae en esta fila de la grilla? */
+function subMedicionDeLaFila(m: SubItemMedicionOpcion, fila: ClaveFila) {
+  if (fila.tipo === "nivel") return m.nivelId === fila.id;
+  if (fila.tipo === "extra") return m.filaExtraId === fila.id;
+  return m.nivelId === null && m.filaExtraId === null;
+}
+
+/** Las celdas de un sub ítem que caen en una fila (hoy siempre 0 o 1: no se desglosan). */
+export function subItemMedicionesDeFila(subItem: SubItemOpcion, fila: ClaveFila) {
+  return subItem.mediciones.filter((m) => subMedicionDeLaFila(m, fila));
+}
+
+/**
+ * Lo cargado de un sub ítem en una fila, sumado.
+ *
+ * Multiplica por las repeticiones del nivel igual que `parcialMedicion`: una
+ * planta tipo x4 tiene que multiplicar también el sub ítem de esa planta.
+ */
+export function subItemEnFila(subItem: SubItemOpcion, fila: ClaveFila): number {
+  return subItemMedicionesDeFila(subItem, fila).reduce(
+    (acc, m) => acc + m.cantidad * m.repeticiones,
+    0
+  );
+}
+
+/** El total de un sub ítem en toda la obra, para su columna de Total. */
+export function totalSubItem(subItem: SubItemOpcion): number {
+  return subItem.mediciones.reduce((acc, m) => acc + m.cantidad * m.repeticiones, 0);
+}
+
+/**
+ * La suma de todos los sub ítems de un ítem: en PUERTAS es el total del
+ * ítem, porque ahí ya no queda ninguna medición propia (ver
+ * `calcularTotales`). En cualquier otra sección esto da 0.
+ */
+export function totalSubItems(item: ItemOpcion): number {
+  return item.subItems.reduce((acc, si) => acc + totalSubItem(si), 0);
 }

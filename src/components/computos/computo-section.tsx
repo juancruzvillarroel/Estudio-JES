@@ -1,5 +1,11 @@
 import { ComputoBoard } from "@/components/computos/computo-board";
-import { mapFechaComputo, mapFilaExtra, mapItem, mapSeccion } from "@/lib/computos";
+import {
+  incluirMediciones,
+  mapFechaComputo,
+  mapFilaExtra,
+  mapItem,
+  mapSeccion,
+} from "@/lib/computos";
 import { mapNivel } from "@/lib/niveles";
 import { prisma } from "@/lib/db";
 
@@ -33,25 +39,25 @@ export async function ComputoSection({
         },
       },
     }),
+    // "Cómputos 2" queda afuera: es la grilla en paralelo de la tarjeta
+    // aparte (ver ComputoSection2), no una sección más de este rubro.
     prisma.computoSeccion.findMany({
-      where: { proyectoId },
+      where: { proyectoId, esComputos2: false },
       orderBy: { orden: "asc" },
     }),
     // Las filas puntuales de cada sección ("SALA DE MÁQUINAS" adentro de MUROS).
     // Se traen de toda la obra de una y después cada grilla toma las suyas.
     prisma.computoFilaExtra.findMany({
-      where: { seccion: { proyectoId } },
+      where: { seccion: { proyectoId, esComputos2: false } },
       orderBy: { orden: "asc" },
     }),
     prisma.computoItem.findMany({
-      where: { proyectoId },
-      orderBy: { orden: "asc" },
-      include: {
-        mediciones: {
-          orderBy: { orden: "asc" },
-          include: { nivel: { select: { repeticiones: true } } },
-        },
+      where: {
+        proyectoId,
+        OR: [{ seccion: null }, { seccion: { esComputos2: false } }],
       },
+      orderBy: { orden: "asc" },
+      include: incluirMediciones,
     }),
     // Cuándo se tocó por última vez cada cómputo (rubro + lado) de esta obra.
     // Sin fila todavía para el rubro que no se empezó a cargar.

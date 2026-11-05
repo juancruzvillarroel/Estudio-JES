@@ -7,6 +7,7 @@ import {
   ClipboardList,
   FileText,
   Landmark,
+  Layers,
   ListChecks,
   Ruler,
   Wallet,
@@ -39,6 +40,8 @@ export type ResumenProyecto = {
   municipal: ResumenSeccion;
   documentacion: ResumenSeccion;
   computo: ResumenSeccion;
+  /** La grilla en paralelo, para volver a cargar un rubro de cero. Ver ComputoSection2. */
+  computo2: ResumenSeccion;
   /** Null cuando el usuario no tiene permiso de Flujo de fondos. */
   flujoFondos: ResumenSeccion | null;
 };
@@ -49,6 +52,7 @@ type ClaveSeccion =
   | "municipal"
   | "documentacion"
   | "computo"
+  | "computo2"
   | "flujo-fondos";
 
 const TONO_TEXTO = {
@@ -83,10 +87,11 @@ const RELIEVE = "bg-gradient-to-br from-foreground/[0.07] via-transparent to-tra
  * Cuántas de las 6 columnas de la grilla ocupa cada tarjeta, elegido para que
  * ninguna fila quede a medio llenar.
  *
- * Las secciones son 6, o 5 cuando el usuario no tiene permiso de Flujo de
- * fondos. Con la grilla de 3 columnas que había antes, 5 tarjetas dejaban la
- * segunda fila con dos y un hueco al costado. Ahora:
+ * Las secciones son 7, o 6 cuando el usuario no tiene permiso de Flujo de
+ * fondos. Con la grilla de 3 columnas que había antes, un total impar dejaba
+ * una fila con un hueco al costado. Ahora:
  *
+ *   7 → dos filas de 3 (2 columnas cada una) y la última sola, a todo lo ancho
  *   6 → dos filas de 3 (2 columnas cada una)
  *   5 → 3 arriba (2 columnas cada una) y 2 abajo más anchas (3 columnas)
  *   4 → dos filas de 2, todas iguales
@@ -98,13 +103,17 @@ const RELIEVE = "bg-gradient-to-br from-foreground/[0.07] via-transparent to-tra
 function spanTarjeta(indice: number, total: number) {
   const enDosColumnas = total % 2 === 1 && indice === total - 1 ? "sm:col-span-2" : "";
   const enSeisColumnas =
-    total === 6
-      ? "lg:col-span-2"
-      : total === 5
-        ? indice < 3
-          ? "lg:col-span-2"
-          : "lg:col-span-3"
-        : "lg:col-span-3";
+    total === 7
+      ? indice < 6
+        ? "lg:col-span-2"
+        : "lg:col-span-6"
+      : total === 6
+        ? "lg:col-span-2"
+        : total === 5
+          ? indice < 3
+            ? "lg:col-span-2"
+            : "lg:col-span-3"
+          : "lg:col-span-3";
   return cn(enDosColumnas, enSeisColumnas);
 }
 
@@ -217,6 +226,7 @@ export function ProyectoSecciones({
   municipal,
   documentacion,
   computo,
+  computo2,
   flujoFondos,
 }: {
   resumen: ResumenProyecto;
@@ -225,6 +235,7 @@ export function ProyectoSecciones({
   municipal: React.ReactNode;
   documentacion: React.ReactNode;
   computo: React.ReactNode;
+  computo2: React.ReactNode;
   /** Null cuando el usuario no tiene permiso de Flujo de fondos. */
   flujoFondos: React.ReactNode | null;
 }) {
@@ -236,6 +247,7 @@ export function ProyectoSecciones({
     municipal: { titulo: "Municipal", nodo: municipal },
     documentacion: { titulo: "Documentación", nodo: documentacion },
     computo: { titulo: "Cómputo", nodo: computo },
+    computo2: { titulo: "Cómputos 2", nodo: computo2 },
     "flujo-fondos": { titulo: "Flujo de fondos", nodo: flujoFondos },
   };
 
@@ -295,6 +307,13 @@ export function ProyectoSecciones({
       descripcion: "Partidas y mediciones de la obra",
       icono: Ruler,
       resumen: resumen.computo,
+    },
+    {
+      clave: "computo2",
+      titulo: "Cómputos 2",
+      descripcion: "Grilla en paralelo, de cero",
+      icono: Layers,
+      resumen: resumen.computo2,
     },
     {
       clave: "movimientos",

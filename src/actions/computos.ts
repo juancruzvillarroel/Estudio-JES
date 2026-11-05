@@ -6,6 +6,7 @@ import { requireSeccion } from "@/lib/dal";
 import { prisma } from "@/lib/db";
 import {
   creaCiclo,
+  incluirMediciones,
   mapFilaExtra,
   mapItem,
   mapItemTipo,
@@ -13,7 +14,6 @@ import {
   mapSeccion,
   TIPOS_COMPUTO,
   UNIDADES,
-  type CampoCajon,
   type ClaveFila,
   type FilaExtraOpcion,
   type ItemOpcion,
@@ -37,18 +37,6 @@ type ResultSeccion =
 type ResultFilaExtra =
   | { success: true; fila: FilaExtraOpcion }
   | { success: false; error: string };
-
-/**
- * Lo que se trae de un ítem en todos lados: sus filas, en orden, con la
- * cantidad de repeticiones del nivel de cada fila (para "planta tipo" x4,
- * ver parcialMedicion en lib/computos.ts).
- */
-const incluirMediciones = {
-  mediciones: {
-    orderBy: { orden: "asc" } as const,
-    include: { nivel: { select: { repeticiones: true } } },
-  },
-};
 
 const esUnidad = (v: string): v is UnidadComputo => (UNIDADES as string[]).includes(v);
 
@@ -194,10 +182,11 @@ async function tocarFechaComputo(proyectoId: string, itemId: string) {
 async function siguienteOrdenSeccion(
   proyectoId: string,
   rubroId: string,
-  tipo: TipoComputo
+  tipo: TipoComputo,
+  esComputos2: boolean
 ) {
   const ultima = await prisma.computoSeccion.findFirst({
-    where: { proyectoId, rubroId, tipo },
+    where: { proyectoId, rubroId, tipo, esComputos2 },
     orderBy: { orden: "desc" },
     select: { orden: true },
   });
@@ -223,7 +212,11 @@ export async function crearSeccion(
   proyectoId: string,
   rubroId: string,
   tipo: string,
-  nombre: string
+  nombre: string,
+  // Si nace del lado de "Cómputos 2": entra en la clave de unicidad junto al
+  // nombre, así una obra puede tener "HORMIGÓN" en Cómputo y otra "HORMIGÓN"
+  // en Cómputos 2 sin que choquen entre sí.
+  esComputos2 = false
 ): Promise<ResultSeccion> {
   await requireSeccion("proyectos");
 
@@ -238,9 +231,11 @@ export async function crearSeccion(
     });
     if (!rubro) return { success: false, error: "Ese rubro no se computa." };
 
-    // El nombre sólo choca del mismo lado: HORMIGÓN puede estar en los dos.
+    // El nombre sólo choca del mismo lado y la misma área: HORMIGÓN puede
+    // estar en los dos tipos, y también puede repetirse una vez en Cómputo y
+    // otra en Cómputos 2.
     const repetida = await prisma.computoSeccion.findFirst({
-      where: { proyectoId, rubroId, tipo, nombre: limpio },
+      where: { proyectoId, rubroId, tipo, esComputos2, nombre: limpio },
       select: { id: true },
     });
     if (repetida) {
@@ -253,7 +248,8 @@ export async function crearSeccion(
         rubroId,
         tipo,
         nombre: limpio,
-        orden: await siguienteOrdenSeccion(proyectoId, rubroId, tipo),
+        esComputos2,
+        orden: await siguienteOrdenSeccion(proyectoId, rubroId, tipo, esComputos2),
       },
     });
 
@@ -278,16 +274,18 @@ export async function renombrarSeccion(
   try {
     const existente = await prisma.computoSeccion.findFirst({
       where: { id: seccionId, proyectoId },
-      select: { id: true, rubroId: true, tipo: true },
+      select: { id: true, rubroId: true, tipo: true, esComputos2: true },
     });
     if (!existente) return { success: false, error: "No se encontró la sección." };
 
-    // Choca contra las de su propio lado: el nombre puede repetirse en el otro.
+    // Choca contra las de su propio lado y su propia área: el nombre puede
+    // repetirse en el otro tipo o en la otra área (Cómputo / Cómputos 2).
     const repetida = await prisma.computoSeccion.findFirst({
       where: {
         proyectoId,
         rubroId: existente.rubroId,
         tipo: existente.tipo,
+        esComputos2: existente.esComputos2,
         nombre: limpio,
         id: { not: seccionId },
       },
@@ -775,25 +773,163 @@ export async function guardarCelda(
   }
 }
 
-/** Los tres campos de cajón, para recorrerlos sin repetir la lista. */
-const CAMPOS_CAJON: readonly CampoCajon[] = ["cajonC10", "cajonC15", "cajonC18"];
+// ---------------------------------------------------------------------------
+// Sub ítems (por ahora sólo se muestran en la grilla de PUERTAS)
+// ---------------------------------------------------------------------------
+//
+// Reemplazan a las tres columnas fijas de cajones que tenía antes esta
+// sección (C10, C15, C18): en vez de esos tres campos del esquema, cada
+// ítem tiene la cantidad de sub ítems que haga falta, con el nombre que
+// elija el usuario. No se restringe a PUERTAS acá adentro —el modelo es
+// general— sino en la pantalla, que por ahora sólo los dibuja en esa
+// sección.
+//
+// Las cuatro acciones devuelven el ítem entero, igual que el resto de las
+// acciones de esta grilla: la pantalla pinta el bloque completo del ítem a
+// partir de un solo objeto, y crear/renombrar/borrar un sub ítem o tocar una
+// de sus celdas cambia ese bloque entero (el total del ítem incluido).
+
+async function siguienteOrdenSubItem(itemId: string) {
+  const ultimo = await prisma.computoSubItem.findFirst({
+    where: { itemId },
+    orderBy: { orden: "desc" },
+    select: { orden: true },
+  });
+  return (ultimo?.orden ?? -1) + 1;
+}
 
 /**
- * Guarda un cajón (C10, C15 o C18) de una celda de la grilla de PUERTAS.
+ * Busca un sub ítem acotado a la obra, con el id de su ítem.
  *
- * Vive en la misma fila que la cantidad de puertas de esa celda (ver
- * ComputoMedicion.cajonC10/cajonC15/cajonC18 en el schema), pero es un número
- * independiente: una celda puede tener puertas sin cajones contados todavía,
- * o cajones contados antes que las puertas. Por eso, a diferencia de
- * `guardarCelda`, esto puede crear una fila sin tocar `cantidad` (queda en 0,
- * que para cajones no se confunde con "medido": el que se lee como medida es
- * la columna de puertas, no ésta) y la borra si queda sin nada cargado.
+ * ComputoSubItem no tiene proyectoId propio, así que este es el punto donde
+ * se impide tocar el sub ítem de otra obra.
  */
-export async function guardarCajon(
+async function subItemDeLaObra(proyectoId: string, subItemId: string) {
+  return prisma.computoSubItem.findFirst({
+    where: { id: subItemId, item: { proyectoId } },
+    select: { id: true, itemId: true },
+  });
+}
+
+export async function crearSubItem(
   proyectoId: string,
   itemId: string,
+  nombre: string
+): Promise<ResultItem> {
+  await requireSeccion("proyectos");
+
+  const limpio = nombre.trim();
+  if (!limpio) return { success: false, error: "Poné un nombre para el sub ítem." };
+
+  try {
+    const item = await prisma.computoItem.findFirst({
+      where: { id: itemId, proyectoId },
+      select: { id: true },
+    });
+    if (!item) return { success: false, error: "No se encontró el ítem." };
+
+    const repetido = await prisma.computoSubItem.findFirst({
+      where: { itemId, nombre: limpio },
+      select: { id: true },
+    });
+    if (repetido) {
+      return { success: false, error: `Ya hay un sub ítem "${limpio}" en este ítem.` };
+    }
+
+    await prisma.computoSubItem.create({
+      data: { itemId, nombre: limpio, orden: await siguienteOrdenSubItem(itemId) },
+    });
+
+    revalidatePath(`/proyectos/${proyectoId}`);
+    return { success: true, item: await itemConMediciones(itemId) };
+  } catch (error) {
+    console.error("crearSubItem", error);
+    return { success: false, error: "No se pudo crear el sub ítem." };
+  }
+}
+
+export async function renombrarSubItem(
+  proyectoId: string,
+  subItemId: string,
+  nombre: string
+): Promise<ResultItem> {
+  await requireSeccion("proyectos");
+
+  const limpio = nombre.trim();
+  if (!limpio) return { success: false, error: "Poné un nombre para el sub ítem." };
+
+  try {
+    const existente = await subItemDeLaObra(proyectoId, subItemId);
+    if (!existente) return { success: false, error: "No se encontró el sub ítem." };
+
+    const repetido = await prisma.computoSubItem.findFirst({
+      where: { itemId: existente.itemId, nombre: limpio, id: { not: subItemId } },
+      select: { id: true },
+    });
+    if (repetido) {
+      return { success: false, error: `Ya hay un sub ítem "${limpio}" en este ítem.` };
+    }
+
+    await prisma.computoSubItem.update({ where: { id: subItemId }, data: { nombre: limpio } });
+
+    revalidatePath(`/proyectos/${proyectoId}`);
+    return { success: true, item: await itemConMediciones(existente.itemId) };
+  } catch (error) {
+    console.error("renombrarSubItem", error);
+    return { success: false, error: "No se pudo renombrar el sub ítem." };
+  }
+}
+
+/**
+ * Borra un sub ítem. Con algo cargado no se borra, igual que una fila extra
+ * de la sección: se avisa cuántas celdas hay que vaciar primero en vez de
+ * llevárselas calladas por la cascada del esquema.
+ */
+export async function eliminarSubItem(
+  proyectoId: string,
+  subItemId: string
+): Promise<ResultItem> {
+  await requireSeccion("proyectos");
+
+  try {
+    const subItem = await prisma.computoSubItem.findFirst({
+      where: { id: subItemId, item: { proyectoId } },
+      select: { id: true, itemId: true, _count: { select: { mediciones: true } } },
+    });
+    if (!subItem) return { success: false, error: "No se encontró el sub ítem." };
+
+    const cargadas = subItem._count.mediciones;
+    if (cargadas > 0) {
+      return {
+        success: false,
+        error:
+          cargadas === 1
+            ? "El sub ítem tiene 1 celda cargada. Vaciala primero."
+            : `El sub ítem tiene ${cargadas} celdas cargadas. Vacialas primero.`,
+      };
+    }
+
+    await prisma.computoSubItem.delete({ where: { id: subItemId } });
+
+    revalidatePath(`/proyectos/${proyectoId}`);
+    return { success: true, item: await itemConMediciones(subItem.itemId) };
+  } catch (error) {
+    console.error("eliminarSubItem", error);
+    return { success: false, error: "No se pudo eliminar el sub ítem." };
+  }
+}
+
+/**
+ * Guarda (o borra, con null) la celda de un sub ítem en una fila.
+ *
+ * Mismo comportamiento que `guardarCelda`: se guarda al salir del campo,
+ * vacío borra. Pero sin descripción ni desglose por ambiente — un sub ítem
+ * de PUERTAS es un número suelto por columna, como era antes un cajón.
+ */
+export async function guardarSubItemCelda(
+  proyectoId: string,
+  subItemId: string,
   fila: ClaveFila,
-  campo: CampoCajon,
   valor: number | null
 ): Promise<ResultItem> {
   await requireSeccion("proyectos");
@@ -803,82 +939,47 @@ export async function guardarCajon(
   }
 
   try {
-    const existe = await prisma.computoItem.findFirst({
-      where: { id: itemId, proyectoId },
-      select: { id: true, seccionId: true },
+    const subItem = await prisma.computoSubItem.findFirst({
+      where: { id: subItemId, item: { proyectoId } },
+      select: { id: true, itemId: true, item: { select: { seccionId: true } } },
     });
-    if (!existe) return { success: false, error: "No se encontró el ítem." };
+    if (!subItem) return { success: false, error: "No se encontró el sub ítem." };
 
-    const donde = await resolverFila(proyectoId, existe.seccionId, fila);
+    const donde = await resolverFila(proyectoId, subItem.item.seccionId, fila);
     if (!donde.ok) return { success: false, error: donde.error };
 
-    const cargadas = await prisma.computoMedicion.findMany({
-      where: { itemId, nivelId: donde.nivelId, filaExtraId: donde.filaExtraId },
-      orderBy: { orden: "asc" },
-      select: {
-        id: true,
-        origenId: true,
-        cantidad: true,
-        cajonC10: true,
-        cajonC15: true,
-        cajonC18: true,
-      },
+    const existente = await prisma.computoSubItemMedicion.findFirst({
+      where: { subItemId, nivelId: donde.nivelId, filaExtraId: donde.filaExtraId },
+      select: { id: true },
     });
 
-    if (cargadas.some((f) => f.origenId !== null)) {
-      return {
-        success: false,
-        error: "Esta celda sale de una cuenta sobre otro ítem. No se escribe a mano.",
-      };
-    }
-    if (cargadas.length > 1) {
-      return {
-        success: false,
-        error: "Esta celda tiene varias filas cargadas. Editalas desde el detalle.",
-      };
-    }
-
-    const medicion = cargadas[0];
-    if (medicion) {
-      // Si la fila se queda sin cantidad de puertas, sin ningún otro cajón y
-      // sin éste, no representa nada: se borra en vez de dejar un renglón
-      // vacío.
-      const sinOtrosCajones = CAMPOS_CAJON.filter((c) => c !== campo).every(
-        (c) => medicion[c] === null
-      );
-      if (valor === null && sinOtrosCajones && Number(medicion.cantidad) === 0) {
-        await prisma.computoMedicion.delete({ where: { id: medicion.id } });
+    if (existente) {
+      if (valor === null) {
+        await prisma.computoSubItemMedicion.delete({ where: { id: existente.id } });
       } else {
-        await prisma.computoMedicion.update({
-          where: { id: medicion.id },
-          data: { [campo]: valor },
+        await prisma.computoSubItemMedicion.update({
+          where: { id: existente.id },
+          data: { cantidad: valor },
         });
       }
     } else if (valor !== null) {
-      await prisma.computoMedicion.create({
+      await prisma.computoSubItemMedicion.create({
         data: {
-          itemId,
+          subItemId,
           nivelId: donde.nivelId,
           filaExtraId: donde.filaExtraId,
-          cantidad: 0,
-          [campo]: valor,
-          orden: await siguienteOrdenMedicion(itemId),
+          cantidad: valor,
         },
       });
     }
 
-    await tocarFechaComputo(proyectoId, itemId);
-
-    const item = await prisma.computoItem.findUniqueOrThrow({
-      where: { id: itemId },
-      include: incluirMediciones,
-    });
+    await tocarFechaComputo(proyectoId, subItem.itemId);
 
     revalidatePath(`/proyectos/${proyectoId}`);
-    return { success: true, item: mapItem(item) };
+    return { success: true, item: await itemConMediciones(subItem.itemId) };
   } catch (error) {
-    console.error("guardarCajon", error);
-    return { success: false, error: "No se pudo guardar el cajón." };
+    console.error("guardarSubItemCelda", error);
+    return { success: false, error: "No se pudo guardar la celda." };
   }
 }
 

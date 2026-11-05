@@ -64,12 +64,15 @@ function SeccionNueva({
   proyectoId,
   rubroId,
   tipo,
+  esComputos2,
   onCreada,
 }: {
   proyectoId: string;
   rubroId: string;
   /** El lado del switch que está abierto: la sección nace de ese lado. */
   tipo: TipoComputo;
+  /** Si esta grilla es la de "Cómputos 2". Ver ComputoBoard. */
+  esComputos2: boolean;
   onCreada: (seccion: SeccionOpcion) => void;
 }) {
   const [nombre, setNombre] = useState("");
@@ -80,7 +83,7 @@ function SeccionNueva({
     const limpio = nombre.trim();
     if (limpio === "" || pending) return;
     startTransition(async () => {
-      const result = await crearSeccion(proyectoId, rubroId, tipo, limpio);
+      const result = await crearSeccion(proyectoId, rubroId, tipo, limpio, esComputos2);
       if (!result.success) {
         toast.error(result.error);
         return;
@@ -283,6 +286,7 @@ export function ComputoBoard({
   filasExtra: filasExtraProp,
   items: itemsProp,
   fechas: fechasProp,
+  esComputos2 = false,
 }: {
   proyectoId: string;
   proyectoNombre: string;
@@ -296,6 +300,14 @@ export function ComputoBoard({
   items: ItemOpcion[];
   /** Cuándo se tocó por última vez cada rubro y lado. Ver FechaModificacion. */
   fechas: FechaComputoOpcion[];
+  /**
+   * Si este tablero es el de "Cómputos 2": una grilla en paralelo a la de
+   * siempre, para volver a cargar un rubro de cero. Sólo cambia en qué área
+   * nacen las secciones que se crean acá adentro (ver SeccionNueva); todo lo
+   * demás —niveles, rubros, fechas— es de la obra entera y es igual en las
+   * dos pantallas.
+   */
+  esComputos2?: boolean;
 }) {
   // Los niveles son de la obra, no de una sección: viven acá y no en cada
   // SeccionGrilla para que renombrar o borrar uno desde una grilla se vea al
@@ -621,6 +633,7 @@ export function ComputoBoard({
                     proyectoId={proyectoId}
                     rubroId={rubro.id}
                     tipo={tipo}
+                    esComputos2={esComputos2}
                     onCreada={agregarSeccion}
                   />
                 </div>
