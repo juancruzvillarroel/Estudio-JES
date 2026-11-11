@@ -32,6 +32,7 @@ import {
   conversionDe,
   esDerivadaEnFila,
   esHierro,
+  esSeccionMamposteria,
   esSeccionPuertas,
   etiquetaBultos,
   formatCantidad,
@@ -133,6 +134,13 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
    * grilla en pantalla (ver `esSeccionPuertas`).
    */
   const puertas = esSeccionPuertas(seccion.seccion);
+
+  /**
+   * La mampostería de Cómputos 2 se imprime igual que se ve en pantalla: sin
+   * la línea de unidades y con los palets ya redondeados para arriba en cada
+   * celda, sin decimales (ver `mamposteria2` en seccion-grilla.tsx).
+   */
+  const mamposteria2 = seccion.seccion.esComputos2 && esSeccionMamposteria(seccion.seccion);
 
   /** ¿Va la línea de la merma de este ítem? Depende de lo que se eligió bajar. */
   const conMerma = (item: ItemOpcion) =>
@@ -238,6 +246,9 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
           return celda(tiene ? formatCantidad(medido) : "—", "", derivada);
         },
         total: () => {
+          // Igual que en pantalla: en la mampostería de Cómputos 2 el Total
+          // no lleva los m² sin desperdicio.
+          if (mamposteria2) return "";
           const vacio = item.mediciones.length === 0;
           const total = datos.totales.get(item.id) ?? 0;
           return celda(vacio ? "—" : formatCantidad(total));
@@ -267,8 +278,11 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
           const medido = medidoEnFila(item, fila, datos.totales);
           // Sin redondear, como toda celda de nivel: el redondeo para arriba
           // es sólo del total (ver `bultosDe` y la línea `total` de abajo).
-          const exacto = tiene ? bultosDe(item, materialDe(item, medido))?.exacto ?? 0 : null;
-          return celda(exacto === null ? "—" : formatCantidad(exacto), "muted");
+          const b = tiene ? bultosDe(item, materialDe(item, medido)) : null;
+          if (!tiene) return celda("—", "muted");
+          return mamposteria2
+            ? celda(String(b?.enteros ?? 0))
+            : celda(formatCantidad(b?.exacto ?? 0), "muted");
         },
         total: () => {
           const vacio = item.mediciones.length === 0;
@@ -277,14 +291,16 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
           const texto =
             b === null
               ? "—"
-              : `<strong>${esc(String(b.enteros))}</strong> <span class="exacto">${esc(
-                  formatCantidad(b.exacto)
-                )}</span>`;
+              : mamposteria2
+                ? `<strong>${esc(String(b.enteros))}</strong>`
+                : `<strong>${esc(String(b.enteros))}</strong> <span class="exacto">${esc(
+                    formatCantidad(b.exacto)
+                  )}</span>`;
           return `<span class="sub-linea num">${texto}</span>`;
         },
       });
     }
-    if (conversionDe(item)) {
+    if (conversionDe(item) && !mamposteria2) {
       lineas.push({
         etiqueta: simboloUnidad(conversionDe(item)!.unidad),
         celda: (fila) => {

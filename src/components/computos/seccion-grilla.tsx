@@ -49,6 +49,7 @@ import {
   conversionDe,
   esDerivadaEnFila,
   esHierro,
+  esSeccionMamposteria,
   esSeccionPuertas,
   etiquetaBultos,
   formatCantidad,
@@ -1109,6 +1110,7 @@ function lineasDeItem({
   item,
   totales,
   puertas,
+  mamposteria2,
   abierta,
   onAbrir,
   onItemSaved,
@@ -1117,6 +1119,11 @@ function lineasDeItem({
   item: ItemOpcion;
   totales: Map<string, number>;
   puertas: boolean;
+  /**
+   * Si es la mampostería de Cómputos 2: no lleva la línea de material
+   * (unidades) y los palets van redondeados para arriba en cada casillero.
+   */
+  mamposteria2: boolean;
   abierta: CeldaAbierta | null;
   onAbrir: (celda: CeldaAbierta | null) => void;
   onItemSaved: (item: ItemOpcion) => void;
@@ -1453,11 +1460,14 @@ function lineasDeItem({
         </span>
       );
     },
-    total: () => (
-      <span className="block text-center text-sm font-medium tabular-nums">
-        {vacio ? "—" : formatCantidad(totalBase)}
-      </span>
-    ),
+    // En la mampostería de Cómputos 2 el Total no muestra los m² pelados:
+    // sólo cuentan los de abajo, con el desperdicio puesto y en palets.
+    total: () =>
+      mamposteria2 ? null : (
+        <span className="block text-center text-sm font-medium tabular-nums">
+          {vacio ? "—" : formatCantidad(totalBase)}
+        </span>
+      ),
   });
 
   if (item.desperdicio !== null) {
@@ -1499,7 +1509,11 @@ function lineasDeItem({
             title={`${item.nombre} en ${fila.nombre}: cantidad de ${etiquetaBulto}, sin redondear`}
             className="block text-center text-sm tabular-nums text-muted-foreground"
           >
-            {!tiene ? "—" : formatCantidad(bultosDe(item, materialDe(item, medido))?.exacto ?? 0)}
+            {!tiene
+              ? "—"
+              : mamposteria2
+                ? (bultosDe(item, materialDe(item, medido))?.enteros ?? 0)
+                : formatCantidad(bultosDe(item, materialDe(item, medido))?.exacto ?? 0)}
           </span>
         );
       },
@@ -1511,10 +1525,17 @@ function lineasDeItem({
             <span className="text-muted-foreground">—</span>
           ) : (
             <>
-              <span className="font-medium">{bultosTotal.enteros}</span>{" "}
-              <span className="text-xs text-muted-foreground">
-                ({formatCantidad(bultosTotal.exacto)})
-              </span>
+              <span className="font-medium">{bultosTotal.enteros}</span>
+              {/* En la mampostería de Cómputos 2 sólo el entero: se pidió
+                  no ver números con coma en los palets. */}
+              {!mamposteria2 && (
+                <>
+                  {" "}
+                  <span className="text-xs text-muted-foreground">
+                    ({formatCantidad(bultosTotal.exacto)})
+                  </span>
+                </>
+              )}
             </>
           )}
         </span>
@@ -1522,7 +1543,7 @@ function lineasDeItem({
     });
   }
 
-  if (conversion) {
+  if (conversion && !mamposteria2) {
     lineas.push({
       key: "material",
       etiqueta: (
@@ -1720,6 +1741,7 @@ export function SeccionGrilla({
   // cada ítem reemplaza su línea de cantidad por una línea por cada sub
   // ítem que tenga, más una columna angosta con su unidad (ver `FilaItem`).
   const puertas = esSeccionPuertas(seccion);
+  const mamposteria2 = seccion.esComputos2 && esSeccionMamposteria(seccion);
 
   /**
    * Cuántas columnas tiene la tabla: la del nombre del ítem y una por cada
@@ -1972,6 +1994,7 @@ export function SeccionGrilla({
                             totales={totales}
                             totalColumnas={totalColumnas}
                             puertas={puertas}
+                            mamposteria2={mamposteria2}
                             arrastrable={itemsOrdenados.length > 1}
                             abierta={abierta}
                             onAbrir={setAbierta}
@@ -2014,6 +2037,7 @@ function FilaItem({
   totales,
   totalColumnas,
   puertas,
+  mamposteria2,
   arrastrable,
   abierta,
   onAbrir,
@@ -2029,6 +2053,7 @@ function FilaItem({
   totalColumnas: number;
   /** Si esta sección es PUERTAS: cada ítem reemplaza su cantidad por sus sub ítems. */
   puertas: boolean;
+  mamposteria2: boolean;
   arrastrable: boolean;
   abierta: CeldaAbierta | null;
   onAbrir: (celda: CeldaAbierta | null) => void;
@@ -2066,7 +2091,16 @@ function FilaItem({
   // etiqueta queda alineada con sus datos sin tener que igualar a mano
   // paddings ni alturas de línea. Si no hay ninguna línea adicional, no hay
   // fila abajo: el bloque del ítem es esa única fila.
-  const lineas = lineasDeItem({ proyectoId, item, totales, puertas, abierta, onAbrir, onItemSaved });
+  const lineas = lineasDeItem({
+    proyectoId,
+    item,
+    totales,
+    puertas,
+    mamposteria2,
+    abierta,
+    onAbrir,
+    onItemSaved,
+  });
   // La línea "medido" (sólo existe fuera de PUERTAS, ver `lineasDeItem`) se
   // fusiona con la fila de título en vez de tener su propia fila: es la
   // única línea que tiene casi todo ítem, y separarla obligaba a una fila

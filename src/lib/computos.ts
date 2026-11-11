@@ -1152,6 +1152,19 @@ export function esSeccionPuertas(seccion: { nombre: string }): boolean {
   return seccion.nombre.trim().toUpperCase() === "PUERTAS";
 }
 
+/**
+ * ¿Es una grilla de mampostería? Se compara sin tildes ni mayúsculas
+ * ("Mampostería", "MAMPOSTERIA", "MAMPOSTERÍA DE LADRILLO" son todas la
+ * misma), porque el nombre lo escribe a mano quien crea la sección.
+ */
+export function esSeccionMamposteria(seccion: { nombre: string }): boolean {
+  return seccion.nombre
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .includes("MAMPOSTERIA");
+}
+
 // ---------------------------------------------------------------------------
 // Sub ítems (por ahora sólo en la grilla de PUERTAS)
 // ---------------------------------------------------------------------------
