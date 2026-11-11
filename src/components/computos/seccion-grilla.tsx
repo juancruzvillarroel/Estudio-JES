@@ -2047,12 +2047,12 @@ export function SeccionGrilla({
                         varios renglones. Las de los niveles se reparten lo que
                         queda. */}
                     <th className="w-44 px-3 py-2 text-center align-middle text-xs font-semibold">
-                      Ítem
+                      ÍTEM
                     </th>
                     {/* Columna angosta y fija: la unidad de cada ítem, que en
                         PUERTAS no tiene una fila propia (ver `FilaItem`). */}
                     <th className="w-12 border-l px-1 py-2 text-center align-middle text-xs font-semibold">
-                      Unidad
+                      UNIDAD
                     </th>
                     {filas.map((fila) => (
                       <EncabezadoFila
