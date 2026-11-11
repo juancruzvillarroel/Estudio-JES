@@ -61,6 +61,7 @@ import {
   esSeccionMamposteria,
   esSeccionPuertas,
   etiquetaBultos,
+  mayuscula,
   evaluarFormula,
   formatCantidad,
   formulaATexto,
@@ -858,7 +859,7 @@ function EncabezadoFila({
       ref={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       className={cn(
-        "relative border-l px-2 py-2 text-center align-middle text-sm font-medium",
+        "relative border-l px-2 py-2 text-center align-middle text-xs font-semibold",
         isDragging && "z-10 bg-background opacity-90 shadow-lg"
       )}
     >
@@ -911,6 +912,13 @@ function EncabezadoFila({
  * —la fila mide lo que mide su celda más alta— y no porque un padding
  * haya quedado igual que otro a mano.
  */
+/**
+ * La columna de Total va toda con el mismo peso de letra que la fila de
+ * títulos: cada línea trae su propio `font-medium` o ninguno, y se
+ * pisan todos acá para que la columna se lea pareja.
+ */
+const TOTAL_COL = "font-semibold [&_*]:font-semibold";
+
 type LineaItem = {
   key: string;
   etiqueta: ReactNode;
@@ -1602,7 +1610,7 @@ function lineasDeItem({
         <span
           title={`Cantidad de ${etiquetaBulto}, de ${formatCantidad(item.porBulto!)} ${simboloUnidad(item.rindeUnidad!)} cada una`}
         >
-          {etiquetaBulto}
+          {mayuscula(etiquetaBulto)}
         </span>
       ),
       celda: (fila) => {
@@ -2023,22 +2031,27 @@ export function SeccionGrilla({
                   de más al calcular los anchos con `table-fixed`, dejando un
                   espacio en blanco a la derecha. */}
               <table
-                className="table-fixed border-collapse text-sm"
+                // La primera columna (los nombres) y la fila de títulos van con
+                // una línea más gruesa: son el encabezado de la tabla, y así
+                // se separan a simple vista de los números. En esa primera
+                // columna cada renglón (el ítem, +10%, Palets...) lleva además
+                // su propia línea abajo.
+                className="table-fixed border-collapse text-sm [&_tr>:first-child]:border-r-2 [&_tr>:first-child]:border-r-foreground/25 [&_tbody_tr>:first-child]:border-b"
                 style={{ width: "100%", minWidth: anchoMinimoPx }}
               >
                 <thead>
-                  <tr className="border-b bg-foreground/15">
+                  <tr className="border-b-2 border-b-foreground/25 bg-foreground/15">
                     {/* La del ítem es la única con ancho propio: es la que se lee
                         para saber de qué fila es cada número, y si se achicara
                         junto con las demás un nombre largo terminaría partido en
                         varios renglones. Las de los niveles se reparten lo que
                         queda. */}
-                    <th className="w-44 px-3 py-2 text-center align-middle text-xs font-medium text-muted-foreground">
+                    <th className="w-44 px-3 py-2 text-center align-middle text-xs font-semibold">
                       Ítem
                     </th>
                     {/* Columna angosta y fija: la unidad de cada ítem, que en
                         PUERTAS no tiene una fila propia (ver `FilaItem`). */}
-                    <th className="w-12 border-l px-1 py-2 text-center align-middle text-xs font-medium text-muted-foreground">
+                    <th className="w-12 border-l px-1 py-2 text-center align-middle text-xs font-semibold">
                       Unidad
                     </th>
                     {filas.map((fila) => (
@@ -2060,8 +2073,8 @@ export function SeccionGrilla({
                     ))}
                     {/* Fija al final, fuera del `SortableContext`: suma todos
                         los niveles y no se arrastra como ellos. */}
-                    <th className="w-16 border-l-2 px-1 py-2 text-center align-middle text-xs font-medium text-muted-foreground">
-                      Total
+                    <th className="w-16 border-l-2 px-1 py-2 text-center align-middle text-xs font-semibold">
+                      TOTAL
                     </th>
                   </tr>
                 </thead>
@@ -2225,13 +2238,32 @@ function FilaItem({
     "group/fila bg-muted/20 transition-colors duration-150",
     isDragging ? "relative z-10 bg-background shadow-md" : "hover:bg-muted/40"
   );
+  // Las líneas que salen de la cuenta del ítem (+10%, Palets, material...)
+  // van en un gris algo más oscuro que el de la fila del ítem, para que a
+  // simple vista se separe lo que se carga de lo que se calcula solo. Los sub
+  // ítems no: son datos que se cargan, como el ítem.
+  const claseCalculada = (linea: LineaItem) =>
+    linea.esSubItem
+      ? null
+      : {
+          fila: "bg-neutral-200/60 hover:bg-neutral-200/80 dark:bg-neutral-800/50 dark:hover:bg-neutral-800/70",
+          etiqueta:
+            "bg-neutral-200/80 group-hover/fila:bg-neutral-200 dark:bg-neutral-700/40 dark:group-hover/fila:bg-neutral-700/60",
+          lateral: "bg-neutral-200/70 dark:bg-neutral-700/30",
+        };
 
   return (
     <Fragment>
       <tr
         ref={setNodeRef}
         style={filaStyle}
-        className={cn(filaClase, lineasVisibles.length === 0 && "border-b last:border-b-0")}
+        className={cn(
+          filaClase,
+          // La fila del ítem lleva un mismo gris de punta a punta (nombre,
+          // unidad, niveles y total), para leerse como un solo renglón.
+          !isDragging && "bg-muted/50 hover:bg-muted/70",
+          lineasVisibles.length === 0 && "border-b last:border-b-0"
+        )}
       >
         {/* La columna del ítem va en gris y con el texto entero: es el
             encabezado de la fila, no un dato, y cortarlo obligaría a
@@ -2239,7 +2271,7 @@ function FilaItem({
             de renglón. */}
         <th
           scope="row"
-          className="bg-muted/50 px-3 py-1 text-left align-middle transition-colors duration-150 group-hover/fila:bg-muted/70"
+          className="px-3 py-1 text-left align-middle"
         >
           <span className="flex min-w-0 items-start gap-1">
             {arrastrable ? (
@@ -2346,7 +2378,7 @@ function FilaItem({
         {/* La unidad del ítem va una sola vez, acá: si hay líneas extra
             abajo (ver más adelante) esa celda queda vacía en ellas, en vez
             de repetir el mismo símbolo fila tras fila. */}
-        <td className="border-l bg-muted/30 px-1 py-0.5 text-center align-middle text-xs text-muted-foreground">
+        <td className="border-l px-1 py-0.5 text-center align-middle text-xs text-muted-foreground">
           {simboloUnidad(item.unidad)}
         </td>
 
@@ -2365,7 +2397,7 @@ function FilaItem({
                 {lineaPrincipal.celda(fila)}
               </td>
             ))}
-            <td className="border-l-2 bg-muted/30 px-1 py-0.5 align-middle">
+            <td className={cn("border-l-2 px-1 py-0.5 align-middle", TOTAL_COL)}>
               {lineaPrincipal.total()}
             </td>
           </>
@@ -2374,18 +2406,24 @@ function FilaItem({
         )}
       </tr>
 
-      {lineasVisibles.map((linea, i) => (
+      {lineasVisibles.map((linea, i) => {
+        const calculada = claseCalculada(linea);
+        return (
         <tr
           key={linea.key}
           style={filaStyle}
           className={cn(
             filaClase,
+            !isDragging && calculada?.fila,
             i === lineasVisibles.length - 1 && "border-b last:border-b-0"
           )}
         >
           <th
             scope="row"
-            className="bg-muted/50 px-3 py-0.5 text-left align-middle text-xs font-medium text-muted-foreground transition-colors duration-150 group-hover/fila:bg-muted/70"
+            className={cn(
+              "bg-muted/50 px-3 py-0.5 text-left align-middle text-xs font-medium text-muted-foreground transition-colors duration-150 group-hover/fila:bg-muted/70",
+              calculada?.etiqueta
+            )}
           >
             <span className="flex min-w-0 items-center gap-1">
               <span className="w-3.5 shrink-0" aria-hidden />
@@ -2396,7 +2434,7 @@ function FilaItem({
 
           {/* La unidad ya se mostró una vez, en la fila de título: acá la
               celda queda vacía, sólo para que la columna siga alineada. */}
-          <td className="border-l bg-muted/30 px-1 py-0.5" />
+          <td className={cn("border-l bg-muted/30 px-1 py-0.5", calculada?.lateral)} />
 
           {filas.map((fila) => (
             <td
@@ -2407,9 +2445,18 @@ function FilaItem({
             </td>
           ))}
 
-          <td className="border-l-2 bg-muted/30 px-1 py-0.5 align-middle">{linea.total()}</td>
+          <td
+            className={cn(
+              "border-l-2 bg-muted/30 px-1 py-0.5 align-middle",
+              TOTAL_COL,
+              calculada?.lateral
+            )}
+          >
+            {linea.total()}
+          </td>
         </tr>
-      ))}
+        );
+      })}
 
       {filaAbierta && (
         <tr className="border-b bg-muted/50 duration-150 animate-in fade-in">

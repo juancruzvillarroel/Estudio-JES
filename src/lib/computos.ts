@@ -548,6 +548,15 @@ export function etiquetaBultos(items: { bultoNombre: string | null }[]) {
 }
 
 /**
+ * El texto con la primera letra en mayúscula ("palets" → "Palets"), para
+ * usar `etiquetaBultos` como título de fila. Como unidad ("12 palets") va
+ * en minúscula, por eso no lo hace `etiquetaBultos` misma.
+ */
+export function mayuscula(texto: string) {
+  return texto.charAt(0).toUpperCase() + texto.slice(1);
+}
+
+/**
  * La cantidad que efectivamente se pide de este ítem, con su unidad.
  *
  * Es la misma decisión que toma el pie de la grilla, puesta en un solo
