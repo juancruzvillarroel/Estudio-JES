@@ -22,7 +22,7 @@ async function main() {
   });
   for (const p of proyectos) {
     const creadas = await aplicarPlantillaComputos2(p.id, { simular: !APLICAR });
-    console.log(`${p.nombre}: ${creadas.length ? creadas.join(", ") : "nada que agregar"}`);
+    console.log(`${p.nombre}: ${creadas.length ? creadas.join(" | ") : "nada que agregar"}`);
   }
 }
 
