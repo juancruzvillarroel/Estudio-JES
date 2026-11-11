@@ -115,16 +115,29 @@ type CeldaAbierta = { itemId: string; filaKey: string };
  */
 function useCeldaEditable({
   valor,
+  editable = valor,
   formula,
   conFormulas,
   guardarEn,
 }: {
   valor: number | null;
+  /**
+   * El número que se escribió, si no es el mismo que se muestra: en una
+   * planta tipo la celda quieta muestra lo de todas sus repeticiones (×7),
+   * pero al entrar a editarla se ve y se corrige el de UNA planta, que es lo
+   * que se guarda.
+   */
+  editable?: number | null;
   formula: string | null;
   conFormulas: boolean;
   guardarEn: (numero: number | null, formula: string | null) => Promise<boolean>;
 }) {
-  const inicial = valor === null ? "" : medidaATexto(valor);
+  // Con 2 decimales como mucho, igual que el resto de la grilla: en una planta
+  // tipo el número ya viene multiplicado por sus repeticiones, y la cuenta en
+  // coma flotante deja colas como 881,3000000000001.
+  const inicial = valor === null ? "" : medidaATexto(Math.round(valor * 100) / 100);
+  // Lo que se ve al entrar a editar un número suelto: el de una planta.
+  const textoEditable = editable === null ? "" : medidaATexto(editable);
   const [texto, setTexto] = useState(inicial);
   const [guardado, setGuardado] = useState(inicial);
   const [prev, setPrev] = useState({ valor, formula });
@@ -140,7 +153,7 @@ function useCeldaEditable({
   const textoFormula = formula === null ? "" : formulaATexto(formula);
 
   const alEnfocar = () => {
-    if (conFormula) setTexto(textoFormula);
+    setTexto(conFormula ? textoFormula : textoEditable);
   };
 
   // Escape descarta lo tipeado: el blur que sigue no tiene que guardar nada.
@@ -175,7 +188,7 @@ function useCeldaEditable({
 
     // Sin cambios: el número de siempre, o la fórmula que se mostró al
     // entrar y no se tocó (eso ya lo atajó el bloque de arriba).
-    if (limpio === guardado && !conFormula) {
+    if (limpio === textoEditable && !conFormula) {
       setTexto(guardado);
       return;
     }
@@ -193,13 +206,11 @@ function useCeldaEditable({
       return;
     }
 
-    setGuardado(limpio);
+    // Al guardar llega la celda nueva (ya multiplicada si es planta tipo) y
+    // reemplaza lo tipeado; si falla, vuelve a lo que se mostraba.
     startTransition(async () => {
       const ok = await guardarEn(numero, null);
-      if (!ok) {
-        setTexto(guardado);
-        setGuardado(guardado);
-      }
+      if (!ok) setTexto(guardado);
     });
   };
 
@@ -278,8 +289,12 @@ function Celda({
   conFormulas?: boolean;
   onSaved: (item: ItemOpcion) => void;
 }) {
+  // Con un solo renglón, lo que se edita es su cantidad: la de una planta,
+  // sin multiplicar por las repeticiones del nivel.
+  const renglones = medicionesDeFila(item, fila);
   const { inputProps, conFormula, textoFormula } = useCeldaEditable({
     valor,
+    editable: renglones.length === 1 ? renglones[0].cantidad : valor,
     formula,
     conFormulas,
     guardarEn: async (numero, formulaTexto) => {
@@ -336,8 +351,10 @@ function CeldaSubItem({
   conFormulas?: boolean;
   onSaved: (item: ItemOpcion) => void;
 }) {
+  const renglones = subItemMedicionesDeFila(subItem, fila);
   const { inputProps, conFormula, textoFormula } = useCeldaEditable({
     valor,
+    editable: renglones.length === 1 ? renglones[0].cantidad : valor,
     formula,
     conFormulas,
     guardarEn: async (numero, formulaTexto) => {
