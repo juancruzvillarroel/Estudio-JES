@@ -12,9 +12,15 @@ enum Moneda {
   USD
 }
 
+// CAMBIO es una compra o venta de dólares con plata de la obra: sale de una
+// caja y entra en la otra. Se guarda en una sola fila (lo que sale, en su
+// moneda, y el tipo de cambio) y lo que entra se calcula; ver
+// src/lib/cambios-moneda.ts. No es aporte ni gasto, así que no mueve lo que
+// aportó cada inversor ni lo gastado en la obra.
 enum TipoMovimientoFondo {
   GASTO
   APORTE
+  CAMBIO
 }
 
 enum EstadoProyecto {

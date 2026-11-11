@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { Calendar, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowRightLeft, Calendar, Pencil, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,8 @@ import {
 } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { MovimientoFondoDialog } from "@/components/flujo-fondos/movimiento-fondo-dialog";
+import { CambioMonedaDialog } from "@/components/flujo-fondos/cambio-moneda-dialog";
+import { montoEntrante, otraMoneda } from "@/lib/cambios-moneda";
 import { RubroFiltroMultiple } from "@/components/rubros/rubro-filtro-multiple";
 import { cn } from "@/lib/utils";
 import { MONEDA_LABELS, type MedioPagoOpcion, type MovimientoFondoOpcion } from "@/lib/flujo-fondos";
@@ -114,6 +116,34 @@ function MontoMovimiento({
   );
 }
 
+function textoMonto(monto: number, moneda: "ARS" | "USD") {
+  return moneda === "USD" ? `USD ${formatMonto(monto)}` : `$${formatMonto(monto)}`;
+}
+
+/**
+ * El monto de un cambio de moneda: lo que salió de una caja y lo que entró en
+ * la otra, uno arriba del otro, para que se vea de un vistazo que toca las dos.
+ */
+function MontoCambio({ cambio }: { cambio: MovimientoFondoOpcion }) {
+  const entra = otraMoneda(cambio.moneda);
+  return (
+    <div className="shrink-0 self-center text-right">
+      <p className="text-sm font-semibold text-error tabular-nums">
+        −{textoMonto(cambio.monto, cambio.moneda)}
+      </p>
+      <p
+        className={cn(
+          "text-sm font-semibold tabular-nums",
+          entra === "USD" ? "text-success" : "text-foreground"
+        )}
+      >
+        +{textoMonto(montoEntrante(cambio), entra)}
+      </p>
+      <p className="text-xs text-muted-foreground">TC ${cambio.tipoCambio}</p>
+    </div>
+  );
+}
+
 export function MovimientoFondoTabla({
   proyectoId,
   tipo,
@@ -171,7 +201,8 @@ export function MovimientoFondoTabla({
     if (fechaHasta && fechaCorta > fechaHasta) return false;
     if (rubroIds.length > 0 && (!m.rubroId || !rubroIds.includes(m.rubroId))) return false;
     if (proveedorId && m.proveedorId !== proveedorId) return false;
-    if (moneda && m.moneda !== moneda) return false;
+    // Un cambio toca las dos monedas, así que aparece con cualquiera de las dos.
+    if (moneda && m.tipo !== "CAMBIO" && m.moneda !== moneda) return false;
     if (medioPagoId && m.medioPagoId !== medioPagoId) return false;
     return true;
   });
@@ -185,10 +216,13 @@ export function MovimientoFondoTabla({
     return enElDia(a, b);
   });
 
-  const totalARS = filtrados
+  // Los totales son de aportes (o gastos), sin los cambios de moneda: un cambio
+  // no es plata nueva, y así coinciden con el "Aportado" del Resumen.
+  const sinCambios = filtrados.filter((m) => m.tipo !== "CAMBIO");
+  const totalARS = sinCambios
     .filter((m) => m.moneda === "ARS")
     .reduce((acc, m) => acc + m.monto, 0);
-  const totalUSD = filtrados
+  const totalUSD = sinCambios
     .filter((m) => m.moneda === "USD")
     .reduce((acc, m) => acc + m.monto, 0);
 
@@ -334,22 +368,36 @@ export function MovimientoFondoTabla({
             </Button>
           </Tooltip>
         )}
-        <MovimientoFondoDialog
-          proyectoId={proyectoId}
-          rubros={rubros}
-          proveedores={proveedores}
-          proyectoInversores={proyectoInversores}
-          mediosPago={mediosPago}
-          sugerenciaHonorarios={sugerenciaHonorarios}
-          defaultTipo={tipo}
-          onSaved={onSaved}
-          trigger={
-            <Button type="button" size="sm" className="ml-auto shrink-0">
-              <Plus className="h-3.5 w-3.5" />
-              {tipo === "GASTO" ? "Nuevo gasto" : "Nuevo aporte"}
-            </Button>
-          }
-        />
+        <div className="ml-auto flex shrink-0 flex-wrap items-center gap-2">
+          {tipo === "APORTE" && (
+            <CambioMonedaDialog
+              proyectoId={proyectoId}
+              onSaved={onSaved}
+              trigger={
+                <Button type="button" size="sm">
+                  <ArrowRightLeft className="h-3.5 w-3.5" />
+                  Cambio de moneda
+                </Button>
+              }
+            />
+          )}
+          <MovimientoFondoDialog
+            proyectoId={proyectoId}
+            rubros={rubros}
+            proveedores={proveedores}
+            proyectoInversores={proyectoInversores}
+            mediosPago={mediosPago}
+            sugerenciaHonorarios={sugerenciaHonorarios}
+            defaultTipo={tipo}
+            onSaved={onSaved}
+            trigger={
+              <Button type="button" size="sm">
+                <Plus className="h-3.5 w-3.5" />
+                {tipo === "GASTO" ? "Nuevo gasto" : "Nuevo aporte"}
+              </Button>
+            }
+          />
+        </div>
       </div>
 
       {/* En móvil la barra negra se esconde: no dice nada, es decorativa, y lo
@@ -422,6 +470,14 @@ export function MovimientoFondoTabla({
                         </div>
                         <p className="truncate text-xs text-muted-foreground">{m.descripcion}</p>
                       </>
+                    ) : m.tipo === "CAMBIO" ? (
+                      <>
+                        <p className="flex items-center gap-1.5 truncate text-sm font-medium">
+                          <ArrowRightLeft className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                          {m.moneda === "USD" ? "Cambio de dólares a pesos" : "Cambio de pesos a dólares"}
+                        </p>
+                        <p className="truncate text-xs text-muted-foreground">{m.descripcion}</p>
+                      </>
                     ) : (
                       <>
                         <p className="truncate text-sm font-medium">{m.descripcion}</p>
@@ -431,15 +487,47 @@ export function MovimientoFondoTabla({
                       </>
                     )}
                   </div>
-                  <MontoMovimiento
-                    monto={m.monto}
-                    moneda={m.moneda}
-                    tipoCambio={m.tipoCambio}
-                    medioPagoNombre={m.medioPagoNombre}
-                  />
+                  {m.tipo === "CAMBIO" ? (
+                    <MontoCambio cambio={m} />
+                  ) : (
+                    <MontoMovimiento
+                      monto={m.monto}
+                      moneda={m.moneda}
+                      tipoCambio={m.tipoCambio}
+                      medioPagoNombre={m.medioPagoNombre}
+                    />
+                  )}
                 </button>
 
-                {abierto && (
+                {abierto && m.tipo === "CAMBIO" && (
+                  <div className="border-t px-3 py-3">
+                    <dl className="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-2">
+                      <Dato label="Fecha">{formatFechaLarga(m.fecha)}</Dato>
+                      <Dato label="Tipo de cambio">${m.tipoCambio}</Dato>
+                      <Dato label="Sale">{textoMonto(m.monto, m.moneda)}</Dato>
+                      <Dato label="Entra">{textoMonto(montoEntrante(m), otraMoneda(m.moneda))}</Dato>
+                      <Dato label="Descripción" ancho>
+                        {m.descripcion || "—"}
+                      </Dato>
+                    </dl>
+                    <div className="mt-3 flex justify-end">
+                      <CambioMonedaDialog
+                        proyectoId={proyectoId}
+                        item={m}
+                        onSaved={onSaved}
+                        onDeleted={onDeleted}
+                        trigger={
+                          <Button type="button" variant="outline" size="sm">
+                            <Pencil className="h-3.5 w-3.5" />
+                            Editar
+                          </Button>
+                        }
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {abierto && m.tipo !== "CAMBIO" && (
                   <div className="border-t px-3 py-3">
                     <dl className="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-2">
                       <Dato label="Fecha">{formatFechaLarga(m.fecha)}</Dato>

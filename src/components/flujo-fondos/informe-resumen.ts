@@ -38,6 +38,8 @@ export type BloqueInforme = {
   titulo: string;
   aportadoTexto: string;
   gastadoTexto: string;
+  /** Neto de los cambios de moneda, con signo. Null si no hubo. */
+  cambiosTexto: string | null;
   saldoTexto: string;
   saldoNegativo: boolean;
   /** Porcentaje del aporte que ya se ejecutó, para la barra de progreso. */
@@ -154,6 +156,11 @@ function tarjetaMoneda(b: BloqueInforme) {
     <h3>${esc(b.titulo)}</h3>
     <div class="cuerpo">
       <div class="linea"><span>Aportado</span><span class="num">${esc(b.aportadoTexto)}</span></div>
+      ${
+        b.cambiosTexto
+          ? `<div class="linea"><span>Cambios de moneda</span><span class="num">${esc(b.cambiosTexto)}</span></div>`
+          : ""
+      }
       <div class="linea"><span>Gastado</span><span class="num">${esc(b.gastadoTexto)}</span></div>
       <div class="progreso compacta">
         <div class="pista"><div class="relleno" style="width:${ancho(b.ejecutado)}%"></div></div>

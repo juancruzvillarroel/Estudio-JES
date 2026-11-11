@@ -17,7 +17,7 @@ export type MovimientoFondoConRelaciones = Prisma.MovimientoFondoGetPayload<{
 export type MovimientoFondoOpcion = {
   id: string;
   proyectoId: string;
-  tipo: "GASTO" | "APORTE";
+  tipo: "GASTO" | "APORTE" | "CAMBIO";
   fecha: string;
   /**
    * Cuándo se cargó. Desempata a los movimientos que tienen la misma fecha,

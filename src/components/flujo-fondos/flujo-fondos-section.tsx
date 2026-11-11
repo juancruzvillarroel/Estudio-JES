@@ -164,7 +164,9 @@ export function FlujoFondosSection({
   });
 
   const gastos = items.filter((m) => m.tipo === "GASTO");
-  const aportes = items.filter((m) => m.tipo === "APORTE");
+  // Los cambios de moneda se listan junto con los aportes: los dos deciden con
+  // cuánta plata cuenta cada caja.
+  const aportesYCambios = items.filter((m) => m.tipo === "APORTE" || m.tipo === "CAMBIO");
   const proyectoInversores = inversores.map((a) => ({ id: a.id, inversorNombre: a.inversorNombre }));
 
   return (
@@ -261,7 +263,7 @@ export function FlujoFondosSection({
           proveedores={proveedores}
           proyectoInversores={proyectoInversores}
           mediosPago={mediosPagoActuales}
-          movimientos={aportes}
+          movimientos={aportesYCambios}
           emptyMessage="Todavía no hay aportes cargados para este proyecto."
           onSaved={handleSaved}
           onDeleted={handleDeleted}

@@ -26,9 +26,22 @@ export const MovimientoAporteSchema = MovimientoFondoBaseSchema.extend({
   proyectoInversorId: z.string().min(1, "Elegí un inversor"),
 });
 
+/**
+ * Cambio de moneda (ver src/lib/cambios-moneda.ts): `moneda` y `monto` son lo
+ * que sale. El tipo de cambio es obligatorio porque sin él no se sabe cuánto
+ * entra en la otra caja.
+ */
+export const MovimientoCambioSchema = MovimientoFondoBaseSchema.extend({
+  tipo: z.literal("CAMBIO"),
+  tipoCambio: z
+    .number({ error: "Ingresá el tipo de cambio" })
+    .positive("El tipo de cambio debe ser mayor a 0"),
+});
+
 export const MovimientoFondoSchema = z.discriminatedUnion("tipo", [
   MovimientoGastoSchema,
   MovimientoAporteSchema,
+  MovimientoCambioSchema,
 ]);
 
 export type MovimientoFondoInput = z.infer<typeof MovimientoFondoSchema>;

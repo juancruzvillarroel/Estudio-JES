@@ -10,6 +10,7 @@ import { abrirInformeResumen, type BloqueInforme } from "@/components/flujo-fond
 import { Panel } from "@/components/flujo-fondos/panel";
 import { HonorariosPanel } from "@/components/flujo-fondos/honorarios-panel";
 import { cn, formatMontoMoneda, formatFecha } from "@/lib/utils";
+import { netoCambios } from "@/lib/cambios-moneda";
 import type {
   MovimientoFondoOpcion,
   ProyectoInversorOpcion,
@@ -122,15 +123,34 @@ type BloqueResumen = {
   etiqueta?: string;
   aportado: number;
   gastado: number;
+  /**
+   * Lo que los cambios de moneda le sumaron o restaron a la caja (ver
+   * src/lib/cambios-moneda.ts). En el consolidado en dólares es siempre cero.
+   */
+  cambios: number;
   filas: FilaInversor[];
   format: (valor: number) => string;
 };
+
+/**
+ * La plata con la que contó la caja: lo aportado más (o menos) lo que entró o
+ * salió por cambios de moneda. Contra esto se miden el saldo y lo ejecutado.
+ */
+function disponible(b: { aportado: number; cambios: number }) {
+  return b.aportado + b.cambios;
+}
+
+function porcentajeEjecutado(b: { aportado: number; gastado: number; cambios: number }) {
+  const total = disponible(b);
+  return total > 0 ? (b.gastado / total) * 100 : b.gastado > 0 ? 100 : 0;
+}
 
 function BloqueMoneda({
   titulo,
   etiqueta,
   aportado,
   gastado,
+  cambios,
   filas,
   format,
   destacado,
@@ -139,12 +159,13 @@ function BloqueMoneda({
   etiqueta?: string;
   aportado: number;
   gastado: number;
+  cambios: number;
   filas: FilaInversor[];
   format: (valor: number) => string;
   destacado?: boolean;
 }) {
-  const saldo = aportado - gastado;
-  const ejecutado = aportado > 0 ? (gastado / aportado) * 100 : gastado > 0 ? 100 : 0;
+  const saldo = disponible({ aportado, cambios }) - gastado;
+  const ejecutado = porcentajeEjecutado({ aportado, gastado, cambios });
 
   return (
     <div className={cn("flex flex-col gap-4 p-4", destacado && "bg-muted/20")}>
@@ -181,6 +202,15 @@ function BloqueMoneda({
           <span className="text-muted-foreground">Aportado</span>
           <span className="font-medium tabular-nums">{format(aportado)}</span>
         </div>
+        {cambios !== 0 && (
+          <div className="flex items-baseline justify-between gap-2 text-[11px]">
+            <span className="text-muted-foreground">Cambios de moneda</span>
+            <span className="font-medium tabular-nums">
+              {cambios > 0 ? "+" : "−"}
+              {format(Math.abs(cambios))}
+            </span>
+          </div>
+        )}
       </div>
 
       {filas.length > 0 && (
@@ -281,14 +311,16 @@ function LeyendaFacturacion({
 
 /** Traduce un bloque de la pantalla al formato ya formateado que usa el informe. */
 function aBloqueInforme(b: BloqueResumen): BloqueInforme {
-  const saldo = b.aportado - b.gastado;
+  const saldo = disponible(b) - b.gastado;
   return {
     titulo: b.titulo,
     aportadoTexto: b.format(b.aportado),
     gastadoTexto: b.format(b.gastado),
+    cambiosTexto:
+      b.cambios !== 0 ? `${b.cambios > 0 ? "+" : "−"}${b.format(Math.abs(b.cambios))}` : null,
     saldoTexto: b.format(saldo),
     saldoNegativo: saldo < 0,
-    ejecutado: b.aportado > 0 ? (b.gastado / b.aportado) * 100 : b.gastado > 0 ? 100 : 0,
+    ejecutado: porcentajeEjecutado(b),
     filas: b.filas.map((f) => ({
       nombre: f.nombre,
       porcentaje: f.porcentaje,
@@ -331,8 +363,12 @@ export function ResumenFlujoFondos({
   const aportes = movimientosEnRango.filter((m) => m.tipo === "APORTE");
 
   // --- Bloques por moneda (los dos de siempre) + consolidado en dólares ---
-  const monedasPresentes = (["ARS", "USD"] as const).filter((moneda) =>
-    movimientosEnRango.some((m) => m.moneda === moneda)
+  // Un cambio de moneda toca las dos cajas, así que alcanza con uno para que
+  // aparezcan los dos bloques aunque no haya otro movimiento en la moneda que
+  // entra.
+  const hayCambios = movimientosEnRango.some((m) => m.tipo === "CAMBIO");
+  const monedasPresentes = (["ARS", "USD"] as const).filter(
+    (moneda) => hayCambios || movimientosEnRango.some((m) => m.moneda === moneda)
   );
 
   const bloquesPorMoneda: BloqueResumen[] = monedasPresentes.map((moneda) => {
@@ -346,6 +382,7 @@ export function ResumenFlujoFondos({
       titulo: moneda === "ARS" ? "Pesos (ARS)" : "Dólares (USD)",
       aportado: totalAportado,
       gastado: totalGastado,
+      cambios: netoCambios(movimientosEnRango, moneda),
       format: (valor: number) => formatMontoMoneda(valor, moneda),
       filas: asignaciones.map((a) => {
         const aportadoInversor = sumarMontos(
@@ -387,6 +424,9 @@ export function ResumenFlujoFondos({
     etiqueta: "Consolidado",
     aportado: aportadoUSD,
     gastado: gastadoUSD,
+    // En dólares, lo que sale y lo que entra en un cambio valen lo mismo: el
+    // total no se mueve.
+    cambios: 0,
     filas: filasConsolidado,
     format: (valor: number) => formatMontoMoneda(valor, "USD"),
   };
@@ -629,6 +669,7 @@ export function ResumenFlujoFondos({
               titulo={b.titulo}
               aportado={b.aportado}
               gastado={b.gastado}
+              cambios={b.cambios}
               filas={b.filas}
               format={b.format}
             />
@@ -638,6 +679,7 @@ export function ResumenFlujoFondos({
             etiqueta={bloqueConsolidado.etiqueta}
             aportado={bloqueConsolidado.aportado}
             gastado={bloqueConsolidado.gastado}
+            cambios={bloqueConsolidado.cambios}
             filas={bloqueConsolidado.filas}
             format={bloqueConsolidado.format}
             destacado

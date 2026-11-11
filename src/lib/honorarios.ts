@@ -39,7 +39,7 @@ export type RubroHonorarios = {
 
 export type MovimientoParaHonorarios = {
   id: string;
-  tipo: "GASTO" | "APORTE";
+  tipo: "GASTO" | "APORTE" | "CAMBIO";
   fecha: string;
   createdAt: string;
   descripcion: string;
