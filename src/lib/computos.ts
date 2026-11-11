@@ -1004,6 +1004,139 @@ export function parseMedida(texto: string): number | null {
   return Number.isFinite(numero) && numero > 0 ? numero : null;
 }
 
+// ---------------------------------------------------------------------------
+// Fórmulas en las celdas (Albañilería de Cómputos 2)
+// ---------------------------------------------------------------------------
+//
+// Una celda que se completa a mano puede escribirse como una cuenta, igual
+// que en una planilla: "=3,5*2,8+4*2,8". Se guarda el resultado en
+// `cantidad` (que es lo único que entra en los totales) y la cuenta en la
+// descripción de la misma medición, con su "=" adelante, para poder volver
+// a verla y corregirla. Así no hace falta ningún campo nuevo en la base: la
+// descripción ya es "de dónde sale el número" (ver ComputoMedicion).
+//
+// Los sub ítems no tienen descripción, así que ahí la fórmula se resuelve
+// pero no se guarda: queda sólo el resultado.
+//
+// No hay referencias a otras celdas: sólo números, + - * / y paréntesis.
+
+/** ¿El texto de una celda es una fórmula? Como en una planilla: empieza con "=". */
+export function esFormula(texto: string) {
+  return texto.trim().startsWith("=");
+}
+
+/**
+ * Resuelve una fórmula ("=3,5*2,8+4*(2+0,5)") y devuelve el resultado, o null
+ * si no se entiende o no da un número mayor a 0.
+ *
+ * Es un parser chico y propio, no `eval`: el texto lo escribe un usuario y
+ * se resuelve también en el servidor. Acepta coma o punto decimal (sin
+ * separador de miles, igual que las celdas), "x" o "×" para multiplicar y
+ * "÷" para dividir, que es como se anota una medida a mano.
+ */
+export function evaluarFormula(texto: string): number | null {
+  const fuente = texto
+    .trim()
+    .replace(/^=/, "")
+    .replace(/[xX×]/g, "*")
+    .replace(/÷/g, "/")
+    .replace(/,/g, ".")
+    .replace(/\s+/g, "");
+  if (!fuente || fuente.length > 500) return null;
+
+  let pos = 0;
+  const ver = () => fuente[pos];
+
+  // expr := term (("+" | "-") term)*
+  // term := factor (("*" | "/") factor)*
+  // factor := ("+" | "-") factor | número | "(" expr ")"
+  const expr = (): number => {
+    let valor = term();
+    while (ver() === "+" || ver() === "-") {
+      const op = fuente[pos++];
+      const otro = term();
+      valor = op === "+" ? valor + otro : valor - otro;
+    }
+    return valor;
+  };
+  const term = (): number => {
+    let valor = factor();
+    while (ver() === "*" || ver() === "/") {
+      const op = fuente[pos++];
+      const otro = factor();
+      valor = op === "*" ? valor * otro : valor / otro;
+    }
+    return valor;
+  };
+  const factor = (): number => {
+    if (ver() === "+") {
+      pos++;
+      return factor();
+    }
+    if (ver() === "-") {
+      pos++;
+      return -factor();
+    }
+    if (ver() === "(") {
+      pos++;
+      const valor = expr();
+      if (ver() !== ")") throw new Error("Falta cerrar un paréntesis");
+      pos++;
+      return valor;
+    }
+    const match = /^\d+(\.\d+)?|^\.\d+/.exec(fuente.slice(pos));
+    if (!match) throw new Error("Se esperaba un número");
+    pos += match[0].length;
+    return Number(match[0]);
+  };
+
+  try {
+    const resultado = expr();
+    if (pos !== fuente.length) return null;
+    if (!Number.isFinite(resultado) || resultado <= 0) return null;
+    // Las celdas guardan hasta 3 decimales (2 en los sub ítems): se redondea
+    // acá para que lo que se ve sea lo mismo que lo que se guarda.
+    return Math.round(resultado * 1000) / 1000;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * La fórmula guardada en una medición (sin el "="), o null si se cargó
+ * como un número suelto o tiene una descripción común ("Living").
+ */
+export function formulaDeMedicion(m: { descripcion: string | null }) {
+  return m.descripcion?.startsWith("=") ? m.descripcion.slice(1) : null;
+}
+
+/** La fórmula de una fórmula guardada, como se muestra al editarla ("=3,5*2,8"). */
+export function formulaATexto(formula: string) {
+  return `=${formula.replace(/\./g, ",")}`;
+}
+
+/**
+ * Cómo se guarda una fórmula tipeada: sin el "=" ni espacios, con coma
+ * decimal. Es lo que después se vuelve a mostrar al editar la celda.
+ */
+export function normalizarFormula(texto: string) {
+  return texto.trim().replace(/^=/, "").replace(/\s+/g, "").replace(/\./g, ",");
+}
+
+/**
+ * ¿Las celdas de este rubro aceptan fórmulas? Sólo Albañilería, y sólo en
+ * Cómputos 2. Se compara sin tildes ni mayúsculas porque el nombre del rubro
+ * se carga a mano.
+ */
+export function aceptaFormulas(rubroNombre: string, esComputos2: boolean) {
+  if (!esComputos2) return false;
+  return rubroNombre
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .includes("ALBANILERIA");
+}
+
 /** El texto con el que arranca una celda de medida. Vacío si no hay valor. */
 export function medidaATexto(valor: number | null | undefined): string {
   if (valor === null || valor === undefined) return "";

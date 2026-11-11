@@ -12,6 +12,8 @@ import {
   mapItemTipo,
   mapMedicion,
   mapSeccion,
+  evaluarFormula,
+  normalizarFormula,
   TIPOS_COMPUTO,
   UNIDADES,
   type ClaveFila,
@@ -697,9 +699,22 @@ export async function guardarCelda(
   proyectoId: string,
   itemId: string,
   fila: ClaveFila,
-  valor: number | null
+  valor: number | null,
+  /** La fórmula tipeada ("=3,5*2,8"), si la celda se escribió con una. Manda sobre `valor`. */
+  formulaTexto: string | null = null
 ): Promise<ResultItem> {
   await requireSeccion("proyectos");
+
+  // Con fórmula, el número se resuelve acá y no se le cree al navegador: lo
+  // guardado tiene que ser exactamente lo que da la cuenta guardada.
+  const formula = formulaTexto === null ? null : normalizarFormula(formulaTexto);
+  if (formula !== null) {
+    const resultado = evaluarFormula(formula);
+    if (resultado === null) {
+      return { success: false, error: "La fórmula no se entiende o no da un número mayor a 0." };
+    }
+    valor = resultado;
+  }
 
   if (valor !== null && (!Number.isFinite(valor) || valor <= 0)) {
     return { success: false, error: "La cantidad tiene que ser mayor a 0." };
@@ -718,7 +733,7 @@ export async function guardarCelda(
     const cargadas = await prisma.computoMedicion.findMany({
       where: { itemId, nivelId: donde.nivelId, filaExtraId: donde.filaExtraId },
       orderBy: { orden: "asc" },
-      select: { id: true, origenId: true },
+      select: { id: true, origenId: true, descripcion: true },
     });
 
     // Una fila derivada sale de una cuenta sobre otro ítem, no de una medida.
@@ -744,7 +759,17 @@ export async function guardarCelda(
     } else if (medicion) {
       await prisma.computoMedicion.update({
         where: { id: medicion.id },
-        data: { cantidad: valor },
+        // La fórmula va en la descripción, con su "=" (ver `formulaDeMedicion`).
+        // Un número suelto encima de una fórmula la borra; una descripción
+        // común ("Living") se deja como estaba.
+        data: {
+          cantidad: valor,
+          ...(formula !== null
+            ? { descripcion: `=${formula}` }
+            : medicion.descripcion?.startsWith("=")
+              ? { descripcion: null }
+              : {}),
+        },
       });
     } else {
       await prisma.computoMedicion.create({
@@ -753,6 +778,7 @@ export async function guardarCelda(
           nivelId: donde.nivelId,
           filaExtraId: donde.filaExtraId,
           cantidad: valor,
+          descripcion: formula === null ? null : `=${formula}`,
           orden: await siguienteOrdenMedicion(itemId),
         },
       });
@@ -931,9 +957,26 @@ export async function guardarSubItemCelda(
   proyectoId: string,
   subItemId: string,
   fila: ClaveFila,
-  valor: number | null
+  valor: number | null,
+  /**
+   * Igual que en `guardarCelda`: la fórmula tipeada, que manda sobre `valor`.
+   * Un sub ítem no tiene descripción donde guardarla, así que se resuelve y
+   * queda sólo el resultado.
+   */
+  formulaTexto: string | null = null
 ): Promise<ResultItem> {
   await requireSeccion("proyectos");
+
+  const formula = formulaTexto === null ? null : normalizarFormula(formulaTexto);
+  if (formula !== null) {
+    const resultado = evaluarFormula(formula);
+    if (resultado === null) {
+      return { success: false, error: "La fórmula no se entiende o no da un número mayor a 0." };
+    }
+    // Los sub ítems guardan 2 decimales: se redondea antes para que la
+    // cuenta guardada y el número guardado digan lo mismo.
+    valor = Math.round(resultado * 100) / 100;
+  }
 
   if (valor !== null && (!Number.isFinite(valor) || valor <= 0)) {
     return { success: false, error: "La cantidad tiene que ser mayor a 0." };
