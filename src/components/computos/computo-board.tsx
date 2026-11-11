@@ -559,7 +559,7 @@ export function ComputoBoard({
                     secciones={todas}
                     filasExtra={filasExtra}
                     items={items.filter((i) => i.rubroId === rubro.id)}
-                    totales={totales}
+                    todosLosItems={items}
                     fechas={fechas}
                   />
                 )}

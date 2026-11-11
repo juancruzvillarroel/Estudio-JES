@@ -881,13 +881,14 @@ export async function renombrarSubItem(
 }
 
 /**
- * Borra un sub ítem. Con algo cargado no se borra, igual que una fila extra
- * de la sección: se avisa cuántas celdas hay que vaciar primero en vez de
- * llevárselas calladas por la cascada del esquema.
+ * Borra un sub ítem. Con algo cargado no se borra salvo que se pase
+ * `forzar: true` (tras confirmación explícita del usuario), en cuyo caso se
+ * borra igual y la cascada del esquema se lleva las celdas cargadas.
  */
 export async function eliminarSubItem(
   proyectoId: string,
-  subItemId: string
+  subItemId: string,
+  forzar = false
 ): Promise<ResultItem> {
   await requireSeccion("proyectos");
 
@@ -899,7 +900,7 @@ export async function eliminarSubItem(
     if (!subItem) return { success: false, error: "No se encontró el sub ítem." };
 
     const cargadas = subItem._count.mediciones;
-    if (cargadas > 0) {
+    if (cargadas > 0 && !forzar) {
       return {
         success: false,
         error:

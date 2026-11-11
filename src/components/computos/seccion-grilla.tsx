@@ -65,6 +65,7 @@ import {
   simboloUnidad,
   subItemEnFila,
   subItemMedicionesDeFila,
+  subItemsEnFila,
   tieneBultos,
   tieneMedidoEnFila,
   totalSubItem,
@@ -826,6 +827,8 @@ type LineaItem = {
   etiqueta: ReactNode;
   /** Si esta línea tiene la flechita para abrir el detalle de la celda. */
   conChevron?: boolean;
+  /** Si esta línea es la de un sub ítem: es lo único que esconde la flechita de desplegar/ocultar de la fila de título. */
+  esSubItem?: boolean;
   celda: (fila: Fila) => ReactNode;
   /** La celda de la columna de Total: la suma de esta línea en todos los niveles. */
   total: () => ReactNode;
@@ -883,6 +886,22 @@ function SubItemNombre({
     startTransition(async () => {
       const result = await eliminarSubItem(proyectoId, subItem.id);
       if (!result.success) {
+        // Si está bloqueado por celdas cargadas, se ofrece forzar el borrado
+        // (se pierden esas celdas) en vez de dejar el botón sin efecto visible.
+        if (
+          result.error.includes("celda") &&
+          window.confirm(
+            `${result.error}\n\n¿Eliminar "${subItem.nombre}" igual, perdiendo esas celdas cargadas?`
+          )
+        ) {
+          const forzado = await eliminarSubItem(proyectoId, subItem.id, true);
+          if (!forzado.success) {
+            toast.error(forzado.error);
+            return;
+          }
+          onSaved(forzado.item);
+          return;
+        }
         toast.error(result.error);
         return;
       }
@@ -940,21 +959,25 @@ function SubItemNombre({
 }
 
 /**
- * El campo para sumar un sub ítem a este ítem. Mismo patrón que
- * `FilaExtraNueva` (arranca escondido detrás de un "+" y se abre a un campo
- * de texto con Agregar/Cancelar), pero crea dentro de un ítem puntual en vez
- * de una fila de toda la sección.
+ * El campo para sumar un sub ítem a este ítem: un campo de texto con
+ * Agregar/Cancelar, igual que antes. Lo nuevo es que el "+" que lo abre ya
+ * no vive acá —vive junto al título del ítem, como el lápiz de editar (ver
+ * `FilaItem`)— porque ese "+" y este campo quedan en lugares distintos de la
+ * fila (uno inline con el nombre, el otro en su propio renglón, debajo). Por
+ * eso el estado de si está abierto lo maneja `FilaItem` y entra acá por
+ * props, no queda local.
  */
-function SubItemNueva({
+function AgregarSubItem({
   proyectoId,
   item,
   onSaved,
+  onCerrar,
 }: {
   proyectoId: string;
   item: ItemOpcion;
   onSaved: (item: ItemOpcion) => void;
+  onCerrar: () => void;
 }) {
-  const [abierto, setAbierto] = useState(false);
   const [nombre, setNombre] = useState("");
   const [pending, startTransition] = useTransition();
 
@@ -970,26 +993,12 @@ function SubItemNueva({
       }
       onSaved(result.item);
       setNombre("");
-      setAbierto(false);
+      onCerrar();
     });
   };
 
-  if (!abierto) {
-    return (
-      <button
-        type="button"
-        aria-label={`Agregar sub ítem a ${item.nombre}`}
-        onClick={() => setAbierto(true)}
-        className="flex items-center gap-1 rounded-sm text-muted-foreground transition-colors duration-150 hover:text-foreground"
-      >
-        <Plus className="h-3 w-3" />
-        Sub ítem
-      </button>
-    );
-  }
-
   return (
-    <span className="flex min-w-0 flex-1 items-center gap-1">
+    <span className="mt-0.5 flex min-w-0 items-center gap-1">
       <input
         value={nombre}
         onChange={(e) => setNombre(e.target.value)}
@@ -1000,13 +1009,13 @@ function SubItemNueva({
           }
           if (e.key === "Escape") {
             setNombre("");
-            setAbierto(false);
+            onCerrar();
           }
         }}
         placeholder="C10"
         aria-label="Nombre del sub ítem nuevo"
         autoFocus
-        className="w-full min-w-0 rounded-sm border border-input bg-background px-1 py-0.5 text-sm focus:border-ring focus:outline-none"
+        className="w-full min-w-0 rounded-sm border border-input bg-background px-1 py-0.5 text-xs focus:border-ring focus:outline-none"
       />
       <Tooltip content="Agregar">
         <button
@@ -1025,7 +1034,7 @@ function SubItemNueva({
           aria-label="Cancelar"
           onClick={() => {
             setNombre("");
-            setAbierto(false);
+            onCerrar();
           }}
           className="shrink-0 rounded-sm text-muted-foreground transition-colors duration-150 hover:text-foreground"
         >
@@ -1038,15 +1047,14 @@ function SubItemNueva({
 
 /**
  * Las líneas de los sub ítems de un ítem de PUERTAS: una por cada sub ítem
- * que ya tenga, con su nombre editable y su propio total, y al final siempre
- * una más para agregar el próximo (ver `SubItemNueva`). Reemplazan a las
+ * que ya tenga, con su nombre editable y su propio total. Reemplazan a las
  * viejas tres líneas fijas de cajones (C10, C15, C18) por una cantidad libre
  * de renglones con el nombre que elija el que carga el cómputo.
  *
- * Siempre devuelve al menos una línea —la de "agregar"— aunque el ítem no
- * tenga ningún sub ítem todavía: así el bloque del ítem nunca queda sin
- * ninguna fila de datos en la grilla de PUERTAS, y la columna de Unidad (ver
- * `FilaItem`) siempre tiene dónde apoyarse.
+ * El alta de un sub ítem nuevo ya no es una línea más de este listado: es el
+ * "+" junto al título del ítem (ver `FilaItem` y `AgregarSubItem`). Por eso
+ * esta función puede devolver un array vacío si el ítem todavía no tiene
+ * ningún sub ítem cargado.
  */
 function lineasSubItems({
   item,
@@ -1059,6 +1067,7 @@ function lineasSubItems({
 }): LineaItem[] {
   const lineas: LineaItem[] = item.subItems.map((subItem) => ({
     key: subItem.id,
+    esSubItem: true,
     etiqueta: <SubItemNombre proyectoId={proyectoId} subItem={subItem} onSaved={onItemSaved} />,
     celda: (fila: Fila) => {
       const cargado = subItemMedicionesDeFila(subItem, fila.clave).length > 0;
@@ -1083,13 +1092,6 @@ function lineasSubItems({
       );
     },
   }));
-
-  lineas.push({
-    key: "nuevo-sub-item",
-    etiqueta: <SubItemNueva proyectoId={proyectoId} item={item} onSaved={onItemSaved} />,
-    celda: () => null,
-    total: () => null,
-  });
 
   return lineas;
 }
@@ -1120,7 +1122,11 @@ function lineasDeItem({
   onItemSaved: (item: ItemOpcion) => void;
 }): LineaItem[] {
   const totalBase = totales.get(item.id) ?? 0;
-  const vacio = item.mediciones.length === 0;
+  // "Nada cargado" ya no es sólo "sin mediciones propias": un ítem de
+  // PUERTAS (o cualquiera con sub ítems) puede no tener ninguna medición
+  // propia y aun así tener algo cargado, en sus sub ítems.
+  const vacio =
+    item.mediciones.length === 0 && item.subItems.every((si) => si.mediciones.length === 0);
   // Los bultos se redondean para arriba una sola vez, en el total de toda la
   // obra: hacerlo por nivel y después sumar daría de más una vez por planta.
   const bultosTotal = tieneBultos(item) ? bultosDe(item, materialDe(item, totalBase)) : null;
@@ -1131,13 +1137,24 @@ function lineasDeItem({
   const estado = (fila: Fila) => {
     const filaKey = claveFilaKey(fila.clave);
     const tiene = tieneMedidoEnFila(item, fila.clave);
-    const medido = medidoEnFila(item, fila.clave, totales);
+    // `propio` es sólo lo que el ítem tiene cargado a mano en esta fila —lo
+    // único que una celda editable puede mostrar y guardar sin pisar datos
+    // de otro lado—; `medido` suma además los sub ítems de esta fila, igual
+    // que el Total ya suma `totalSubItems` (ver `calcularTotales`), para que
+    // la fila de título muestre siempre el mismo número agregado.
+    const propio = medidoEnFila(item, fila.clave, totales);
+    const subTotal = subItemsEnFila(item, fila.clave);
+    const medido = propio + subTotal;
     const renglones = medicionesDeFila(item, fila.clave);
     const derivada = esDerivadaEnFila(item, fila.clave);
-    const desglosada = renglones.length > 1;
+    // Con sub ítems de por medio el número deja de ser un valor suelto: se
+    // trata igual que una celda desglosada (de sólo lectura, con el detalle
+    // al tocarla) para no exponer una celda editable cuyo valor ya no sería
+    // sólo lo que se guardaría al tipear.
+    const desglosada = renglones.length > 1 || subTotal > 0;
     const abierto = abierta?.itemId === item.id && abierta.filaKey === filaKey;
     const alternar = () => onAbrir(abierto ? null : { itemId: item.id, filaKey });
-    return { tiene, medido, derivada, desglosada, abierto, alternar };
+    return { tiene, medido, propio, derivada, desglosada, abierto, alternar };
   };
 
   if (esHierro(item)) {
@@ -1332,9 +1349,10 @@ function lineasDeItem({
       },
     ];
 
-    if (puertas) {
-      lineas.push(...lineasSubItems({ item, proyectoId, onItemSaved }));
-    }
+    // Los sub ítems (ver `lineasSubItems`) no son exclusivos de PUERTAS: el
+    // "+" para agregarlos vive en todo ítem (ver `FilaItem`), así que acá se
+    // suman siempre. Si el ítem no tiene ninguno todavía, esto no agrega nada.
+    lineas.push(...lineasSubItems({ item, proyectoId, onItemSaved }));
 
     return lineas;
   }
@@ -1343,89 +1361,104 @@ function lineasDeItem({
   const lineas: LineaItem[] = [];
 
   // Un ítem de PUERTAS no tiene cantidad propia: lo que antes era esta
-  // primera línea ("lo que se carga a mano") queda reemplazado del todo por
-  // los sub ítems, cada uno con su propia fila más abajo (ver
-  // `lineasSubItems`). Por eso no hay ningún renglón con la unidad del ítem
-  // en esta grilla.
-  if (!puertas) {
-    lineas.push({
-      key: "medido",
-      // La etiqueta de esta primera línea es la unidad en la que se carga
-      // ("ml", "m²", "kg"...) y no la palabra genérica "medido": así queda
-      // claro de entrada qué es lo único que hay que tipear.
-      etiqueta: (
-        <span title={`Lo que se carga a mano, en ${UNIDAD_INFO[item.unidad].nombre.toLowerCase()}`}>
-          {simboloUnidad(item.unidad)}
-        </span>
-      ),
-      conChevron: true,
-      celda: (fila) => {
-        const { tiene, medido, derivada, desglosada, abierto, alternar } = estado(fila);
-        return (
-          <span className="group/celda flex items-center gap-0.5">
-            {derivada ? (
-              <span
-                title="Sale de una cuenta sobre otro ítem"
-                className="min-w-0 flex-1 px-2 py-1 text-center text-sm tabular-nums text-muted-foreground italic"
-              >
-                {formatCantidad(medido)}
-              </span>
-            ) : desglosada ? (
-              // Con varios renglones el número de la celda es la suma, y una
-              // suma no se tipea: se toca y se corrige adentro.
-              <Tooltip content="Suma de los renglones. Tocá para ver el detalle.">
-                <button
-                  type="button"
-                  aria-expanded={abierto}
-                  aria-label={`Detalle de ${item.nombre} en ${fila.nombre}`}
-                  onClick={alternar}
-                  className="min-w-0 flex-1 rounded-sm px-2 py-1 text-center text-sm font-medium tabular-nums transition-colors duration-150 hover:bg-muted"
-                >
-                  {formatCantidad(medido)}
-                </button>
-              </Tooltip>
-            ) : (
-              <Celda
-                proyectoId={proyectoId}
-                item={item}
-                fila={fila.clave}
-                filaNombre={fila.nombre}
-                valor={tiene ? medido : null}
-                onSaved={onItemSaved}
-              />
-            )}
+  // primera línea ("lo que se carga a mano") queda reemplazada por la suma
+  // de sus sub ítems, cada uno con su propia fila más abajo (ver
+  // `lineasSubItems`). La línea sigue existiendo para mostrar esa suma en la
+  // fila de título, pero en PUERTAS queda de sólo lectura: no hay nada propio
+  // que tipear acá.
+  lineas.push({
+    key: "medido",
+    // Esta línea no tiene fila propia: `FilaItem` la detecta por su key
+    // ("medido") y la fusiona con la fila de título del ítem, así que esta
+    // etiqueta nunca se llega a pintar. Queda igual por si en algún momento
+    // dejara de fusionarse (por ejemplo, si el ítem tuviera más de una
+    // línea "principal").
+    etiqueta: (
+      <span title={`Lo que se carga a mano, en ${UNIDAD_INFO[item.unidad].nombre.toLowerCase()}`}>
+        medido
+      </span>
+    ),
+    conChevron: !puertas,
+    celda: (fila) => {
+      const { tiene, medido, derivada, desglosada, abierto, alternar } = estado(fila);
 
-            {!derivada && !desglosada && (
-              // El desplegado arranca invisible: la mayoría de las celdas son
-              // un número suelto y una flechita en cada fila taparía la
-              // lectura de la planilla, que es para lo que se abre.
-              <Tooltip content={`Detalle de ${item.nombre} en ${fila.nombre}`}>
-                <button
-                  type="button"
-                  aria-expanded={abierto}
-                  aria-label={`Detalle de ${item.nombre} en ${fila.nombre}`}
-                  onClick={alternar}
-                  className={cn(
-                    "shrink-0 rounded-sm p-0.5 text-muted-foreground transition-all duration-150 hover:bg-muted hover:text-foreground focus:opacity-100",
-                    abierto ? "opacity-100" : "opacity-0 group-hover/celda:opacity-100"
-                  )}
-                >
-                  <ChevronDown
-                    className={cn("h-3 w-3 transition-transform duration-200", abierto && "rotate-180")}
-                  />
-                </button>
-              </Tooltip>
-            )}
+      if (puertas) {
+        // Sin cantidad propia: esto es sólo la suma de los sub ítems de esta
+        // columna. Para cargar o corregir se usa la fila del sub ítem
+        // correspondiente, más abajo.
+        return (
+          <span className="block text-center text-sm font-medium tabular-nums">
+            {medido > 0 ? formatCantidad(medido) : "—"}
           </span>
         );
-      },
-      total: () => (
-        <span className="block text-center text-sm font-medium tabular-nums">
-          {vacio ? "—" : formatCantidad(totalBase)}
+      }
+
+      return (
+        <span className="group/celda flex items-center gap-0.5">
+          {derivada ? (
+            <span
+              title="Sale de una cuenta sobre otro ítem"
+              className="min-w-0 flex-1 px-2 py-1 text-center text-sm tabular-nums text-muted-foreground italic"
+            >
+              {formatCantidad(medido)}
+            </span>
+          ) : desglosada ? (
+            // Con varios renglones, o con sub ítems sumando acá, el número
+            // de la celda es una suma, y una suma no se tipea: se toca y se
+            // corrige adentro (los renglones propios) o en la fila del sub
+            // ítem correspondiente (ver más abajo).
+            <Tooltip content="Suma de los renglones y/o sub ítems. Tocá para ver el detalle.">
+              <button
+                type="button"
+                aria-expanded={abierto}
+                aria-label={`Detalle de ${item.nombre} en ${fila.nombre}`}
+                onClick={alternar}
+                className="min-w-0 flex-1 rounded-sm px-2 py-1 text-center text-sm font-medium tabular-nums transition-colors duration-150 hover:bg-muted"
+              >
+                {formatCantidad(medido)}
+              </button>
+            </Tooltip>
+          ) : (
+            <Celda
+              proyectoId={proyectoId}
+              item={item}
+              fila={fila.clave}
+              filaNombre={fila.nombre}
+              valor={tiene ? medido : null}
+              onSaved={onItemSaved}
+            />
+          )}
+
+          {!derivada && !desglosada && (
+            // El desplegado arranca invisible: la mayoría de las celdas son
+            // un número suelto y una flechita en cada fila taparía la
+            // lectura de la planilla, que es para lo que se abre.
+            <Tooltip content={`Detalle de ${item.nombre} en ${fila.nombre}`}>
+              <button
+                type="button"
+                aria-expanded={abierto}
+                aria-label={`Detalle de ${item.nombre} en ${fila.nombre}`}
+                onClick={alternar}
+                className={cn(
+                  "shrink-0 rounded-sm p-0.5 text-muted-foreground transition-all duration-150 hover:bg-muted hover:text-foreground focus:opacity-100",
+                  abierto ? "opacity-100" : "opacity-0 group-hover/celda:opacity-100"
+                )}
+              >
+                <ChevronDown
+                  className={cn("h-3 w-3 transition-transform duration-200", abierto && "rotate-180")}
+                />
+              </button>
+            </Tooltip>
+          )}
         </span>
-      ),
-    });
-  }
+      );
+    },
+    total: () => (
+      <span className="block text-center text-sm font-medium tabular-nums">
+        {vacio ? "—" : formatCantidad(totalBase)}
+      </span>
+    ),
+  });
 
   if (item.desperdicio !== null) {
     const desperdicio = item.desperdicio;
@@ -1441,7 +1474,7 @@ function lineasDeItem({
         );
       },
       total: () => (
-        <span className="block text-center text-sm tabular-nums text-muted-foreground">
+        <span className="block text-center text-sm font-medium tabular-nums">
           {vacio ? "—" : formatCantidad(conDesperdicio(totalBase, desperdicio))}
         </span>
       ),
@@ -1518,9 +1551,10 @@ function lineasDeItem({
     });
   }
 
-  if (puertas) {
-    lineas.push(...lineasSubItems({ item, proyectoId, onItemSaved }));
-  }
+  // Los sub ítems (ver `lineasSubItems`) no son exclusivos de PUERTAS: el "+"
+  // para agregarlos vive en todo ítem (ver `FilaItem`), así que acá se suman
+  // siempre. Si el ítem no tiene ninguno todavía, esto no agrega nada.
+  lineas.push(...lineasSubItems({ item, proyectoId, onItemSaved }));
 
   return lineas;
 }
@@ -1696,20 +1730,20 @@ export function SeccionGrilla({
    * ocupa siempre una sola columna por fila, sin colspan variable: lo que
    * antes eran subcolumnas (merma, bultos, material, los tres del hierro)
    * ahora son filas propias dentro del bloque del ítem (ver `lineasDeItem`),
-   * así que no hace falta calcularlas acá. En PUERTAS se suma una columna
-   * más, angosta, con la unidad de cada ítem (ver el `<thead>` y `FilaItem`).
+   * así que no hace falta calcularlas acá. Siempre se suma una columna más,
+   * angosta, con la unidad de cada ítem (ver el `<thead>` y `FilaItem`).
    * La última, siempre, es la del Total.
    */
-  const totalColumnas = (puertas ? 2 : 1) + filas.length + 1;
+  const totalColumnas = 2 + filas.length + 1;
 
   // Ancho mínimo de la tabla, para que con muchos niveles cada columna
   // conserve un ancho legible en vez de achicarse hasta que los números se
-  // encimen. 176px es el ancho fijo de la columna del ítem (w-44) y 64px es
-  // lo que ocupa cómoda una columna de nivel (o la del Total, del mismo
-  // ancho); por debajo de eso `table-fixed` ya reparte bien y no hace falta
-  // forzar nada, así que el mínimo nunca empuja una tabla que ya entraba. En
-  // PUERTAS se suma el ancho fijo de la columna angosta de Unidad (48px, w-12).
-  const anchoMinimoPx = 176 + (puertas ? 48 : 0) + (filas.length + 1) * 64;
+  // encimen. 176px es el ancho fijo de la columna del ítem (w-44), 48px el de
+  // la columna angosta de Unidad (w-12) y 64px lo que ocupa cómoda una
+  // columna de nivel (o la del Total, del mismo ancho); por debajo de eso
+  // `table-fixed` ya reparte bien y no hace falta forzar nada, así que el
+  // mínimo nunca empuja una tabla que ya entraba.
+  const anchoMinimoPx = 176 + 48 + (filas.length + 1) * 64;
 
   const soltar = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -1865,7 +1899,7 @@ export function SeccionGrilla({
                 style={{ width: "100%", minWidth: anchoMinimoPx }}
               >
                 <thead>
-                  <tr className="border-b bg-muted/80">
+                  <tr className="border-b bg-foreground/15">
                     {/* La del ítem es la única con ancho propio: es la que se lee
                         para saber de qué fila es cada número, y si se achicara
                         junto con las demás un nombre largo terminaría partido en
@@ -1874,13 +1908,11 @@ export function SeccionGrilla({
                     <th className="w-44 px-3 py-2 text-center align-middle text-xs font-medium text-muted-foreground">
                       Ítem
                     </th>
-                    {/* Columna angosta y fija, sólo en PUERTAS: la unidad de cada
-                        ítem, que ya no tiene una fila propia (ver `FilaItem`). */}
-                    {puertas && (
-                      <th className="w-12 border-l px-1 py-2 text-center align-middle text-xs font-medium text-muted-foreground">
-                        Unidad
-                      </th>
-                    )}
+                    {/* Columna angosta y fija: la unidad de cada ítem, que en
+                        PUERTAS no tiene una fila propia (ver `FilaItem`). */}
+                    <th className="w-12 border-l px-1 py-2 text-center align-middle text-xs font-medium text-muted-foreground">
+                      Unidad
+                    </th>
                     {filas.map((fila) => (
                       <EncabezadoFila
                         key={claveFilaKey(fila.clave)}
@@ -2010,28 +2042,40 @@ function FilaItem({
     disabled: !arrastrable,
   });
 
-  // Sólo en PUERTAS: cada ítem puede desplegar u ocultar el bloque de sus
-  // sub ítems desde la flechita de su propia fila. Arranca desplegado para
-  // no esconder de entrada algo que el que carga el cómputo recién hizo.
+  // Cualquier ítem con sub ítems puede desplegar u ocultar ese bloque desde
+  // la flechita de su propia fila. Arranca desplegado para no esconder de
+  // entrada algo que el que carga el cómputo recién hizo.
   const [expandido, setExpandido] = useState(true);
+  // Si está abierto, el campo para nombrar un sub ítem nuevo aparece debajo
+  // del título (ver `AgregarSubItem`), disparado por el "+" que está al lado
+  // del lápiz de editar.
+  const [agregandoSubItem, setAgregandoSubItem] = useState(false);
 
   const filaAbierta =
     abierta && abierta.itemId === item.id
       ? filas.find((f) => claveFilaKey(f.clave) === abierta.filaKey)
       : undefined;
 
-  // El ítem se pinta en una fila "de título" (nombre, lápiz, modelo, a todo
-  // el ancho, vacía de datos) y después una fila de verdad por cada unidad
-  // (ml/barras/kg, unidad, +desperdicio%, bultos, material, sub ítems...). Cada
-  // una es un <tr> entero, con su <th> de etiqueta y una <td> por columna: el
-  // alto de la fila lo decide el navegador como el máximo de esas celdas, así
-  // que la etiqueta queda alineada con sus datos sin tener que igualar a mano
-  // paddings ni alturas de línea.
+  // El ítem se pinta en una fila "de título" (nombre, lápiz, modelo, unidad y
+  // —si el ítem tiene una sola línea de datos, como la mayoría de los que no
+  // son PUERTAS— los valores de esa línea, todo en el mismo <tr>) y después,
+  // sólo si hace falta, una fila de verdad por cada línea adicional
+  // (+desperdicio%, bultos, material, sub ítems...). Cada una de esas es un
+  // <tr> entero, con su <th> de etiqueta y una <td> por columna: el alto de
+  // la fila lo decide el navegador como el máximo de esas celdas, así que la
+  // etiqueta queda alineada con sus datos sin tener que igualar a mano
+  // paddings ni alturas de línea. Si no hay ninguna línea adicional, no hay
+  // fila abajo: el bloque del ítem es esa única fila.
   const lineas = lineasDeItem({ proyectoId, item, totales, puertas, abierta, onAbrir, onItemSaved });
-  // En PUERTAS, colapsar el ítem esconde el bloque entero de sus sub ítems
-  // (no tiene ninguna otra línea): queda sólo la fila de título, con la
-  // flechita para volver a abrirlo.
-  const lineasVisibles = puertas && !expandido ? [] : lineas;
+  // La línea "medido" (sólo existe fuera de PUERTAS, ver `lineasDeItem`) se
+  // fusiona con la fila de título en vez de tener su propia fila: es la
+  // única línea que tiene casi todo ítem, y separarla obligaba a una fila
+  // extra sólo para repetir la unidad y mostrar un único número por nivel.
+  const lineaPrincipal = lineas.find((l) => l.key === "medido") ?? null;
+  const lineasRestantes = lineaPrincipal ? lineas.filter((l) => l.key !== "medido") : lineas;
+  // Colapsar el ítem esconde sólo el bloque de sus sub ítems: las demás
+  // líneas (+desperdicio%, bultos, material...) siguen viéndose igual.
+  const lineasVisibles = expandido ? lineasRestantes : lineasRestantes.filter((l) => !l.esSubItem);
   const filaStyle = { transform: CSS.Transform.toString(transform), transition };
   const filaClase = cn(
     "group/fila bg-muted/20 transition-colors duration-150",
@@ -2040,15 +2084,18 @@ function FilaItem({
 
   return (
     <Fragment>
-      <tr ref={setNodeRef} style={filaStyle} className={filaClase}>
+      <tr
+        ref={setNodeRef}
+        style={filaStyle}
+        className={cn(filaClase, lineasVisibles.length === 0 && "border-b last:border-b-0")}
+      >
         {/* La columna del ítem va en gris y con el texto entero: es el
             encabezado de la fila, no un dato, y cortarlo obligaría a
             adivinar de qué ítem es cada número. Si el nombre es largo, baja
             de renglón. */}
         <th
           scope="row"
-          colSpan={totalColumnas}
-          className="bg-muted/50 px-3 pt-1 text-left transition-colors duration-150 group-hover/fila:bg-muted/70"
+          className="bg-muted/50 px-3 py-1 text-left align-middle transition-colors duration-150 group-hover/fila:bg-muted/70"
         >
           <span className="flex min-w-0 items-start gap-1">
             {arrastrable ? (
@@ -2070,7 +2117,7 @@ function FilaItem({
             )}
             <span className="min-w-0 flex-1">
               <span className="flex items-start gap-1">
-                {puertas && (
+                {item.subItems.length > 0 && (
                   <Tooltip content={expandido ? "Ocultar sub ítems" : "Mostrar sub ítems"}>
                     <button
                       type="button"
@@ -2113,6 +2160,19 @@ function FilaItem({
                     </button>
                   }
                 />
+                {!agregandoSubItem && (
+                  <Tooltip content="Agregar sub ítem">
+                    <button
+                      type="button"
+                      aria-label={`Agregar sub ítem a ${item.nombre}`}
+                      title={`Agregar sub ítem a ${item.nombre}`}
+                      onClick={() => setAgregandoSubItem(true)}
+                      className="shrink-0 rounded-sm text-muted-foreground opacity-0 transition-all duration-150 group-hover/fila:opacity-100 hover:text-foreground focus:opacity-100"
+                    >
+                      <Plus className="h-3 w-3" />
+                    </button>
+                  </Tooltip>
+                )}
               </span>
               {/* El modelo elegido, si ya se sabe. No entra en ninguna
                   cuenta: es sólo para tenerlo anotado al lado del ítem. */}
@@ -2124,9 +2184,50 @@ function FilaItem({
                   {item.modelo}
                 </span>
               )}
+              {/* El campo para nombrar el sub ítem nuevo, si está abierto
+                  (ver el "+" de arriba). Va en su propio renglón, debajo del
+                  nombre, para no competir por espacio con el título. */}
+              {agregandoSubItem && (
+                <AgregarSubItem
+                  proyectoId={proyectoId}
+                  item={item}
+                  onSaved={onItemSaved}
+                  onCerrar={() => setAgregandoSubItem(false)}
+                />
+              )}
             </span>
           </span>
         </th>
+
+        {/* La unidad del ítem va una sola vez, acá: si hay líneas extra
+            abajo (ver más adelante) esa celda queda vacía en ellas, en vez
+            de repetir el mismo símbolo fila tras fila. */}
+        <td className="border-l bg-muted/30 px-1 py-0.5 text-center align-middle text-xs text-muted-foreground">
+          {simboloUnidad(item.unidad)}
+        </td>
+
+        {/* Fuera de PUERTAS, todo ítem tiene esta línea ("medido"): en vez
+            de su propia fila, sus valores van directo acá. En PUERTAS no
+            hay línea principal —la cantidad vive en los sub ítems— así que
+            esta parte queda vacía, salvo por el colSpan que completa la
+            fila. */}
+        {lineaPrincipal ? (
+          <>
+            {filas.map((fila) => (
+              <td
+                key={claveFilaKey(fila.clave)}
+                className="group/celda border-l px-1 py-0.5 align-middle"
+              >
+                {lineaPrincipal.celda(fila)}
+              </td>
+            ))}
+            <td className="border-l-2 bg-muted/30 px-1 py-0.5 align-middle">
+              {lineaPrincipal.total()}
+            </td>
+          </>
+        ) : (
+          <td className="border-l px-1 py-0.5" colSpan={filas.length + 1} />
+        )}
       </tr>
 
       {lineasVisibles.map((linea, i) => (
@@ -2144,20 +2245,14 @@ function FilaItem({
           >
             <span className="flex min-w-0 items-center gap-1">
               <span className="w-3.5 shrink-0" aria-hidden />
-              {puertas && <span className="w-3.5 shrink-0" aria-hidden />}
+              {item.subItems.length > 0 && <span className="w-3.5 shrink-0" aria-hidden />}
               {linea.etiqueta}
             </span>
           </th>
 
-          {/* La unidad del ítem, repetida en cada línea (no con rowSpan):
-              así cada <tr> queda completo por su cuenta y no depende de que
-              la primera línea del bloque sea siempre la misma, algo que deja
-              de ser cierto apenas se suma o se borra un sub ítem. */}
-          {puertas && (
-            <td className="border-l bg-muted/30 px-1 py-0.5 text-center align-middle text-xs text-muted-foreground">
-              {simboloUnidad(item.unidad)}
-            </td>
-          )}
+          {/* La unidad ya se mostró una vez, en la fila de título: acá la
+              celda queda vacía, sólo para que la columna siga alineada. */}
+          <td className="border-l bg-muted/30 px-1 py-0.5" />
 
           {filas.map((fila) => (
             <td

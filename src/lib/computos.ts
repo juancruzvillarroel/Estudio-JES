@@ -1265,3 +1265,13 @@ export function totalSubItem(subItem: SubItemOpcion): number {
 export function totalSubItems(item: ItemOpcion): number {
   return item.subItems.reduce((acc, si) => acc + totalSubItem(si), 0);
 }
+
+/**
+ * La suma de los sub ítems de un ítem, pero sólo lo que cae en una fila
+ * (un nivel o una fila extra): la versión "por columna" de `totalSubItems`,
+ * para que la fila de título muestre, columna por columna, el mismo número
+ * que ya suma el Total.
+ */
+export function subItemsEnFila(item: ItemOpcion, fila: ClaveFila): number {
+  return item.subItems.reduce((acc, si) => acc + subItemEnFila(si, fila), 0);
+}

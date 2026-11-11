@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { FileDown } from "lucide-react";
+import { ChevronDown, FileDown } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -22,6 +22,7 @@ import {
   type UnidadHierro,
 } from "@/components/computos/informe-rubro";
 import {
+  calcularTotales,
   claveFilaKey,
   esHierro,
   fechaDeComputo,
@@ -150,7 +151,7 @@ export function InformeRubroDialog({
   secciones,
   filasExtra,
   items,
-  totales,
+  todosLosItems,
   fechas,
 }: {
   proyectoNombre: string;
@@ -163,8 +164,12 @@ export function InformeRubroDialog({
   filasExtra: FilaExtraOpcion[];
   /** Los ítems de ESTE rubro. */
   items: ItemOpcion[];
-  /** Los totales de toda la obra, para resolver las filas derivadas. */
-  totales: Map<string, number>;
+  /**
+   * TODOS los ítems de la obra, para recalcular los totales sobre lo
+   * elegido: una fila derivada puede salir de un ítem de otro rubro, así que
+   * hace falta la obra entera para resolverla (ver `vistaTotales`).
+   */
+  todosLosItems: ItemOpcion[];
   /** Cuándo se tocó por última vez cada lado de este rubro. */
   fechas: FechaComputoOpcion[];
 }) {
@@ -219,7 +224,37 @@ export function InformeRubroDialog({
   }
 
   /**
-   * De acá para abajo, "los ítems" son sólo los elegidos.
+   * Los sub ítems que se pueden elegir: los de los ítems recién calculados,
+   * de a uno (no hace falta que el ítem esté marcado: destildado igual se
+   * pueden ver, sólo que no se van a imprimir).
+   *
+   * Se sincronizan con la misma huella que los ítems, por la misma razón:
+   * un sub ítem nuevo tiene que entrar marcado, no quedar afuera en silencio.
+   */
+  const subItemsDisponibles = itemsDisponibles.flatMap((i) => i.subItems);
+  const huellaSubItems = subItemsDisponibles.map((si) => si.id).join("|");
+  const [subItemsElegidos, setSubItemsElegidos] = useState<Set<string>>(
+    new Set(subItemsDisponibles.map((si) => si.id))
+  );
+  const [prevSubItems, setPrevSubItems] = useState(huellaSubItems);
+
+  if (huellaSubItems !== prevSubItems) {
+    setPrevSubItems(huellaSubItems);
+    setSubItemsElegidos(new Set(subItemsDisponibles.map((si) => si.id)));
+  }
+
+  /** Qué ítems tienen la lista de sus sub ítems desplegada, en el diálogo. */
+  const [itemsExpandidos, setItemsExpandidos] = useState<Set<string>>(new Set());
+
+  /** Un ítem, pero con sólo los sub ítems que quedaron marcados. */
+  const conSubItemsElegidos = (item: ItemOpcion): ItemOpcion => ({
+    ...item,
+    subItems: item.subItems.filter((si) => subItemsElegidos.has(si.id)),
+  });
+
+  /**
+   * De acá para abajo, "los ítems" son sólo los elegidos, y cada uno con sólo
+   * los sub ítems elegidos.
    *
    * Importa que sea así y no sólo a la hora de imprimir: si se baja únicamente
    * la columna de las columnas, una planta donde lo único cargado son las vigas
@@ -227,7 +262,9 @@ export function InformeRubroDialog({
    * cualquier otra fila vacía. Filtrar recién al final imprimiría esa planta
    * como una fila de rayas.
    */
-  const itemsActivos = itemsDisponibles.filter((i) => itemsElegidos.has(i.id));
+  const itemsActivos = itemsDisponibles
+    .filter((i) => itemsElegidos.has(i.id))
+    .map(conSubItemsElegidos);
   const hayGeneral = itemsActivos.some((i) =>
     i.mediciones.some((m) => m.nivelId === null && m.filaExtraId === null)
   );
@@ -297,7 +334,9 @@ export function InformeRubroDialog({
     // Fuerza el resincronizado de los ítems y las filas en el render siguiente,
     // que es cuando ya se sabe qué secciones quedaron marcadas.
     setPrevItems("");
+    setPrevSubItems("");
     setPrevHuella("");
+    setItemsExpandidos(new Set());
   };
 
   const marcada = (clave: ClaveFila) => filasElegidas.has(claveFilaKey(clave));
@@ -307,7 +346,9 @@ export function InformeRubroDialog({
       const propias = filasExtra
         .filter((f) => f.seccionId === seccion.id)
         .sort((a, b) => a.orden - b.orden);
-      const itemsSeccion = itemsDe(seccion.id).filter((i) => itemsElegidos.has(i.id));
+      const itemsSeccion = itemsDe(seccion.id)
+        .filter((i) => itemsElegidos.has(i.id))
+        .map(conSubItemsElegidos);
       const hayGeneralAca = itemsSeccion.some((i) =>
         i.mediciones.some((m) => m.nivelId === null && m.filaExtraId === null)
       );
@@ -343,11 +384,34 @@ export function InformeRubroDialog({
   const listo = armarSecciones();
   const imprimibles = listo.filter((s) => s.items.length > 0 && s.filas.length > 0);
 
+  /**
+   * Los totales del papel: sólo sobre lo que se eligió, no sobre toda la
+   * obra. Un ítem destildado, o un sub ítem destildado dentro de uno que
+   * sigue marcado, no tienen que sumar nada —ni en su propia fila de Total
+   * ni en ninguna fila derivada que dependa de ellos—, así que se recalcula
+   * sobre una "vista" de la obra entera donde eso queda en cero, en vez de
+   * usar el total ya calculado de toda la obra (que sí los suma).
+   *
+   * Hace falta la obra entera, y no sólo los ítems de este rubro, porque una
+   * fila derivada puede salir de un ítem de otro rubro (los ladrillos salen
+   * de los m² de mampostería): ese ítem ajeno sigue aportando lo que tenía,
+   * tal cual, porque este diálogo no ofrece ninguna forma de destildarlo.
+   */
+  const vistaTotales = (): Map<string, number> => {
+    const disponibles = new Set(itemsDisponibles.map((i) => i.id));
+    const vista = todosLosItems.map((item) => {
+      if (!disponibles.has(item.id)) return item;
+      if (!itemsElegidos.has(item.id)) return { ...item, mediciones: [], subItems: [] };
+      return conSubItemsElegidos(item);
+    });
+    return calcularTotales(vista);
+  };
+
   const descargar = () => {
     abrirInformeRubro({
       proyectoNombre,
       rubroNombre,
-      totales,
+      totales: vistaTotales(),
       // Las que no tienen ítems o quedaron sin filas no se mandan: imprimirían
       // un título de sección con una tabla vacía debajo. Es lo mismo que cuenta
       // el resumen de abajo, así que lo que dice el diálogo es lo que sale.
@@ -475,23 +539,81 @@ export function InformeRubroDialog({
                 )
               }
             >
-              {itemsDisponibles.map((item) => (
-                <Opcion
-                  key={item.id}
-                  marcado={itemsElegidos.has(item.id)}
-                  // Con una sola sección a la vista, de qué sección es no aporta
-                  // nada y la unidad sí. Con varias, dos secciones pueden tener
-                  // las dos un ítem "Hormigón" y hay que poder distinguirlos.
-                  detalle={
-                    activas.length > 1
-                      ? activas.find((s) => s.id === item.seccionId)?.nombre
-                      : simboloUnidad(item.unidad)
-                  }
-                  onCambio={() => setItemsElegidos((prev) => alternar(prev, item.id))}
-                >
-                  {item.nombre}
-                </Opcion>
-              ))}
+              {itemsDisponibles.map((item) => {
+                const tieneSubItems = item.subItems.length > 0;
+                const expandido = itemsExpandidos.has(item.id);
+                const elegidosDeEste = item.subItems.filter((si) =>
+                  subItemsElegidos.has(si.id)
+                ).length;
+                return (
+                  <div key={item.id} className="flex flex-col">
+                    <span className="flex min-w-0 items-center gap-1">
+                      {tieneSubItems ? (
+                        <Tooltip
+                          content={expandido ? "Ocultar sub ítems" : "Mostrar sub ítems"}
+                        >
+                          <button
+                            type="button"
+                            aria-expanded={expandido}
+                            aria-label={
+                              expandido
+                                ? `Ocultar sub ítems de ${item.nombre}`
+                                : `Mostrar sub ítems de ${item.nombre}`
+                            }
+                            onClick={() =>
+                              setItemsExpandidos((prev) => alternar(prev, item.id))
+                            }
+                            className="shrink-0 rounded-sm p-0.5 text-muted-foreground transition-colors hover:text-foreground"
+                          >
+                            <ChevronDown
+                              className={cn(
+                                "h-3.5 w-3.5 transition-transform duration-200",
+                                !expandido && "-rotate-90"
+                              )}
+                            />
+                          </button>
+                        </Tooltip>
+                      ) : (
+                        <span className="w-5 shrink-0" aria-hidden />
+                      )}
+                      <span className="min-w-0 flex-1">
+                        <Opcion
+                          marcado={itemsElegidos.has(item.id)}
+                          // Con una sola sección a la vista, de qué sección es
+                          // no aporta nada y la unidad sí. Con varias, dos
+                          // secciones pueden tener las dos un ítem "Hormigón" y
+                          // hay que poder distinguirlos.
+                          detalle={
+                            tieneSubItems
+                              ? `${elegidosDeEste}/${item.subItems.length} sub ítems`
+                              : activas.length > 1
+                                ? activas.find((s) => s.id === item.seccionId)?.nombre
+                                : simboloUnidad(item.unidad)
+                          }
+                          onCambio={() => setItemsElegidos((prev) => alternar(prev, item.id))}
+                        >
+                          {item.nombre}
+                        </Opcion>
+                      </span>
+                    </span>
+                    {tieneSubItems && expandido && (
+                      <div className="ml-5 flex flex-col border-l pl-2">
+                        {item.subItems.map((subItem) => (
+                          <Opcion
+                            key={subItem.id}
+                            marcado={subItemsElegidos.has(subItem.id)}
+                            onCambio={() =>
+                              setSubItemsElegidos((prev) => alternar(prev, subItem.id))
+                            }
+                          >
+                            {subItem.nombre}
+                          </Opcion>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </Grupo>
           )}
 
