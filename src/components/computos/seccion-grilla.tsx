@@ -1,6 +1,14 @@
 "use client";
 
-import { Fragment, useState, useTransition, type ReactNode } from "react";
+import {
+  Fragment,
+  useRef,
+  useState,
+  useTransition,
+  type ChangeEvent,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 import { ChevronDown, GripVertical, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -48,11 +56,15 @@ import {
   conDesperdicio,
   conversionDe,
   esDerivadaEnFila,
+  esFormula,
   esHierro,
   esSeccionMamposteria,
   esSeccionPuertas,
   etiquetaBultos,
+  evaluarFormula,
   formatCantidad,
+  formulaATexto,
+  formulaDeMedicion,
   kgDeMetros,
   materialDe,
   medicionesDeFila,
@@ -60,6 +72,7 @@ import {
   medidoEnFila,
   metrosDeBarras,
   metrosDeKg,
+  normalizarFormula,
   ordenarFilas,
   parcialMedicion,
   parseMedida,
@@ -88,6 +101,146 @@ type Fila = { clave: ClaveFila; nombre: string };
 type CeldaAbierta = { itemId: string; filaKey: string };
 
 /**
+ * El estado de una celda que se escribe a mano y puede llevar una fórmula
+ * (Albañilería de Cómputos 2, ver `aceptaFormulas`).
+ *
+ * Quieta muestra el número, como cualquier celda. Con fórmula, al entrar al
+ * campo cambia a la cuenta ("=3,5*2,8") para corregirla, y al salir vuelve
+ * al resultado. Escribir un número suelto encima de una fórmula la borra: la
+ * celda pasa a ser un número tipeado, como antes.
+ *
+ * `guardarEn` recibe el número (o null para vaciar) y la fórmula tipeada (o
+ * null si no hay); el resultado de la fórmula lo resuelve el servidor.
+ */
+function useCeldaEditable({
+  valor,
+  formula,
+  conFormulas,
+  guardarEn,
+}: {
+  valor: number | null;
+  formula: string | null;
+  conFormulas: boolean;
+  guardarEn: (numero: number | null, formula: string | null) => Promise<boolean>;
+}) {
+  const inicial = valor === null ? "" : medidaATexto(valor);
+  const [texto, setTexto] = useState(inicial);
+  const [guardado, setGuardado] = useState(inicial);
+  const [prev, setPrev] = useState({ valor, formula });
+  const [pending, startTransition] = useTransition();
+
+  if (valor !== prev.valor || formula !== prev.formula) {
+    setPrev({ valor, formula });
+    setTexto(inicial);
+    setGuardado(inicial);
+  }
+
+  const conFormula = conFormulas && formula !== null;
+  const textoFormula = formula === null ? "" : formulaATexto(formula);
+
+  const alEnfocar = () => {
+    if (conFormula) setTexto(textoFormula);
+  };
+
+  // Escape descarta lo tipeado: el blur que sigue no tiene que guardar nada.
+  const cancelado = useRef(false);
+
+  const guardar = () => {
+    if (cancelado.current) {
+      cancelado.current = false;
+      setTexto(guardado);
+      return;
+    }
+    const limpio = texto.trim();
+
+    if (conFormulas && esFormula(limpio)) {
+      // La misma fórmula que ya estaba: no hay nada que guardar, sólo se
+      // vuelve a mostrar el resultado.
+      if (conFormula && normalizarFormula(limpio) === formula) {
+        setTexto(guardado);
+        return;
+      }
+      if (evaluarFormula(limpio) === null) {
+        toast.error("La fórmula no se entiende o no da un número mayor a 0.");
+        setTexto(guardado);
+        return;
+      }
+      startTransition(async () => {
+        const ok = await guardarEn(null, limpio);
+        if (!ok) setTexto(guardado);
+      });
+      return;
+    }
+
+    // Sin cambios: el número de siempre, o la fórmula que se mostró al
+    // entrar y no se tocó (eso ya lo atajó el bloque de arriba).
+    if (limpio === guardado && !conFormula) {
+      setTexto(guardado);
+      return;
+    }
+    // Con fórmula, cualquier número tipeado (aunque sea el mismo que daba la
+    // cuenta) se guarda: la celda pasa a ser un número suelto, sin fórmula.
+
+    const numero = limpio === "" ? null : parseMedida(limpio);
+    if (limpio !== "" && numero === null) {
+      toast.error(
+        conFormulas
+          ? "Escribí un número mayor a 0, o una fórmula que empiece con =."
+          : "Escribí un número mayor a 0."
+      );
+      setTexto(guardado);
+      return;
+    }
+
+    setGuardado(limpio);
+    startTransition(async () => {
+      const ok = await guardarEn(numero, null);
+      if (!ok) {
+        setTexto(guardado);
+        setGuardado(guardado);
+      }
+    });
+  };
+
+  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      e.currentTarget.blur();
+    }
+    if (e.key === "Escape") {
+      cancelado.current = true;
+      e.currentTarget.blur();
+    }
+  };
+
+  return {
+    inputProps: {
+      value: texto,
+      onChange: (e: ChangeEvent<HTMLInputElement>) => setTexto(e.target.value),
+      onFocus: alEnfocar,
+      onBlur: guardar,
+      onKeyDown,
+      inputMode: conFormulas ? ("text" as const) : ("decimal" as const),
+      placeholder: "—",
+      disabled: pending,
+    },
+    conFormula,
+    textoFormula,
+  };
+}
+
+/** Clase común de las celdas editables. Con fórmula, el número va subrayado de puntos. */
+function claseCelda(conFormula: boolean) {
+  return cn(
+    "w-full rounded-sm border border-transparent bg-transparent px-2 py-1 text-center text-sm tabular-nums",
+    "transition-colors duration-150",
+    "hover:border-input focus:border-ring focus:bg-background focus:outline-none",
+    "placeholder:text-muted-foreground",
+    conFormula && "underline decoration-muted-foreground/60 decoration-dotted underline-offset-4 focus:no-underline"
+  );
+}
+
+/**
  * Una celda: lo que se midió de un ítem en una fila.
  *
  * Se guarda al salir del campo y sólo si cambió, sin botón de guardar. Cargar
@@ -108,6 +261,8 @@ function Celda({
   fila,
   filaNombre,
   valor,
+  formula = null,
+  conFormulas = false,
   onSaved,
 }: {
   proyectoId: string;
@@ -116,69 +271,33 @@ function Celda({
   filaNombre: string;
   /** Lo medido, o null si esta celda todavía no tiene ninguna fila. */
   valor: number | null;
+  /** La fórmula con la que se cargó, si se cargó con una. */
+  formula?: string | null;
+  /** Si esta celda acepta fórmulas (ver `aceptaFormulas`). */
+  conFormulas?: boolean;
   onSaved: (item: ItemOpcion) => void;
 }) {
-  const inicial = valor === null ? "" : medidaATexto(valor);
-  const [texto, setTexto] = useState(inicial);
-  const [guardado, setGuardado] = useState(inicial);
-  const [prev, setPrev] = useState(valor);
-  const [pending, startTransition] = useTransition();
-
-  if (valor !== prev) {
-    setPrev(valor);
-    setTexto(inicial);
-    setGuardado(inicial);
-  }
-
-  const guardar = () => {
-    const limpio = texto.trim();
-    if (limpio === guardado) return;
-
-    const numero = limpio === "" ? null : parseMedida(limpio);
-    if (limpio !== "" && numero === null) {
-      toast.error("Escribí un número mayor a 0.");
-      setTexto(guardado);
-      return;
-    }
-
-    setGuardado(limpio);
-    startTransition(async () => {
-      const result = await guardarCelda(proyectoId, item.id, fila, numero);
+  const { inputProps, conFormula, textoFormula } = useCeldaEditable({
+    valor,
+    formula,
+    conFormulas,
+    guardarEn: async (numero, formulaTexto) => {
+      const result = await guardarCelda(proyectoId, item.id, fila, numero, formulaTexto);
       if (!result.success) {
         toast.error(result.error);
-        setTexto(guardado);
-        setGuardado(guardado);
-        return;
+        return false;
       }
       onSaved(result.item);
-    });
-  };
+      return true;
+    },
+  });
 
   return (
     <input
-      value={texto}
-      onChange={(e) => setTexto(e.target.value)}
-      onBlur={guardar}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          e.currentTarget.blur();
-        }
-        if (e.key === "Escape") {
-          setTexto(guardado);
-          e.currentTarget.blur();
-        }
-      }}
-      inputMode="decimal"
-      placeholder="—"
+      {...inputProps}
+      title={conFormula ? `Fórmula: ${textoFormula}` : undefined}
       aria-label={`${item.nombre} en ${filaNombre}`}
-      disabled={pending}
-      className={cn(
-        "w-full rounded-sm border border-transparent bg-transparent px-2 py-1 text-center text-sm tabular-nums",
-        "transition-colors duration-150",
-        "hover:border-input focus:border-ring focus:bg-background focus:outline-none",
-        "placeholder:text-muted-foreground"
-      )}
+      className={claseCelda(conFormula)}
     />
   );
 }
@@ -199,6 +318,8 @@ function CeldaSubItem({
   fila,
   filaNombre,
   valor,
+  formula = null,
+  conFormulas = false,
   onSaved,
 }: {
   proyectoId: string;
@@ -208,70 +329,37 @@ function CeldaSubItem({
   filaNombre: string;
   /** Lo cargado, o null si esta celda todavía no tiene ninguna fila. */
   valor: number | null;
+  /** La fórmula con la que se cargó, si se cargó con una. */
+  formula?: string | null;
+  /** Si esta celda acepta fórmulas (ver `aceptaFormulas`). */
+  conFormulas?: boolean;
   onSaved: (item: ItemOpcion) => void;
 }) {
-  const inicial = valor === null ? "" : medidaATexto(valor);
-  const [texto, setTexto] = useState(inicial);
-  const [guardado, setGuardado] = useState(inicial);
-  const [prev, setPrev] = useState(valor);
-  const [pending, startTransition] = useTransition();
-
-  if (valor !== prev) {
-    setPrev(valor);
-    setTexto(inicial);
-    setGuardado(inicial);
-  }
-
-  const guardar = () => {
-    const limpio = texto.trim();
-    if (limpio === guardado) return;
-
-    const numero = limpio === "" ? null : parseMedida(limpio);
-    if (limpio !== "" && numero === null) {
-      toast.error("Escribí un número mayor a 0.");
-      setTexto(guardado);
-      return;
-    }
-
-    setGuardado(limpio);
-    startTransition(async () => {
-      const result = await guardarSubItemCelda(proyectoId, subItem.id, fila, numero);
+  const { inputProps, conFormula, textoFormula } = useCeldaEditable({
+    valor,
+    formula,
+    conFormulas,
+    guardarEn: async (numero, formulaTexto) => {
+      const result = await guardarSubItemCelda(proyectoId, subItem.id, fila, numero, formulaTexto);
       if (!result.success) {
         toast.error(result.error);
-        setTexto(guardado);
-        setGuardado(guardado);
-        return;
+        return false;
       }
       onSaved(result.item);
-    });
-  };
+      return true;
+    },
+  });
 
   return (
     <input
-      value={texto}
-      onChange={(e) => setTexto(e.target.value)}
-      onBlur={guardar}
-      onKeyDown={(e) => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          e.currentTarget.blur();
-        }
-        if (e.key === "Escape") {
-          setTexto(guardado);
-          e.currentTarget.blur();
-        }
-      }}
-      inputMode="decimal"
-      placeholder="—"
-      title={`${item.nombre} en ${filaNombre}: ${subItem.nombre}`}
+      {...inputProps}
+      title={
+        conFormula
+          ? `${subItem.nombre} — fórmula: ${textoFormula}`
+          : `${item.nombre} en ${filaNombre}: ${subItem.nombre}`
+      }
       aria-label={`${item.nombre} en ${filaNombre}, ${subItem.nombre}`}
-      disabled={pending}
-      className={cn(
-        "w-full rounded-sm border border-transparent bg-transparent px-2 py-1 text-center text-sm tabular-nums",
-        "transition-colors duration-150",
-        "hover:border-input focus:border-ring focus:bg-background focus:outline-none",
-        "placeholder:text-muted-foreground"
-      )}
+      className={claseCelda(conFormula)}
     />
   );
 }
@@ -1060,10 +1148,12 @@ function AgregarSubItem({
 function lineasSubItems({
   item,
   proyectoId,
+  conFormulas,
   onItemSaved,
 }: {
   item: ItemOpcion;
   proyectoId: string;
+  conFormulas: boolean;
   onItemSaved: (item: ItemOpcion) => void;
 }): LineaItem[] {
   const lineas: LineaItem[] = item.subItems.map((subItem) => ({
@@ -1071,7 +1161,8 @@ function lineasSubItems({
     esSubItem: true,
     etiqueta: <SubItemNombre proyectoId={proyectoId} subItem={subItem} onSaved={onItemSaved} />,
     celda: (fila: Fila) => {
-      const cargado = subItemMedicionesDeFila(subItem, fila.clave).length > 0;
+      const cargadas = subItemMedicionesDeFila(subItem, fila.clave);
+      const cargado = cargadas.length > 0;
       return (
         <CeldaSubItem
           proyectoId={proyectoId}
@@ -1080,6 +1171,7 @@ function lineasSubItems({
           fila={fila.clave}
           filaNombre={fila.nombre}
           valor={cargado ? subItemEnFila(subItem, fila.clave) : null}
+          conFormulas={conFormulas}
           onSaved={onItemSaved}
         />
       );
@@ -1111,6 +1203,7 @@ function lineasDeItem({
   totales,
   puertas,
   mamposteria2,
+  conFormulas,
   abierta,
   onAbrir,
   onItemSaved,
@@ -1124,6 +1217,8 @@ function lineasDeItem({
    * (unidades) y los palets van redondeados para arriba en cada casillero.
    */
   mamposteria2: boolean;
+  /** Si las celdas que se escriben a mano aceptan fórmulas (ver `aceptaFormulas`). */
+  conFormulas: boolean;
   abierta: CeldaAbierta | null;
   onAbrir: (celda: CeldaAbierta | null) => void;
   onItemSaved: (item: ItemOpcion) => void;
@@ -1315,7 +1410,7 @@ function lineasDeItem({
             );
           }
           return (
-            <span className="group/celda flex items-center gap-0.5">
+            <span className="group/celda relative block">
               <CeldaHierroConvertida
                 proyectoId={proyectoId}
                 item={item}
@@ -1336,7 +1431,7 @@ function lineasDeItem({
                   aria-label={`Detalle de ${item.nombre} en ${fila.nombre}`}
                   onClick={alternar}
                   className={cn(
-                    "shrink-0 rounded-sm p-0.5 text-muted-foreground transition-all duration-150 hover:bg-muted hover:text-foreground focus:opacity-100",
+                    "absolute top-1/2 right-0 -translate-y-1/2 rounded-sm p-0.5 text-muted-foreground transition-all duration-150 hover:bg-muted hover:text-foreground focus:opacity-100",
                     abierto ? "opacity-100" : "opacity-0 group-hover/celda:opacity-100"
                   )}
                 >
@@ -1359,7 +1454,7 @@ function lineasDeItem({
     // Los sub ítems (ver `lineasSubItems`) no son exclusivos de PUERTAS: el
     // "+" para agregarlos vive en todo ítem (ver `FilaItem`), así que acá se
     // suman siempre. Si el ítem no tiene ninguno todavía, esto no agrega nada.
-    lineas.push(...lineasSubItems({ item, proyectoId, onItemSaved }));
+    lineas.push(...lineasSubItems({ item, proyectoId, conFormulas, onItemSaved }));
 
     return lineas;
   }
@@ -1400,12 +1495,15 @@ function lineasDeItem({
         );
       }
 
+      // La flechita del detalle va absoluta, apoyada en el borde derecho: en
+      // el flujo le comía ancho al número, que quedaba corrido a la izquierda
+      // del de las filas de abajo (+10%, palets, sub ítems).
       return (
-        <span className="group/celda flex items-center gap-0.5">
+        <span className="group/celda relative block">
           {derivada ? (
             <span
               title="Sale de una cuenta sobre otro ítem"
-              className="min-w-0 flex-1 px-2 py-1 text-center text-sm tabular-nums text-muted-foreground italic"
+              className="block w-full px-2 py-1 text-center text-sm tabular-nums text-muted-foreground italic"
             >
               {formatCantidad(medido)}
             </span>
@@ -1420,7 +1518,7 @@ function lineasDeItem({
                 aria-expanded={abierto}
                 aria-label={`Detalle de ${item.nombre} en ${fila.nombre}`}
                 onClick={alternar}
-                className="min-w-0 flex-1 rounded-sm px-2 py-1 text-center text-sm font-medium tabular-nums transition-colors duration-150 hover:bg-muted"
+                className="w-full rounded-sm px-2 py-1 text-center text-sm font-medium tabular-nums transition-colors duration-150 hover:bg-muted"
               >
                 {formatCantidad(medido)}
               </button>
@@ -1432,6 +1530,11 @@ function lineasDeItem({
               fila={fila.clave}
               filaNombre={fila.nombre}
               valor={tiene ? medido : null}
+              formula={(() => {
+                const renglon = medicionesDeFila(item, fila.clave)[0];
+                return renglon ? formulaDeMedicion(renglon) : null;
+              })()}
+              conFormulas={conFormulas}
               onSaved={onItemSaved}
             />
           )}
@@ -1447,7 +1550,7 @@ function lineasDeItem({
                 aria-label={`Detalle de ${item.nombre} en ${fila.nombre}`}
                 onClick={alternar}
                 className={cn(
-                  "shrink-0 rounded-sm p-0.5 text-muted-foreground transition-all duration-150 hover:bg-muted hover:text-foreground focus:opacity-100",
+                  "absolute top-1/2 right-0 -translate-y-1/2 rounded-sm p-0.5 text-muted-foreground transition-all duration-150 hover:bg-muted hover:text-foreground focus:opacity-100",
                   abierto ? "opacity-100" : "opacity-0 group-hover/celda:opacity-100"
                 )}
               >
@@ -1575,7 +1678,7 @@ function lineasDeItem({
   // Los sub ítems (ver `lineasSubItems`) no son exclusivos de PUERTAS: el "+"
   // para agregarlos vive en todo ítem (ver `FilaItem`), así que acá se suman
   // siempre. Si el ítem no tiene ninguno todavía, esto no agrega nada.
-  lineas.push(...lineasSubItems({ item, proyectoId, onItemSaved }));
+  lineas.push(...lineasSubItems({ item, proyectoId, conFormulas, onItemSaved }));
 
   return lineas;
 }
@@ -1595,6 +1698,7 @@ export function SeccionGrilla({
   onFilaExtraDeleted,
   onNivelSaved,
   onNivelDeleted,
+  conFormulas = false,
 }: {
   proyectoId: string;
   seccion: SeccionOpcion;
@@ -1615,6 +1719,8 @@ export function SeccionGrilla({
    *  y de ahí se reparte a todas las grillas que lo muestran. */
   onNivelSaved: (nivel: NivelOpcion) => void;
   onNivelDeleted: (id: string) => void;
+  /** Si las celdas que se escriben a mano aceptan fórmulas (Albañilería de Cómputos 2). */
+  conFormulas?: boolean;
 }) {
   const [renombrando, setRenombrando] = useState(false);
   const [nombre, setNombre] = useState(seccion.nombre);
@@ -1995,6 +2101,7 @@ export function SeccionGrilla({
                             totalColumnas={totalColumnas}
                             puertas={puertas}
                             mamposteria2={mamposteria2}
+                            conFormulas={conFormulas}
                             arrastrable={itemsOrdenados.length > 1}
                             abierta={abierta}
                             onAbrir={setAbierta}
@@ -2038,6 +2145,7 @@ function FilaItem({
   totalColumnas,
   puertas,
   mamposteria2,
+  conFormulas,
   arrastrable,
   abierta,
   onAbrir,
@@ -2054,6 +2162,7 @@ function FilaItem({
   /** Si esta sección es PUERTAS: cada ítem reemplaza su cantidad por sus sub ítems. */
   puertas: boolean;
   mamposteria2: boolean;
+  conFormulas: boolean;
   arrastrable: boolean;
   abierta: CeldaAbierta | null;
   onAbrir: (celda: CeldaAbierta | null) => void;
@@ -2097,6 +2206,7 @@ function FilaItem({
     totales,
     puertas,
     mamposteria2,
+    conFormulas,
     abierta,
     onAbrir,
     onItemSaved,

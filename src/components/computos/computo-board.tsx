@@ -25,6 +25,7 @@ import {
   type ItemOpcion,
   type SeccionOpcion,
   type TipoComputo,
+  aceptaFormulas,
 } from "@/lib/computos";
 import type { NivelOpcion } from "@/lib/niveles";
 import { cn } from "@/lib/utils";
@@ -614,6 +615,7 @@ export function ComputoBoard({
                       onFilaExtraDeleted={sacarFilaExtra}
                       onNivelSaved={reemplazarNivel}
                       onNivelDeleted={sacarNivel}
+                      conFormulas={aceptaFormulas(rubro.nombre, esComputos2)}
                     />
                   ))}
 
