@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { put } from "@vercel/blob";
 import { prisma } from "@/lib/db";
 import { requireSeccion } from "@/lib/dal";
+import { aplicarPlantillaComputos2 } from "@/lib/plantilla-computos2";
 import {
   ProyectoSchema,
   ProyectoM2VendiblesSchema,
@@ -63,9 +64,18 @@ export async function createProyecto(_prevState: ActionState, formData: FormData
 
   const imagenUrl = await subirImagen(formData);
   const brochure = await subirBrochure(formData);
-  await prisma.proyecto.create({
+  const proyecto = await prisma.proyecto.create({
     data: { ...validated.data, imagenUrl, ...brochure },
+    select: { id: true },
   });
+  // Cada obra nueva arranca Cómputos 2 con las tablas de la plantilla (ver
+  // `PLANTILLA_COMPUTOS2`). Si algo falla acá la obra igual queda creada: las
+  // tablas se pueden armar a mano después.
+  try {
+    await aplicarPlantillaComputos2(proyecto.id);
+  } catch (error) {
+    console.error("aplicarPlantillaComputos2", error);
+  }
   revalidatePath("/proyectos");
   revalidatePath("/dashboard");
   return { success: true };
