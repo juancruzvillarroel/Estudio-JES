@@ -35,7 +35,9 @@ import {
   esSeccionMamposteria,
   esSeccionPuertas,
   etiquetaBultos,
+  mayuscula,
   formatCantidad,
+  formulaDeMedicion,
   kgDeMetros,
   materialDe,
   medicionesDeFila,
@@ -206,6 +208,8 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
    */
   type LineaInforme = {
     etiqueta: string | null;
+    /** Un sub ítem: se carga a mano, así que no va sombreado como las líneas calculadas. */
+    esSubItem?: boolean;
     celda: (fila: ClaveFila) => string;
     total: () => string;
   };
@@ -272,7 +276,7 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
     }
     if (tieneBultos(item)) {
       lineas.push({
-        etiqueta: etiquetaBultos([item]),
+        etiqueta: mayuscula(etiquetaBultos([item])),
         celda: (fila) => {
           const tiene = tieneMedidoEnFila(item, fila);
           const medido = medidoEnFila(item, fila, datos.totales);
@@ -328,6 +332,7 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
   const lineasSubItemsDe = (item: ItemOpcion): LineaInforme[] =>
     item.subItems.map((subItem) => ({
       etiqueta: subItem.nombre,
+      esSubItem: true,
       celda: (fila) => {
         const cargado = subItemMedicionesDeFila(subItem, fila).length > 0;
         return celda(cargado ? formatCantidad(subItemEnFila(subItem, fila)) : "—");
@@ -377,8 +382,13 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
         const renglones = medicionesDeFila(item, fila.clave).filter(
           (m) => m.origenId === null
         );
+        // Una fórmula tipeada en la grilla ("=3,5*2,8") se guarda en la
+        // descripción, pero no es un nombre: no se imprime ni justifica una
+        // fila de detalle.
         const tieneDescripcionPropia =
-          renglones.length === 1 && !!renglones[0].descripcion?.trim();
+          renglones.length === 1 &&
+          !formulaDeMedicion(renglones[0]) &&
+          !!renglones[0].descripcion?.trim();
         if (renglones.length < 2 && !tieneDescripcionPropia) return [];
         return renglones.map((medicion) => {
           const parcial = parcialMedicion(medicion, item.unidad);
@@ -393,7 +403,7 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
           return `
         <tr class="renglon">
           <th class="item-col renglon-nombre" scope="row">${esc(
-            medicion.descripcion ?? "—"
+            (formulaDeMedicion(medicion) ? null : medicion.descripcion) ?? "—"
           )}</th>
           <td class="unidad-col"></td>
           ${celdas}
@@ -408,7 +418,7 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
       <th class="item-col">Ítem</th>
       <th class="unidad-col">Unidad</th>
       ${filas.map((fila) => `<th class="nivel">${esc(fila.nombre)}</th>`).join("")}
-      <th class="total-col">Total</th>
+      <th class="total-col">TOTAL</th>
     </tr>`;
 
   /**
@@ -439,7 +449,7 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
     const filasResto = resto
       .map(
         (linea) => `
-      <tr class="linea-extra">
+      <tr class="linea-extra${linea.esSubItem ? "" : " linea-calculada"}">
         <th class="item-col linea-nombre" scope="row">${esc(linea.etiqueta ?? "")}</th>
         <td class="unidad-col"></td>
         ${filas.map((fila) => `<td>${linea.celda(fila.clave)}</td>`).join("")}
@@ -596,6 +606,15 @@ function construirHtml(datos: DatosInformeRubro) {
        entra en una celda se recorta con puntos suspensivos en vez de
        ensanchar la hoja. */
     table.grilla { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    /* La primera columna (los nombres) y la fila de títulos llevan una línea
+       más gruesa, igual que en pantalla: son el encabezado de la tabla. */
+    table.grilla tr > :first-child { border-right: 2px solid #9a9a9a; }
+    table.grilla thead th { border-bottom: 2px solid #9a9a9a; }
+    /* Toda la fila de títulos y toda la columna de Total con el mismo peso
+       de letra, aunque cada celda traiga el suyo. */
+    table.grilla thead th,
+    table.grilla td.total-col,
+    table.grilla td.total-col * { font-weight: 700; }
     table.grilla th, table.grilla td {
       border: 1px solid var(--linea);
       padding: 2px 4px;
@@ -607,7 +626,10 @@ function construirHtml(datos: DatosInformeRubro) {
     /* La fila de cada ítem, con un fondo propio para que se distinga de
        entrada de la fila de al lado: ya no alcanza con que sólo la columna
        del ítem tenga su gris, toda la fila lo lleva. */
-    tr.fila-item { background: #ebebeb; }
+    tr.fila-item { background: #f2f2f2; }
+    /* De punta a punta el mismo gris: el nombre, la unidad y el total no
+       llevan un tono propio en la fila del ítem. */
+    tr.fila-item th, tr.fila-item td { background: #f2f2f2; }
 
     /* La columna del ítem es la que se lee para saber de qué fila es cada
        número: va en gris más oscuro que el resto de la fila, alineada
@@ -718,6 +740,12 @@ function construirHtml(datos: DatosInformeRubro) {
        apilada en la columna del ítem. La sangría dice, sin escribirlo, que
        es una línea de detalle y no un ítem más. */
     tr.linea-extra th, tr.linea-extra td { background: #f0f0f0; }
+    /* Las que salen solas de la cuenta del ítem (+10%, Palets, material,
+       hierro) van en un gris algo más oscuro que la fila del ítem, igual
+       que en pantalla: a simple vista se separa lo cargado de lo calculado.
+       Los sub ítems, que se cargan a mano, quedan en el gris claro. */
+    tr.linea-calculada th, tr.linea-calculada td { background: #e3e3e3; }
+    tr.linea-calculada th.linea-nombre { background: #d9d9d9; }
     tr.linea-extra th.linea-nombre {
       font-weight: 400;
       text-transform: none;

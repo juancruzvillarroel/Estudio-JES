@@ -22,6 +22,7 @@ import {
   calcularTotales,
   dimensionesDe,
   formatCantidad,
+  formulaDeMedicion,
   formulaMedicion,
   parcialMedicion,
   simboloUnidad,
@@ -87,7 +88,7 @@ function filaMedicion(
   // metros de mampostería y no de una estimación a ojo.
   const donde = medicion.origenId
     ? `<span class="origen">de ${esc(ctx.porId.get(medicion.origenId)?.nombre ?? "—")}</span>`
-    : esc(medicion.descripcion ?? "—");
+    : esc((formulaDeMedicion(medicion) ? null : medicion.descripcion) ?? "—");
 
   return `
     <tr${medicion.deduccion ? ' class="deduccion"' : ""}>
