@@ -2152,12 +2152,103 @@ export function SeccionGrilla({
                     </DndContext>
                   )}
                 </tbody>
+
+                {itemsOrdenados.length > 0 && (
+                  <TotalesPorFila items={itemsOrdenados} filas={filas} totales={totales} />
+                )}
               </table>
             </div>
           </SortableContext>
         </DndContext>
       )}
     </div>
+  );
+}
+
+/**
+ * El pie de la grilla: cuánto suman todos los ítems de la sección en cada
+ * piso. Por ejemplo, los m³ de hormigón de toda la planta baja (columnas,
+ * vigas, losas, tabiques...) y, al final, los de toda la obra.
+ *
+ * Suma lo medido, lo mismo que se ve en la primera línea de cada ítem (con
+ * las repeticiones de la planta tipo ya multiplicadas), sin desperdicio.
+ *
+ * Sumar m² con ml no da nada que signifique algo, así que va una fila por
+ * cada unidad que haya en la sección. En el hierro se suman también los kg:
+ * los metros de un Ø6 y de un Ø25 pesan muy distinto, y el peso es lo que
+ * se pide.
+ */
+function TotalesPorFila({
+  items,
+  filas,
+  totales,
+}: {
+  items: ItemOpcion[];
+  filas: Fila[];
+  totales: Map<string, number>;
+}) {
+  const enFila = (item: ItemOpcion, fila: Fila) =>
+    medidoEnFila(item, fila.clave, totales) + subItemsEnFila(item, fila.clave);
+
+  type Renglon = { key: string; unidad: string; porFila: number[] };
+  const renglones: Renglon[] = [];
+
+  for (const item of items) {
+    let renglon = renglones.find((r) => r.key === item.unidad);
+    if (!renglon) {
+      renglon = { key: item.unidad, unidad: simboloUnidad(item.unidad), porFila: filas.map(() => 0) };
+      renglones.push(renglon);
+    }
+    for (const [i, fila] of filas.entries()) renglon.porFila[i] += enFila(item, fila);
+  }
+
+  const hierros = items.filter((item) => esHierro(item));
+  if (hierros.length > 0) {
+    renglones.push({
+      key: "kg",
+      unidad: "kg",
+      porFila: filas.map((fila) =>
+        hierros.reduce((acc, item) => acc + kgDeMetros(item, enFila(item, fila)), 0)
+      ),
+    });
+  }
+
+  return (
+    <tfoot>
+      {renglones.map((renglon, indice) => {
+        const total = renglon.porFila.reduce((a, b) => a + b, 0);
+        return (
+          <tr
+            key={renglon.key}
+            className={cn(
+              "bg-foreground/10",
+              indice === 0 ? "border-t-2 border-t-foreground/25" : "border-t border-t-foreground/10"
+            )}
+          >
+            <th
+              scope="row"
+              className="px-3 py-1.5 text-left text-xs font-semibold tracking-wider uppercase"
+            >
+              {indice === 0 ? "Total" : ""}
+            </th>
+            <td className="border-l px-1 py-1.5 text-center text-xs font-semibold text-muted-foreground">
+              {renglon.unidad}
+            </td>
+            {filas.map((fila, i) => (
+              <td
+                key={claveFilaKey(fila.clave)}
+                className="border-l px-1 py-1.5 text-center text-sm font-semibold tabular-nums"
+              >
+                {renglon.porFila[i] > 0 ? formatCantidad(renglon.porFila[i]) : "—"}
+              </td>
+            ))}
+            <td className={cn("border-l-2 px-1 py-1.5 text-center text-sm tabular-nums", TOTAL_COL)}>
+              {total > 0 ? formatCantidad(total) : "—"}
+            </td>
+          </tr>
+        );
+      })}
+    </tfoot>
   );
 }
 
