@@ -26,6 +26,7 @@ import {
   claveFilaKey,
   esHierro,
   fechaDeComputo,
+  medicionesDeFila,
   ordenarFilas,
   simboloUnidad,
   tieneMedidoEnFila,
@@ -58,6 +59,28 @@ function alternar(conjunto: Set<string>, id: string) {
   else next.add(id);
   return next;
 }
+
+/**
+ * Cómo se agrupan los renglones del detalle de una celda para elegirlos.
+ *
+ * Sin distinguir mayúsculas ni espacios de más: "c01 " y "C01" son la misma
+ * columna escrita apurado, y en la lista tienen que ser un solo tilde.
+ */
+function claveRenglon(descripcion: string) {
+  return descripcion.trim().replace(/\s+/g, " ").toUpperCase();
+}
+
+/** Un renglón con nombre de una celda, tal como se ofrece en el diálogo. */
+type RenglonOpcion = {
+  /** `itemId|fila|CLAVE`: lo que se guarda en `renglonesFuera`. */
+  llave: string;
+  nombre: string;
+  /** Las mediciones que caen bajo este tilde (casi siempre una). */
+  medicionIds: string[];
+};
+
+/** Los renglones de un nivel, bajo su subtítulo. */
+type NivelRenglones = { clave: string; nombre: string; renglones: RenglonOpcion[] };
 
 /** Cómo se lee cada lectura del hierro en la lista de opciones del diálogo. */
 const ETIQUETA_UNIDAD_HIERRO: Record<UnidadHierro, string> = {
@@ -246,11 +269,108 @@ export function InformeRubroDialog({
   /** Qué ítems tienen la lista de sus sub ítems desplegada, en el diálogo. */
   const [itemsExpandidos, setItemsExpandidos] = useState<Set<string>>(new Set());
 
-  /** Un ítem, pero con sólo los sub ítems que quedaron marcados. */
-  const conSubItemsElegidos = (item: ItemOpcion): ItemOpcion => ({
-    ...item,
-    subItems: item.subItems.filter((si) => subItemsElegidos.has(si.id)),
-  });
+  /**
+   * Los renglones del detalle destildados, por su `llave` (`itemId|fila|CLAVE`).
+   *
+   * La fila es parte de la llave porque la lista se lee por nivel: la C01 de
+   * planta baja y la C01 de la planta tipo son dos tildes distintos, y sacar
+   * una no tiene que sacar la otra.
+   *
+   * Se guardan los que se SACAN y no los que quedan, al revés que el resto del
+   * diálogo: así un renglón que no estaba cuando se abrió —o el de un ítem
+   * recién sumado— entra marcado sin tener que resincronizar nada, que es lo
+   * mismo que logran las huellas de arriba.
+   */
+  const [renglonesFuera, setRenglonesFuera] = useState<Set<string>>(new Set());
+
+  /** Las filas de la grilla de una sección, en el orden en que se ven. */
+  const filasDeSeccion = (seccionId: string): FilaInforme[] => {
+    const seccion = secciones.find((s) => s.id === seccionId);
+    if (!seccion) return [];
+    return ordenarFilas(
+      [
+        ...niveles.map((n) => ({
+          clave: { tipo: "nivel" as const, id: n.id },
+          nombre: n.nombre,
+        })),
+        ...filasExtra
+          .filter((f) => f.seccionId === seccionId)
+          .sort((a, b) => a.orden - b.orden)
+          .map((f) => ({ clave: { tipo: "extra" as const, id: f.id }, nombre: f.nombre })),
+        { clave: { tipo: "general" as const }, nombre: SIN_NIVEL },
+      ],
+      seccion.ordenFilas
+    );
+  };
+
+  /**
+   * Los renglones con nombre de un ítem, agrupados por nivel en el orden de la
+   * grilla y, dentro de cada nivel, en orden natural (C2 antes que C10). Los
+   * niveles sin renglones con nombre no aparecen.
+   */
+  const renglonesPorNivel = (item: ItemOpcion): NivelRenglones[] =>
+    // Un ítem sin sección no está en ninguna grilla: no tiene niveles que mostrar.
+    (item.seccionId ? filasDeSeccion(item.seccionId) : []).flatMap((fila) => {
+      const filaKey = claveFilaKey(fila.clave);
+      const grupos = new Map<string, RenglonOpcion>();
+      for (const m of medicionesDeFila(item, fila.clave)) {
+        // Las derivadas no tienen renglones propios: salen de otro ítem.
+        const nombre = m.descripcion?.trim();
+        if (m.origenId !== null || !nombre) continue;
+        const clave = claveRenglon(nombre);
+        const grupo = grupos.get(clave);
+        if (grupo) grupo.medicionIds.push(m.id);
+        else
+          grupos.set(clave, {
+            llave: `${item.id}|${filaKey}|${clave}`,
+            nombre,
+            medicionIds: [m.id],
+          });
+      }
+      if (grupos.size === 0) return [];
+      const renglones = [...grupos.values()].sort((a, b) =>
+        a.nombre.localeCompare(b.nombre, "es", { numeric: true, sensitivity: "base" })
+      );
+      return [{ clave: filaKey, nombre: fila.nombre, renglones }];
+    });
+
+  /** Las mediciones que quedan afuera por un renglón destildado. */
+  const medicionesFuera = (item: ItemOpcion) =>
+    new Set(
+      renglonesPorNivel(item).flatMap((nivel) =>
+        nivel.renglones
+          .filter((r) => renglonesFuera.has(r.llave))
+          .flatMap((r) => r.medicionIds)
+      )
+    );
+
+  /** Marca o desmarca de una vez un grupo de renglones. */
+  const marcarRenglones = (renglones: RenglonOpcion[], marcar: boolean) =>
+    setRenglonesFuera((prev) => {
+      const next = new Set(prev);
+      for (const r of renglones) {
+        if (marcar) next.delete(r.llave);
+        else next.add(r.llave);
+      }
+      return next;
+    });
+
+  /**
+   * Un ítem, pero con sólo los sub ítems y los renglones que quedaron marcados.
+   *
+   * Sacar un renglón es sacar su medición entera, no esconder su línea: así la
+   * celda, el total del ítem, la fila de totales y cualquier derivada que
+   * dependa de él se calculan sin ese número, y un nivel donde sólo estaba esa
+   * columna queda vacío y desaparece como cualquier otro.
+   */
+  const conSubItemsElegidos = (item: ItemOpcion): ItemOpcion => {
+    const fuera = renglonesFuera.size === 0 ? null : medicionesFuera(item);
+    return {
+      ...item,
+      mediciones: fuera ? item.mediciones.filter((m) => !fuera.has(m.id)) : item.mediciones,
+      subItems: item.subItems.filter((si) => subItemsElegidos.has(si.id)),
+    };
+  };
 
   /**
    * De acá para abajo, "los ítems" son sólo los elegidos, y cada uno con sólo
@@ -337,6 +457,7 @@ export function InformeRubroDialog({
     setPrevSubItems("");
     setPrevHuella("");
     setItemsExpandidos(new Set());
+    setRenglonesFuera(new Set());
   };
 
   const marcada = (clave: ClaveFila) => filasElegidas.has(claveFilaKey(clave));
@@ -541,24 +662,34 @@ export function InformeRubroDialog({
             >
               {itemsDisponibles.map((item) => {
                 const tieneSubItems = item.subItems.length > 0;
+                const porNivel = renglonesPorNivel(item);
+                const renglones = porNivel.flatMap((n) => n.renglones);
+                const tieneRenglones = renglones.length > 0;
+                const desplegable = tieneSubItems || tieneRenglones;
+                const queSeDespliega = tieneSubItems ? "sub ítems" : "renglones";
                 const expandido = itemsExpandidos.has(item.id);
                 const elegidosDeEste = item.subItems.filter((si) =>
                   subItemsElegidos.has(si.id)
                 ).length;
+                const renglonesElegidos = renglones.filter(
+                  (r) => !renglonesFuera.has(r.llave)
+                ).length;
                 return (
                   <div key={item.id} className="flex flex-col">
                     <span className="flex min-w-0 items-center gap-1">
-                      {tieneSubItems ? (
+                      {desplegable ? (
                         <Tooltip
-                          content={expandido ? "Ocultar sub ítems" : "Mostrar sub ítems"}
+                          content={
+                            expandido ? `Ocultar ${queSeDespliega}` : `Elegir ${queSeDespliega}`
+                          }
                         >
                           <button
                             type="button"
                             aria-expanded={expandido}
                             aria-label={
                               expandido
-                                ? `Ocultar sub ítems de ${item.nombre}`
-                                : `Mostrar sub ítems de ${item.nombre}`
+                                ? `Ocultar ${queSeDespliega} de ${item.nombre}`
+                                : `Elegir ${queSeDespliega} de ${item.nombre}`
                             }
                             onClick={() =>
                               setItemsExpandidos((prev) => alternar(prev, item.id))
@@ -586,7 +717,9 @@ export function InformeRubroDialog({
                           detalle={
                             tieneSubItems
                               ? `${elegidosDeEste}/${item.subItems.length} sub ítems`
-                              : activas.length > 1
+                              : tieneRenglones && renglonesElegidos < renglones.length
+                                ? `${renglonesElegidos}/${renglones.length} renglones`
+                                : activas.length > 1
                                 ? activas.find((s) => s.id === item.seccionId)?.nombre
                                 : simboloUnidad(item.unidad)
                           }
@@ -609,6 +742,56 @@ export function InformeRubroDialog({
                             {subItem.nombre}
                           </Opcion>
                         ))}
+                      </div>
+                    )}
+                    {tieneRenglones && expandido && (
+                      <div className="ml-5 flex flex-col border-l pl-2">
+                        {/* Con treinta columnas y tres para imprimir, destildar
+                            veintisiete de a una es lo que hace falta evitar. */}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            marcarRenglones(renglones, renglonesElegidos < renglones.length)
+                          }
+                          className="self-end px-1.5 text-xs text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline"
+                        >
+                          {renglonesElegidos < renglones.length ? "Todos" : "Ninguno"}
+                        </button>
+                        {porNivel.map((nivel) => {
+                          const todosDelNivel = nivel.renglones.every(
+                            (r) => !renglonesFuera.has(r.llave)
+                          );
+                          return (
+                            <div key={nivel.clave} className="flex flex-col">
+                              {/* El subtítulo de cada nivel, con su propio
+                                  "todos / ninguno": sacar una planta entera
+                                  es tan común como sacar una columna. */}
+                              <div className="flex items-baseline justify-between gap-2 px-1.5 pt-1.5">
+                                <p className="truncate text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+                                  {nivel.nombre}
+                                </p>
+                                <button
+                                  type="button"
+                                  onClick={() => marcarRenglones(nivel.renglones, !todosDelNivel)}
+                                  className="shrink-0 text-xs text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline"
+                                >
+                                  {todosDelNivel ? "Ninguno" : "Todos"}
+                                </button>
+                              </div>
+                              {nivel.renglones.map((renglon) => (
+                                <Opcion
+                                  key={renglon.llave}
+                                  marcado={!renglonesFuera.has(renglon.llave)}
+                                  onCambio={() =>
+                                    setRenglonesFuera((prev) => alternar(prev, renglon.llave))
+                                  }
+                                >
+                                  {renglon.nombre}
+                                </Opcion>
+                              ))}
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
