@@ -733,7 +733,7 @@ export async function guardarCelda(
     const cargadas = await prisma.computoMedicion.findMany({
       where: { itemId, nivelId: donde.nivelId, filaExtraId: donde.filaExtraId },
       orderBy: { orden: "asc" },
-      select: { id: true, origenId: true, descripcion: true },
+      select: { id: true, origenId: true },
     });
 
     // Una fila derivada sale de una cuenta sobre otro ítem, no de una medida.
@@ -759,17 +759,9 @@ export async function guardarCelda(
     } else if (medicion) {
       await prisma.computoMedicion.update({
         where: { id: medicion.id },
-        // La fórmula va en la descripción, con su "=" (ver `formulaDeMedicion`).
-        // Un número suelto encima de una fórmula la borra; una descripción
-        // común ("Living") se deja como estaba.
-        data: {
-          cantidad: valor,
-          ...(formula !== null
-            ? { descripcion: `=${formula}` }
-            : medicion.descripcion?.startsWith("=")
-              ? { descripcion: null }
-              : {}),
-        },
+        // Un número suelto encima de una fórmula la borra. La descripción
+        // ("Living", "Base B1") no se toca.
+        data: { cantidad: valor, formula },
       });
     } else {
       await prisma.computoMedicion.create({
@@ -778,7 +770,7 @@ export async function guardarCelda(
           nivelId: donde.nivelId,
           filaExtraId: donde.filaExtraId,
           cantidad: valor,
-          descripcion: formula === null ? null : `=${formula}`,
+          formula,
           orden: await siguienteOrdenMedicion(itemId),
         },
       });
@@ -1068,20 +1060,43 @@ async function renglonDeLaObra(proyectoId: string, medicionId: string) {
   });
 }
 
+/**
+ * Resuelve el número de un renglón del detalle: si vino una fórmula, manda
+ * ella y el resultado se calcula acá, sin creerle al navegador.
+ */
+function resolverRenglon(
+  valor: number,
+  formulaTexto: string | null
+): { ok: true; valor: number; formula: string | null } | { ok: false; error: string } {
+  if (formulaTexto !== null) {
+    const formula = normalizarFormula(formulaTexto);
+    const resultado = evaluarFormula(formula);
+    if (resultado === null) {
+      return { ok: false, error: "La fórmula no se entiende o no da un número mayor a 0." };
+    }
+    return { ok: true, valor: resultado, formula };
+  }
+  if (!Number.isFinite(valor) || valor <= 0) {
+    return { ok: false, error: "La cantidad tiene que ser mayor a 0." };
+  }
+  return { ok: true, valor, formula: null };
+}
+
 export async function agregarDetalle(
   proyectoId: string,
   itemId: string,
   fila: ClaveFila,
   descripcion: string,
-  valor: number
+  valor: number,
+  /** La fórmula tipeada ("=3,5*2,8"), si el renglón se escribió con una. Manda sobre `valor`. */
+  formulaTexto: string | null = null
 ): Promise<ResultItem> {
   await requireSeccion("proyectos");
 
   const limpio = descripcion.trim();
   if (!limpio) return { success: false, error: "Poné un nombre para el renglón." };
-  if (!Number.isFinite(valor) || valor <= 0) {
-    return { success: false, error: "La cantidad tiene que ser mayor a 0." };
-  }
+  const numero = resolverRenglon(valor, formulaTexto);
+  if (!numero.ok) return { success: false, error: numero.error };
 
   try {
     const existe = await prisma.computoItem.findFirst({
@@ -1117,7 +1132,8 @@ export async function agregarDetalle(
         nivelId: donde.nivelId,
         filaExtraId: donde.filaExtraId,
         descripcion: limpio,
-        cantidad: valor,
+        cantidad: numero.valor,
+        formula: numero.formula,
         orden: await siguienteOrdenMedicion(itemId),
       },
     });
@@ -1136,15 +1152,16 @@ export async function guardarDetalle(
   proyectoId: string,
   medicionId: string,
   descripcion: string,
-  valor: number
+  valor: number,
+  /** Igual que en `agregarDetalle`. Sin fórmula, se borra la que hubiera. */
+  formulaTexto: string | null = null
 ): Promise<ResultItem> {
   await requireSeccion("proyectos");
 
   const limpio = descripcion.trim();
   if (!limpio) return { success: false, error: "Poné un nombre para el renglón." };
-  if (!Number.isFinite(valor) || valor <= 0) {
-    return { success: false, error: "La cantidad tiene que ser mayor a 0." };
-  }
+  const numero = resolverRenglon(valor, formulaTexto);
+  if (!numero.ok) return { success: false, error: numero.error };
 
   try {
     const renglon = await renglonDeLaObra(proyectoId, medicionId);
@@ -1158,7 +1175,7 @@ export async function guardarDetalle(
 
     await prisma.computoMedicion.update({
       where: { id: medicionId },
-      data: { descripcion: limpio, cantidad: valor },
+      data: { descripcion: limpio, cantidad: numero.valor, formula: numero.formula },
     });
 
     await tocarFechaComputo(proyectoId, renglon.itemId);
@@ -1442,6 +1459,9 @@ export async function actualizarMedicion(
       where: { id: medicionId },
       data: {
         descripcion: input.descripcion?.trim() || null,
+        // El número se escribe desde el diálogo, sin fórmula: la que hubiera
+        // dejaría de corresponder con la cantidad.
+        formula: null,
         nivelId: nivel.valor,
         cantidad: input.cantidad,
         largo: largo.valor,
@@ -1638,6 +1658,9 @@ export async function actualizarDerivada(
       where: { id: medicionId },
       data: {
         descripcion: input.descripcion?.trim() || null,
+        // El número se escribe desde el diálogo, sin fórmula: la que hubiera
+        // dejaría de corresponder con la cantidad.
+        formula: null,
         cantidad: input.cantidad,
         desperdicio: desperdicio.valor,
         deduccion: input.deduccion ?? false,

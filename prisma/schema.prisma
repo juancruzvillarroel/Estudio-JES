@@ -1452,6 +1452,12 @@ model ComputoMedicion {
   cajonC10    Decimal?          @db.Decimal(12, 2)
   cajonC15    Decimal?          @db.Decimal(12, 2)
   cajonC18    Decimal?          @db.Decimal(12, 2)
+  // La cuenta con la que se cargó `cantidad`, si se tipeó como fórmula
+  // ("3,5*2,8", sin el "="). Va aparte de la descripción porque un renglón
+  // del detalle tiene las dos cosas: "Base B1" y la cuenta que da su número.
+  // `cantidad` sigue siendo lo único que entra en los totales; esto es sólo
+  // para poder volver a ver y corregir la cuenta (ver `evaluarFormula`).
+  formula     String?
   orden       Int               @default(0)
   createdAt   DateTime          @default(now())
 

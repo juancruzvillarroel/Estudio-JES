@@ -1326,6 +1326,8 @@ function lineasDeItem({
               </Tooltip>
             );
           }
+          // Las fórmulas van sólo en los metros, que es lo que se mide: barras
+          // y kilos son conversiones de ese número.
           return (
             <Celda
               proyectoId={proyectoId}
@@ -1333,6 +1335,11 @@ function lineasDeItem({
               fila={fila.clave}
               filaNombre={fila.nombre}
               valor={tiene ? medido : null}
+              formula={(() => {
+                const renglon = medicionesDeFila(item, fila.clave)[0];
+                return renglon ? formulaDeMedicion(renglon) : null;
+              })()}
+              conFormulas={conFormulas}
               onSaved={onItemSaved}
             />
           );
@@ -2483,6 +2490,7 @@ function FilaItem({
               item={item}
               fila={filaAbierta.clave}
               filaNombre={filaAbierta.nombre}
+              conFormulas={conFormulas}
               onSaved={onItemSaved}
               onCerrar={() => onAbrir(null)}
             />
@@ -2530,6 +2538,7 @@ function DetalleCelda({
   item,
   fila,
   filaNombre,
+  conFormulas,
   onSaved,
   onCerrar,
 }: {
@@ -2537,6 +2546,8 @@ function DetalleCelda({
   item: ItemOpcion;
   fila: ClaveFila;
   filaNombre: string;
+  /** Si los números de los renglones aceptan fórmulas (ver `aceptaFormulas`). */
+  conFormulas: boolean;
   onSaved: (item: ItemOpcion) => void;
   onCerrar: () => void;
 }) {
@@ -2571,6 +2582,7 @@ function DetalleCelda({
           proyectoId={proyectoId}
           item={item}
           medicion={medicion}
+          conFormulas={conFormulas}
           onSaved={onSaved}
         />
       ))}
@@ -2579,6 +2591,7 @@ function DetalleCelda({
         proyectoId={proyectoId}
         item={item}
         fila={fila}
+        conFormulas={conFormulas}
         // El primer renglón de una celda que ya tenía un número suelto se suma
         // al que había: el total no cambia de golpe, se desglosa.
         onSaved={onSaved}
@@ -2588,27 +2601,41 @@ function DetalleCelda({
   );
 }
 
-/** Un renglón del desglose: descripción, número y tacho. */
+/**
+ * Un renglón del desglose: descripción, número y tacho.
+ *
+ * Con fórmulas (ver `aceptaFormulas`) el número se comporta como una celda
+ * de la grilla: quieto muestra el resultado, al entrar muestra la cuenta
+ * ("=3,5*2,8") para corregirla, y un número suelto encima la borra.
+ */
 function RenglonDetalle({
   proyectoId,
   item,
   medicion,
+  conFormulas,
   onSaved,
 }: {
   proyectoId: string;
   item: ItemOpcion;
   medicion: MedicionOpcion;
+  conFormulas: boolean;
   onSaved: (item: ItemOpcion) => void;
 }) {
+  const conFormula = conFormulas && medicion.formula !== null;
+  const textoFormula = medicion.formula === null ? "" : formulaATexto(medicion.formula);
+  // Quieto se lee con 2 decimales como mucho, igual que las celdas de la
+  // grilla; al entrar a editarlo se ve el número tal como está guardado.
+  const visible = medidaATexto(Math.round(medicion.cantidad * 100) / 100);
+  const exacto = medidaATexto(medicion.cantidad);
   const [descripcion, setDescripcion] = useState(medicion.descripcion ?? "");
-  const [valor, setValor] = useState(medidaATexto(medicion.cantidad));
+  const [valor, setValor] = useState(visible);
   const [prev, setPrev] = useState(medicion);
   const [pending, startTransition] = useTransition();
 
   if (medicion !== prev) {
     setPrev(medicion);
     setDescripcion(medicion.descripcion ?? "");
-    setValor(medidaATexto(medicion.cantidad));
+    setValor(visible);
   }
 
   // Los renglones viejos, los que se cargaron con largo × ancho × alto desde el
@@ -2627,26 +2654,60 @@ function RenglonDetalle({
 
   const guardar = () => {
     const limpio = descripcion.trim();
-    const numero = parseMedida(valor.trim());
-    if (limpio === (medicion.descripcion ?? "") && numero === medicion.cantidad) return;
+    const texto = valor.trim();
+    const numeroGuardado = visible;
+    // El número sin tocar, sea el redondeado que se ve quieto o el exacto
+    // que se ve al entrar: no tiene que perder decimales ni borrar la fórmula.
+    const sinTocar = texto === visible || texto === exacto;
+
+    // Qué fórmula se manda: la tipeada; o la que ya tenía, si el número no se
+    // tocó (se está guardando sólo la descripción); o ninguna, si se tipeó un
+    // número suelto encima.
+    let formula: string | null = null;
+    let numero: number | null;
+    if (conFormulas && esFormula(texto)) {
+      numero = evaluarFormula(texto);
+      if (numero === null) {
+        toast.error("La fórmula no se entiende o no da un número mayor a 0.");
+        setValor(numeroGuardado);
+        return;
+      }
+      formula = texto;
+    } else {
+      numero = sinTocar ? medicion.cantidad : parseMedida(texto);
+      if (conFormula && sinTocar) formula = textoFormula;
+    }
+
+    const mismaFormula =
+      (formula === null ? null : normalizarFormula(formula)) === medicion.formula;
+    if (limpio === (medicion.descripcion ?? "") && numero === medicion.cantidad && mismaFormula) {
+      setValor(numeroGuardado);
+      return;
+    }
 
     if (!limpio) {
       toast.error("Poné un nombre para el renglón.");
       setDescripcion(medicion.descripcion ?? "");
+      setValor(numeroGuardado);
       return;
     }
     if (numero === null) {
-      toast.error("Escribí un número mayor a 0.");
-      setValor(medidaATexto(medicion.cantidad));
+      toast.error(
+        conFormulas
+          ? "Escribí un número mayor a 0, o una fórmula que empiece con =."
+          : "Escribí un número mayor a 0."
+      );
+      setValor(numeroGuardado);
       return;
     }
 
+    const cantidad = numero;
     startTransition(async () => {
-      const result = await guardarDetalle(proyectoId, medicion.id, limpio, numero);
+      const result = await guardarDetalle(proyectoId, medicion.id, limpio, cantidad, formula);
       if (!result.success) {
         toast.error(result.error);
         setDescripcion(medicion.descripcion ?? "");
-        setValor(medidaATexto(medicion.cantidad));
+        setValor(visible);
         return;
       }
       onSaved(result.item);
@@ -2687,6 +2748,7 @@ function RenglonDetalle({
         <input
           value={valor}
           onChange={(e) => setValor(e.target.value)}
+          onFocus={() => setValor(conFormula ? textoFormula : exacto)}
           onBlur={guardar}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
@@ -2694,10 +2756,15 @@ function RenglonDetalle({
               e.currentTarget.blur();
             }
           }}
-          inputMode="decimal"
+          inputMode={conFormulas ? "text" : "decimal"}
+          title={conFormula ? `Fórmula: ${textoFormula}` : undefined}
           aria-label="Cantidad del renglón"
           disabled={pending}
-          className="w-full rounded-sm border border-transparent bg-transparent px-2 py-1 text-center text-sm tabular-nums transition-colors duration-150 hover:border-input focus:border-ring focus:bg-background focus:outline-none"
+          className={cn(
+            "w-full rounded-sm border border-transparent bg-transparent px-2 py-1 text-center text-sm tabular-nums transition-colors duration-150 hover:border-input focus:border-ring focus:bg-background focus:outline-none",
+            conFormula &&
+              "underline decoration-muted-foreground/60 decoration-dotted underline-offset-4 focus:no-underline"
+          )}
         />
         {conMedidas && (
           <span className="block text-center text-[10px] text-muted-foreground tabular-nums">
@@ -2748,12 +2815,14 @@ function RenglonNuevo({
   proyectoId,
   item,
   fila,
+  conFormulas,
   onSaved,
   onCerrar,
 }: {
   proyectoId: string;
   item: ItemOpcion;
   fila: ClaveFila;
+  conFormulas: boolean;
   onSaved: (item: ItemOpcion) => void;
   onCerrar: () => void;
 }) {
@@ -2764,18 +2833,26 @@ function RenglonNuevo({
 
   const agregar = () => {
     const limpio = descripcion.trim();
-    const numero = parseMedida(valor.trim());
+    const texto = valor.trim();
+    const formula = conFormulas && esFormula(texto) ? texto : null;
+    const numero = formula !== null ? evaluarFormula(formula) : parseMedida(texto);
     if (!limpio) {
       toast.error("Poné un nombre para el renglón.");
       return;
     }
     if (numero === null) {
-      toast.error("Escribí un número mayor a 0.");
+      toast.error(
+        formula !== null
+          ? "La fórmula no se entiende o no da un número mayor a 0."
+          : conFormulas
+            ? "Escribí un número mayor a 0, o una fórmula que empiece con =."
+            : "Escribí un número mayor a 0."
+      );
       return;
     }
 
     startTransition(async () => {
-      const result = await agregarDetalle(proyectoId, item.id, fila, limpio, numero);
+      const result = await agregarDetalle(proyectoId, item.id, fila, limpio, numero, formula);
       if (!result.success) {
         toast.error(result.error);
         return;
@@ -2819,8 +2896,8 @@ function RenglonNuevo({
             }
             if (e.key === "Escape") onCerrar();
           }}
-          inputMode="decimal"
-          placeholder="0,58"
+          inputMode={conFormulas ? "text" : "decimal"}
+          placeholder={conFormulas ? "0,58 o =" : "0,58"}
           aria-label="Cantidad del renglón nuevo"
           className="rounded-sm border border-input bg-background px-2 py-1 text-center text-sm tabular-nums focus:border-ring focus:outline-none"
         />

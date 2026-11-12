@@ -37,7 +37,6 @@ import {
   etiquetaBultos,
   mayuscula,
   formatCantidad,
-  formulaDeMedicion,
   kgDeMetros,
   materialDe,
   medicionesDeFila,
@@ -382,13 +381,10 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
         const renglones = medicionesDeFila(item, fila.clave).filter(
           (m) => m.origenId === null
         );
-        // Una fórmula tipeada en la grilla ("=3,5*2,8") se guarda en la
-        // descripción, pero no es un nombre: no se imprime ni justifica una
-        // fila de detalle.
+        // La fórmula de una celda no se imprime (vive aparte, en `formula`):
+        // sólo una descripción propia justifica una fila de detalle.
         const tieneDescripcionPropia =
-          renglones.length === 1 &&
-          !formulaDeMedicion(renglones[0]) &&
-          !!renglones[0].descripcion?.trim();
+          renglones.length === 1 && !!renglones[0].descripcion?.trim();
         if (renglones.length < 2 && !tieneDescripcionPropia) return [];
         return renglones.map((medicion) => {
           const parcial = parcialMedicion(medicion, item.unidad);
@@ -403,7 +399,7 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
           return `
         <tr class="renglon">
           <th class="item-col renglon-nombre" scope="row">${esc(
-            (formulaDeMedicion(medicion) ? null : medicion.descripcion) ?? "—"
+            medicion.descripcion ?? "—"
           )}</th>
           <td class="unidad-col"></td>
           ${celdas}

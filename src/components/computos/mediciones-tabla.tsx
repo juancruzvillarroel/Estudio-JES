@@ -101,6 +101,7 @@ function parcialDeBorrador(
       id: "",
       itemId: item.id,
       filaExtraId: null,
+      formula: null,
       origenId,
       desperdicio,
       orden: 0,

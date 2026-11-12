@@ -643,6 +643,8 @@ export type MedicionOpcion = {
   cajonC15: number | null;
   /** Cajones de puertas (marco de 18). Sólo se usa en la sección PUERTAS. */
   cajonC18: number | null;
+  /** La fórmula con la que se cargó `cantidad` (sin el "="), o null. */
+  formula: string | null;
 };
 
 export type ItemOpcion = {
@@ -705,6 +707,7 @@ export function mapMedicion(m: {
   cajonC10?: unknown;
   cajonC15?: unknown;
   cajonC18?: unknown;
+  formula?: string | null;
   nivel?: { repeticiones: number } | null;
 }): MedicionOpcion {
   return {
@@ -725,6 +728,7 @@ export function mapMedicion(m: {
     cajonC10: aNumero(m.cajonC10),
     cajonC15: aNumero(m.cajonC15),
     cajonC18: aNumero(m.cajonC18),
+    formula: m.formula ?? null,
   };
 }
 
@@ -1014,15 +1018,16 @@ export function parseMedida(texto: string): number | null {
 }
 
 // ---------------------------------------------------------------------------
-// Fórmulas en las celdas (Albañilería de Cómputos 2)
+// Fórmulas en las celdas (Albañilería y Estructura de Cómputos 2)
 // ---------------------------------------------------------------------------
 //
-// Una celda que se completa a mano puede escribirse como una cuenta, igual
-// que en una planilla: "=3,5*2,8+4*2,8". Se guarda el resultado en
-// `cantidad` (que es lo único que entra en los totales) y la cuenta en la
-// descripción de la misma medición, con su "=" adelante, para poder volver
-// a verla y corregirla. Así no hace falta ningún campo nuevo en la base: la
-// descripción ya es "de dónde sale el número" (ver ComputoMedicion).
+// Una celda que se completa a mano, o un renglón de su detalle, puede
+// escribirse como una cuenta, igual que en una planilla: "=3,5*2,8+4*2,8".
+// Se guarda el resultado en `cantidad` (que es lo único que entra en los
+// totales) y la cuenta en `ComputoMedicion.formula`, sin el "=", para poder
+// volver a verla y corregirla. Va en su propia columna y no en la
+// descripción porque un renglón del detalle tiene las dos cosas: "Base B1"
+// y la cuenta que da su número.
 //
 // Los sub ítems no tienen descripción, así que ahí la fórmula se resuelve
 // pero no se guarda: queda sólo el resultado.
@@ -1111,12 +1116,9 @@ export function evaluarFormula(texto: string): number | null {
   }
 }
 
-/**
- * La fórmula guardada en una medición (sin el "="), o null si se cargó
- * como un número suelto o tiene una descripción común ("Living").
- */
-export function formulaDeMedicion(m: { descripcion: string | null }) {
-  return m.descripcion?.startsWith("=") ? m.descripcion.slice(1) : null;
+/** La fórmula guardada en una medición (sin el "="), o null si se cargó como un número suelto. */
+export function formulaDeMedicion(m: { formula: string | null }) {
+  return m.formula;
 }
 
 /** La fórmula de una fórmula guardada, como se muestra al editarla ("=3,5*2,8"). */
@@ -1133,17 +1135,17 @@ export function normalizarFormula(texto: string) {
 }
 
 /**
- * ¿Las celdas de este rubro aceptan fórmulas? Sólo Albañilería, y sólo en
- * Cómputos 2. Se compara sin tildes ni mayúsculas porque el nombre del rubro
- * se carga a mano.
+ * ¿Las celdas de este rubro aceptan fórmulas? Sólo Albañilería y
+ * Estructura, y sólo en Cómputos 2. Se compara sin tildes ni mayúsculas
+ * porque el nombre del rubro se carga a mano.
  */
 export function aceptaFormulas(rubroNombre: string, esComputos2: boolean) {
   if (!esComputos2) return false;
-  return rubroNombre
+  const nombre = rubroNombre
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .toUpperCase()
-    .includes("ALBANILERIA");
+    .toUpperCase();
+  return nombre.includes("ALBANILERIA") || nombre.includes("ESTRUCTURA");
 }
 
 /** El texto con el que arranca una celda de medida. Vacío si no hay valor. */
