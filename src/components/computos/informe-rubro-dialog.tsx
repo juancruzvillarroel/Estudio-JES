@@ -518,6 +518,33 @@ export function InformeRubroDialog({
 
   const marcada = (clave: ClaveFila) => filasElegidas.has(claveFilaKey(clave));
 
+  /** La clave de la fila en la que cae una celda (ver `esDeLaFila`). */
+  const filaDeCelda = (m: { nivelId: string | null; filaExtraId: string | null }) =>
+    m.nivelId !== null
+      ? `nivel:${m.nivelId}`
+      : m.filaExtraId !== null
+        ? `extra:${m.filaExtraId}`
+        : "general";
+
+  /**
+   * Un ítem, pero con sólo lo cargado en los niveles tildados.
+   *
+   * Es lo que hace que el TOTAL del papel sea el de las columnas que se ven:
+   * si se baja sólo la planta baja, el total de columnas tiene que ser el de
+   * la planta baja, no el de la obra entera con las otras plantas escondidas.
+   * Va aparte de `conSubItemsElegidos` porque la lista de niveles del diálogo
+   * necesita seguir viendo lo cargado en un nivel destildado: si no, al
+   * destildarlo pasaría a decir "sin cargar".
+   */
+  const soloFilasElegidas = (item: ItemOpcion): ItemOpcion => ({
+    ...item,
+    mediciones: item.mediciones.filter((m) => filasElegidas.has(filaDeCelda(m))),
+    subItems: item.subItems.map((si) => ({
+      ...si,
+      mediciones: si.mediciones.filter((m) => filasElegidas.has(filaDeCelda(m))),
+    })),
+  });
+
   const armarSecciones = (): SeccionInforme[] =>
     activas.map((seccion) => {
       const propias = filasExtra
@@ -525,7 +552,7 @@ export function InformeRubroDialog({
         .sort((a, b) => a.orden - b.orden);
       const itemsSeccion = itemsDe(seccion.id)
         .filter((i) => itemsElegidos.has(i.id))
-        .map(conSubItemsElegidos);
+        .map((i) => soloFilasElegidas(conSubItemsElegidos(i)));
       const hayGeneralAca = itemsSeccion.some((i) =>
         i.mediciones.some((m) => m.nivelId === null && m.filaExtraId === null)
       );
@@ -563,9 +590,10 @@ export function InformeRubroDialog({
 
   /**
    * Los totales del papel: sólo sobre lo que se eligió, no sobre toda la
-   * obra. Un ítem destildado, o un sub ítem destildado dentro de uno que
-   * sigue marcado, no tienen que sumar nada —ni en su propia fila de Total
-   * ni en ninguna fila derivada que dependa de ellos—, así que se recalcula
+   * obra. Un ítem destildado, un sub ítem destildado dentro de uno que sigue
+   * marcado, o lo cargado en un nivel destildado, no tienen que sumar nada
+   * —ni en su propia fila de Total ni en ninguna fila derivada que dependa
+   * de ellos—, así que se recalcula
    * sobre una "vista" de la obra entera donde eso queda en cero, en vez de
    * usar el total ya calculado de toda la obra (que sí los suma).
    *
@@ -579,7 +607,7 @@ export function InformeRubroDialog({
     const vista = todosLosItems.map((item) => {
       if (!disponibles.has(item.id)) return item;
       if (!itemsElegidos.has(item.id)) return { ...item, mediciones: [], subItems: [] };
-      return conSubItemsElegidos(item);
+      return soloFilasElegidas(conSubItemsElegidos(item));
     });
     return calcularTotales(vista);
   };
