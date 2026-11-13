@@ -187,19 +187,6 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
     return { ml: medido, barras: bultos?.enteros ?? 0, kg };
   };
 
-  /** Los ítems de hierro de esta sección: son los que alimentan la fila del total en kg. */
-  const hierroItems = items.filter((i) => esHierro(i));
-  const conTotalKg = hierroItems.length > 0;
-
-  /** Cuántos kg suman, entre todos los diámetros, lo cargado en esta columna (un piso). */
-  const totalKgFila = (fila: ClaveFila): number | null => {
-    const algo = hierroItems.some((i) => tieneMedidoEnFila(i, fila));
-    if (!algo) return null;
-    return hierroItems.reduce((acc, i) => {
-      if (!tieneMedidoEnFila(i, fila)) return acc;
-      return acc + kgDeMetros(i, medidoEnFila(i, fila, datos.totales));
-    }, 0);
-  };
 
   /**
    * Una línea de valor cualquiera, en su propia celda: ya no apila nada, es
@@ -484,41 +471,69 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
 
   const cuerpo = items.map((item) => filaDeItem(item)).join("");
 
-  /** Cuántos kg suman, entre todos los diámetros, los totales de toda la sección. */
-  const algunHierroCargado = hierroItems.some((i) => i.mediciones.length > 0);
-  const totalKgGeneral = !algunHierroCargado
-    ? null
-    : hierroItems.reduce((acc, item) => {
-        if (item.mediciones.length === 0) return acc;
-        return acc + kgDeMetros(item, datos.totales.get(item.id) ?? 0);
-      }, 0);
-
   /**
-   * El total en kg de todos los diámetros juntos, por nivel: es una suma
-   * cruzada entre los ítems de hierro de cada columna, así que no tiene
-   * lugar en la celda de Total de ningún ítem en particular. Por eso es la
-   * única fila del pie.
+   * El pie de la tabla: cuánto suman todos los ítems de la sección en cada
+   * nivel y en todo lo exportado. Por ejemplo, los m³ de hormigón de toda la
+   * planta baja (columnas, vigas, losas, tabiques...). Es el mismo pie que
+   * tiene la grilla en pantalla (ver `TotalesPorFila` en seccion-grilla.tsx).
+   *
+   * Suma lo medido, lo de la primera línea de cada ítem (con las plantas de
+   * la planta tipo ya multiplicadas), sin desperdicio. Sumar m² con ml no da
+   * nada que signifique algo, así que va una fila por cada unidad que haya en
+   * la sección. En el hierro se suman también los kg: los metros de un Ø6 y de
+   * un Ø25 pesan muy distinto, y el peso es lo que se pide.
+   *
+   * El total de cada renglón es la suma de sus niveles: los totales ya llegan
+   * recortados a lo exportado, así que da lo mismo que sumar la columna TOTAL.
+   * Con un solo nivel (ver `unNivel`) va sólo esa celda.
    */
-  const pie = !conTotalKg
-    ? ""
-    : `
-    <tr class="total-kg-fila">
-      <th class="item-col" scope="row">Total kg</th>
-      <td class="unidad-col"></td>
-      ${
-        unNivel
-          ? ""
-          : filas
-              .map((fila) => {
-                const valor = totalKgFila(fila.clave);
-                return `<td class="num">${esc(valor === null ? "—" : formatCantidad(valor))}</td>`;
-              })
-              .join("")
-      }
-      <td class="total-col">${esc(
-        totalKgGeneral === null ? "—" : formatCantidad(totalKgGeneral)
-      )}</td>
+  const enFila = (item: ItemOpcion, fila: ClaveFila) =>
+    medidoEnFila(item, fila, datos.totales) +
+    item.subItems.reduce((acc, si) => acc + subItemEnFila(si, fila), 0);
+  const cargadoEnFila = (item: ItemOpcion, fila: ClaveFila) =>
+    tieneMedidoEnFila(item, fila) ||
+    item.subItems.some((si) => subItemMedicionesDeFila(si, fila).length > 0);
+
+  type RenglonPie = { clave: string; unidad: string; porFila: (number | null)[] };
+  const renglonesPie: RenglonPie[] = [];
+  /** Suma de a un ítem, dejando null ("—") la columna donde ninguno cargó nada. */
+  const sumarEn = (renglon: RenglonPie, item: ItemOpcion, valor: (fila: ClaveFila) => number) =>
+    filas.forEach((fila, i) => {
+      if (!cargadoEnFila(item, fila.clave)) return;
+      renglon.porFila[i] = (renglon.porFila[i] ?? 0) + valor(fila.clave);
+    });
+
+  for (const item of items) {
+    let renglon = renglonesPie.find((r) => r.clave === item.unidad);
+    if (!renglon) {
+      renglon = { clave: item.unidad, unidad: simboloUnidad(item.unidad), porFila: filas.map(() => null) };
+      renglonesPie.push(renglon);
+    }
+    sumarEn(renglon, item, (fila) => enFila(item, fila));
+  }
+
+  const hierroItems = items.filter((i) => esHierro(i));
+  if (hierroItems.length > 0) {
+    const kg: RenglonPie = { clave: "kg", unidad: "kg", porFila: filas.map(() => null) };
+    for (const item of hierroItems) sumarEn(kg, item, (fila) => kgDeMetros(item, enFila(item, fila)));
+    renglonesPie.push(kg);
+  }
+
+  const cantidadPie = (valor: number | null) => esc(valor === null ? "—" : formatCantidad(valor));
+
+  const pie = renglonesPie
+    .map((renglon, indice) => {
+      const conAlgo = renglon.porFila.filter((v): v is number => v !== null);
+      const total = conAlgo.length === 0 ? null : conAlgo.reduce((a, b) => a + b, 0);
+      return `
+    <tr class="total-fila${indice === 0 ? " primera" : ""}">
+      <th class="item-col" scope="row">${indice === 0 ? "Total" : ""}</th>
+      <td class="unidad-col">${esc(renglon.unidad)}</td>
+      ${unNivel ? "" : renglon.porFila.map((v) => `<td class="num">${cantidadPie(v)}</td>`).join("")}
+      <td class="total-col">${cantidadPie(total)}</td>
     </tr>`;
+    })
+    .join("");
 
   return `
     <section class="bloque">
@@ -633,7 +648,7 @@ function resumenExportado(conItems: SeccionInforme[], datos: DatosInformeRubro) 
           .join("")}
       </tbody>
       <tfoot>
-        <tr class="total-kg-fila">
+        <tr class="total-fila primera">
           <th class="item-col" scope="row">Total</th>
           ${general.conHormigon ? num(general.m3, true) : ""}
           ${general.conHierro ? `${num(general.barras, true)}${num(general.kg, true)}` : ""}
@@ -661,7 +676,7 @@ function resumenExportado(conItems: SeccionInforme[], datos: DatosInformeRubro) 
           .join("")}
       </tbody>
       <tfoot>
-        <tr class="total-kg-fila">
+        <tr class="total-fila primera">
           <th class="item-col" scope="row">Total</th>
           ${num(general.barras, true)}${num(general.kg, true)}
         </tr>
@@ -915,13 +930,15 @@ function construirHtml(datos: DatosInformeRubro) {
       padding-left: 12px;
     }
 
-    /* La fila del total en kg de todos los diámetros juntos: la única fila
-       del pie, porque es una suma cruzada entre los ítems de hierro de cada
-       columna y no tiene lugar en la celda de Total de ningún ítem en
-       particular. */
-    tfoot tr.total-kg-fila th, tfoot tr.total-kg-fila td {
+    /* El pie de cada tabla: lo que suman todos los ítems en cada nivel, una
+       fila por unidad. Es una suma cruzada entre ítems, así que no tiene
+       lugar en la celda de Total de ninguno en particular. La raya gruesa va
+       sólo arriba de la primera: las demás son parte del mismo pie. */
+    tfoot tr.total-fila th, tfoot tr.total-fila td {
       background: #e2e2e2;
       font-weight: 700;
+    }
+    tfoot tr.total-fila.primera th, tfoot tr.total-fila.primera td {
       border-top: 2px solid var(--oscuro);
     }
 
