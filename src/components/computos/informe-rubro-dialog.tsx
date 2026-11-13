@@ -399,7 +399,8 @@ export function InformeRubroDialog({
    */
   const nombreEnInforme = (n: NivelOpcion) => {
     if (n.repeticiones <= 1) return n.nombre;
-    if (unaPlanta.has(n.id)) return `${n.nombre} (1 planta)`;
+    // "x planta" se lee "por planta", como se dice en obra.
+    if (unaPlanta.has(n.id)) return `${n.nombre} (x planta)`;
     return /[x×]\s*\d/i.test(n.nombre) ? n.nombre : `${n.nombre} ×${n.repeticiones}`;
   };
 
@@ -990,7 +991,7 @@ export function InformeRubroDialog({
                     >
                       {[
                         { una: false, texto: `Total ×${nivel.repeticiones}` },
-                        { una: true, texto: "1 planta" },
+                        { una: true, texto: "x planta" },
                       ].map((op) => (
                         <button
                           key={op.texto}
