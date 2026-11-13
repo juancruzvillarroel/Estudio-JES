@@ -8,11 +8,12 @@
  * sale cada número—, y éste es el que se lleva a la obra o a una reunión, donde
  * lo que se busca es leer de un vistazo cuánto va en cada planta.
  *
- * Va apaisado. Un cómputo es ancho por naturaleza cuando los niveles son
- * columnas: seis niveles con sus subtotales son columnas de sobra para A4
- * vertical. Apaisado entran cómodos hasta ocho o nueve niveles por sección;
- * pasando eso, la fila de cada ítem crece hacia abajo con sub-líneas en vez de
- * la tabla crecer para el costado, que es justo lo que esta forma evita.
+ * Va en A4 vertical, como el resto de los papeles del estudio: se pidió así
+ * para que se archive y se imprima junto con ellos. La grilla es ancha por
+ * naturaleza cuando los niveles son columnas, así que con muchos niveles las
+ * columnas quedan angostas y un nombre largo se corta con "…"; para eso está
+ * elegir en el diálogo sólo los niveles que hacen falta. La fila de cada ítem
+ * crece hacia abajo con sub-líneas en vez de la tabla crecer para el costado.
  *
  * Cada ítem con más de un valor —el hierro mide en metros, barras y kilos a
  * la vez; cualquier ítem puede tener además uno por cada sub ítem que
@@ -719,11 +720,11 @@ function construirHtml(datos: DatosInformeRubro) {
       print-color-adjust: exact;
     }
 
-    /* Apaisado: la grilla es ancha por definición. El margen lo pone @page para
-       que lo respeten todas las hojas y no sólo la primera. */
-    @page { size: A4 landscape; margin: 12mm; }
+    /* A4 vertical (ver el comentario del principio). El margen lo pone @page
+       para que lo respeten todas las hojas y no sólo la primera. */
+    @page { size: A4 portrait; margin: 12mm; }
     @media screen {
-      body { padding: 12mm; max-width: 297mm; margin: 0 auto; }
+      body { padding: 12mm; max-width: 210mm; margin: 0 auto; }
     }
 
     header.doc {
