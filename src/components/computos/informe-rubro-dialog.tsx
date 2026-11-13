@@ -371,6 +371,39 @@ export function InformeRubroDialog({
     });
 
   /**
+   * Los niveles que se repiten (planta tipo ×4) que van a salir como UNA
+   * planta en vez del total. Por nivel y no para todo el informe: una obra
+   * puede tener dos plantas tipo distintas y querer una de cada forma.
+   */
+  const [unaPlanta, setUnaPlanta] = useState<Set<string>>(new Set());
+
+  /**
+   * Una medición leída como de una sola planta, si su nivel está en
+   * `unaPlanta`.
+   *
+   * Alcanza con bajar `repeticiones` a 1: es lo único que multiplica (ver
+   * `parcialMedicion`), así que la celda, el total del ítem, los kg, las
+   * barras y la fila de totales salen solos de una planta y el papel cierra.
+   * Las derivadas no tienen nivel y no se tocan: su total de origen ya viene
+   * recalculado desde la vista.
+   */
+  const aUnaPlanta = <M extends { nivelId: string | null; repeticiones: number }>(m: M): M =>
+    m.nivelId !== null && m.repeticiones > 1 && unaPlanta.has(m.nivelId)
+      ? { ...m, repeticiones: 1 }
+      : m;
+
+  /**
+   * Cómo se titula un nivel en el papel: con las repeticiones a la vista,
+   * para que nadie lea "PLANTA TIPO" sin saber si es una o son cuatro.
+   * Si el nombre ya trae el "×4" escrito a mano, no se repite.
+   */
+  const nombreEnInforme = (n: NivelOpcion) => {
+    if (n.repeticiones <= 1) return n.nombre;
+    if (unaPlanta.has(n.id)) return `${n.nombre} (1 planta)`;
+    return /[x×]\s*\d/i.test(n.nombre) ? n.nombre : `${n.nombre} ×${n.repeticiones}`;
+  };
+
+  /**
    * Un ítem, pero con sólo los sub ítems y los renglones que quedaron marcados.
    *
    * Sacar un renglón es sacar su medición entera, no esconder su línea: así la
@@ -380,10 +413,15 @@ export function InformeRubroDialog({
    */
   const conSubItemsElegidos = (item: ItemOpcion): ItemOpcion => {
     const fuera = renglonesFuera.size === 0 ? null : medicionesFuera(item);
+    const mediciones = fuera
+      ? item.mediciones.filter((m) => !fuera.has(m.id))
+      : item.mediciones;
     return {
       ...item,
-      mediciones: fuera ? item.mediciones.filter((m) => !fuera.has(m.id)) : item.mediciones,
-      subItems: item.subItems.filter((si) => subItemsElegidos.has(si.id)),
+      mediciones: mediciones.map(aUnaPlanta),
+      subItems: item.subItems
+        .filter((si) => subItemsElegidos.has(si.id))
+        .map((si) => ({ ...si, mediciones: si.mediciones.map(aUnaPlanta) })),
     };
   };
 
@@ -473,6 +511,7 @@ export function InformeRubroDialog({
     setPrevHuella("");
     setItemsExpandidos(new Set());
     setRenglonesFuera(new Set());
+    setUnaPlanta(new Set());
     setNivelesExpandidos(new Set());
   };
 
@@ -493,7 +532,7 @@ export function InformeRubroDialog({
       const todas: FilaInforme[] = [
         ...niveles.map((n) => ({
           clave: { tipo: "nivel" as const, id: n.id },
-          nombre: n.nombre,
+          nombre: nombreEnInforme(n),
         })),
         ...propias.map((f) => ({
           clave: { tipo: "extra" as const, id: f.id },
@@ -910,7 +949,11 @@ export function InformeRubroDialog({
               {opcionesFila.map((opcion) => {
                 const clave = claveFilaKey(opcion.clave);
                 const vacia = !filaTieneAlgo(opcion.clave);
-                return (
+                const nivel =
+                  opcion.clave.tipo === "nivel"
+                    ? niveles.find((n) => n.id === (opcion.clave as { id: string }).id)
+                    : undefined;
+                const opcionFila = (
                   <Opcion
                     key={clave}
                     marcado={marcada(opcion.clave)}
@@ -923,6 +966,50 @@ export function InformeRubroDialog({
                       {opcion.nombre}
                     </span>
                   </Opcion>
+                );
+                // Sólo los niveles que se repiten ofrecen elegir: en uno común
+                // "total" y "una planta" son el mismo número.
+                if (!nivel || nivel.repeticiones <= 1) return opcionFila;
+                const soloUna = unaPlanta.has(nivel.id);
+                const elegir = (una: boolean) =>
+                  setUnaPlanta((prev) => {
+                    const next = new Set(prev);
+                    if (una) next.add(nivel.id);
+                    else next.delete(nivel.id);
+                    return next;
+                  });
+                return (
+                  <div key={clave} className="flex items-center gap-2">
+                    <span className="min-w-0 flex-1">{opcionFila}</span>
+                    {/* Fuera del renglón clickeable: tocar el selector no
+                        tiene que tildar ni destildar el nivel. */}
+                    <div
+                      role="radiogroup"
+                      aria-label={`Cómo sale ${nivel.nombre}`}
+                      className="mr-1 flex shrink-0 rounded-md border p-0.5 text-xs"
+                    >
+                      {[
+                        { una: false, texto: `Total ×${nivel.repeticiones}` },
+                        { una: true, texto: "1 planta" },
+                      ].map((op) => (
+                        <button
+                          key={op.texto}
+                          type="button"
+                          role="radio"
+                          aria-checked={soloUna === op.una}
+                          onClick={() => elegir(op.una)}
+                          className={cn(
+                            "rounded-sm px-2 py-0.5 transition-colors",
+                            soloUna === op.una
+                              ? "bg-primary text-primary-foreground"
+                              : "text-muted-foreground hover:text-foreground"
+                          )}
+                        >
+                          {op.texto}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 );
               })}
             </Grupo>
