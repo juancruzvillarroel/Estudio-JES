@@ -80,11 +80,22 @@ function claveRenglon(descripcion: string) {
  * desde el 1°: lo que importa para la cuenta es cuántas van, no cuáles.
  */
 function pisosDeNivel(nivel: { nombre: string; repeticiones: number }): string[] {
-  const rango = nivel.nombre.match(/(\d+)\s*°?\s*(?:-|–|al?\b)\s*(\d+)/i);
-  const desde = rango ? Number(rango[1]) : NaN;
-  const hasta = rango ? Number(rango[2]) : NaN;
-  const primero = hasta - desde + 1 === nivel.repeticiones ? desde : 1;
+  const desde = primerPisoDelNombre(nivel);
+  const primero = desde ?? 1;
   return Array.from({ length: nivel.repeticiones }, (_, i) => `${primero + i}°`);
+}
+
+/**
+ * El primer piso del rango que dice el nombre del nivel ("PLANTA TIPO 1° - 2°"
+ * → 1), sólo si ese rango tiene tantos pisos como repeticiones tiene el nivel.
+ * Null si el nombre no trae rango o si no cuadra con las repeticiones.
+ */
+function primerPisoDelNombre(nivel: { nombre: string; repeticiones: number }): number | null {
+  const rango = nivel.nombre.match(/(\d+)\s*°?\s*(?:-|–|al?\b)\s*(\d+)/i);
+  if (!rango) return null;
+  const desde = Number(rango[1]);
+  const hasta = Number(rango[2]);
+  return hasta - desde + 1 === nivel.repeticiones ? desde : null;
 }
 
 /** Un renglón de una celda, tal como se ofrece en el diálogo. */
@@ -527,7 +538,10 @@ export function InformeRubroDialog({
   /**
    * Cómo se titula un nivel en el papel: con las repeticiones a la vista,
    * para que nadie lea "PLANTA TIPO" sin saber si es una o son cuatro.
-   * Si el nombre ya trae el "×4" escrito a mano, no se repite.
+   * Si el nombre ya lo dice, no se agrega nada: sea porque trae el "×4"
+   * escrito a mano o porque trae el rango de pisos ("PLANTA TIPO 1° - 2°") y
+   * ese rango cuadra con las repeticiones. Se pidió así: "1° - 2° ×2" se leía
+   * como si fueran cuatro plantas.
    */
   const nombreEnInforme = (n: NivelOpcion) => {
     if (n.repeticiones <= 1) return n.nombre;
@@ -544,7 +558,8 @@ export function InformeRubroDialog({
       const nombres = [...elegidas].sort((a, b) => a - b).map((i) => pisos[i]);
       return `${n.nombre} — pisos ${nombres.slice(0, -1).join(", ")} y ${nombres[nombres.length - 1]}`;
     }
-    return /[x×]\s*\d/i.test(n.nombre) ? n.nombre : `${n.nombre} ×${n.repeticiones}`;
+    if (/[x×]\s*\d/i.test(n.nombre) || primerPisoDelNombre(n) !== null) return n.nombre;
+    return `${n.nombre} ×${n.repeticiones}`;
   };
 
   /**
