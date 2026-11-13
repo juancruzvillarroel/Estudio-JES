@@ -70,13 +70,20 @@ function claveRenglon(descripcion: string) {
   return descripcion.trim().replace(/\s+/g, " ").toUpperCase();
 }
 
-/** Un renglón con nombre de una celda, tal como se ofrece en el diálogo. */
+/** Un renglón de una celda, tal como se ofrece en el diálogo. */
 type RenglonOpcion = {
   /** `itemId|fila|CLAVE`: lo que se guarda en `renglonesFuera`. */
   llave: string;
   nombre: string;
   /** Las mediciones que caen bajo este tilde (casi siempre una). */
   medicionIds: string[];
+  /**
+   * Lo cargado sin nombre en esa celda (un número suelto, como casi todo el
+   * hierro). No se lista para elegirlo de a uno —no hay cómo llamarlo—, pero
+   * entra y sale con el tilde de su nivel: sin esto, un ítem sin renglones
+   * con nombre no tendría forma de sacar un piso.
+   */
+  sinNombre: boolean;
 };
 
 /** Los renglones de un nivel, bajo su subtítulo. */
@@ -283,6 +290,9 @@ export function InformeRubroDialog({
    */
   const [renglonesFuera, setRenglonesFuera] = useState<Set<string>>(new Set());
 
+  /** Qué niveles (`itemId|fila`) tienen sus renglones desplegados. */
+  const [nivelesExpandidos, setNivelesExpandidos] = useState<Set<string>>(new Set());
+
   /** Las filas de la grilla de una sección, en el orden en que se ven. */
   const filasDeSeccion = (seccionId: string): FilaInforme[] => {
     const seccion = secciones.find((s) => s.id === seccionId);
@@ -304,9 +314,10 @@ export function InformeRubroDialog({
   };
 
   /**
-   * Los renglones con nombre de un ítem, agrupados por nivel en el orden de la
-   * grilla y, dentro de cada nivel, en orden natural (C2 antes que C10). Los
-   * niveles sin renglones con nombre no aparecen.
+   * Lo cargado en un ítem, agrupado por nivel en el orden de la grilla: los
+   * renglones con nombre en orden natural (C2 antes que C10) y, al final, lo
+   * que no tiene nombre (ver `RenglonOpcion.sinNombre`). Los niveles sin nada
+   * cargado no aparecen.
    */
   const renglonesPorNivel = (item: ItemOpcion): NivelRenglones[] =>
     // Un ítem sin sección no está en ninguna grilla: no tiene niveles que mostrar.
@@ -314,10 +325,11 @@ export function InformeRubroDialog({
       const filaKey = claveFilaKey(fila.clave);
       const grupos = new Map<string, RenglonOpcion>();
       for (const m of medicionesDeFila(item, fila.clave)) {
-        // Las derivadas no tienen renglones propios: salen de otro ítem.
-        const nombre = m.descripcion?.trim();
-        if (m.origenId !== null || !nombre) continue;
-        const clave = claveRenglon(nombre);
+        // Las derivadas no se eligen acá: salen de otro ítem, y sacarlas
+        // escondería un número que depende de lo que se haga allá.
+        if (m.origenId !== null) continue;
+        const nombre = m.descripcion?.trim() ?? "";
+        const clave = nombre ? claveRenglon(nombre) : "";
         const grupo = grupos.get(clave);
         if (grupo) grupo.medicionIds.push(m.id);
         else
@@ -325,11 +337,14 @@ export function InformeRubroDialog({
             llave: `${item.id}|${filaKey}|${clave}`,
             nombre,
             medicionIds: [m.id],
+            sinNombre: !nombre,
           });
       }
       if (grupos.size === 0) return [];
-      const renglones = [...grupos.values()].sort((a, b) =>
-        a.nombre.localeCompare(b.nombre, "es", { numeric: true, sensitivity: "base" })
+      const renglones = [...grupos.values()].sort(
+        (a, b) =>
+          Number(a.sinNombre) - Number(b.sinNombre) ||
+          a.nombre.localeCompare(b.nombre, "es", { numeric: true, sensitivity: "base" })
       );
       return [{ clave: filaKey, nombre: fila.nombre, renglones }];
     });
@@ -458,6 +473,7 @@ export function InformeRubroDialog({
     setPrevHuella("");
     setItemsExpandidos(new Set());
     setRenglonesFuera(new Set());
+    setNivelesExpandidos(new Set());
   };
 
   const marcada = (clave: ClaveFila) => filasElegidas.has(claveFilaKey(clave));
@@ -666,13 +682,17 @@ export function InformeRubroDialog({
                 const renglones = porNivel.flatMap((n) => n.renglones);
                 const tieneRenglones = renglones.length > 0;
                 const desplegable = tieneSubItems || tieneRenglones;
-                const queSeDespliega = tieneSubItems ? "sub ítems" : "renglones";
+                const queSeDespliega = tieneSubItems ? "sub ítems" : "niveles";
                 const expandido = itemsExpandidos.has(item.id);
                 const elegidosDeEste = item.subItems.filter((si) =>
                   subItemsElegidos.has(si.id)
                 ).length;
                 const renglonesElegidos = renglones.filter(
                   (r) => !renglonesFuera.has(r.llave)
+                ).length;
+                // Un nivel cuenta como "va" mientras le quede algo marcado.
+                const nivelesQueVan = porNivel.filter((n) =>
+                  n.renglones.some((r) => !renglonesFuera.has(r.llave))
                 ).length;
                 return (
                   <div key={item.id} className="flex flex-col">
@@ -718,7 +738,7 @@ export function InformeRubroDialog({
                             tieneSubItems
                               ? `${elegidosDeEste}/${item.subItems.length} sub ítems`
                               : tieneRenglones && renglonesElegidos < renglones.length
-                                ? `${renglonesElegidos}/${renglones.length} renglones`
+                                ? `${nivelesQueVan}/${porNivel.length} niveles`
                                 : activas.length > 1
                                 ? activas.find((s) => s.id === item.seccionId)?.nombre
                                 : simboloUnidad(item.unidad)
@@ -761,34 +781,86 @@ export function InformeRubroDialog({
                           const todosDelNivel = nivel.renglones.every(
                             (r) => !renglonesFuera.has(r.llave)
                           );
+                          // Sólo los renglones con nombre se eligen de a uno;
+                          // lo suelto va y viene con el tilde del nivel.
+                          const conNombre = nivel.renglones.filter((r) => !r.sinNombre);
+                          const elegidosDelNivel = conNombre.filter(
+                            (r) => !renglonesFuera.has(r.llave)
+                          ).length;
+                          const llaveNivel = `${item.id}|${nivel.clave}`;
+                          const nivelAbierto =
+                            conNombre.length > 0 && nivelesExpandidos.has(llaveNivel);
                           return (
                             <div key={nivel.clave} className="flex flex-col">
-                              {/* El subtítulo de cada nivel, con su propio
-                                  "todos / ninguno": sacar una planta entera
-                                  es tan común como sacar una columna. */}
-                              <div className="flex items-baseline justify-between gap-2 px-1.5 pt-1.5">
-                                <p className="truncate text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
-                                  {nivel.nombre}
-                                </p>
-                                <button
-                                  type="button"
-                                  onClick={() => marcarRenglones(nivel.renglones, !todosDelNivel)}
-                                  className="shrink-0 text-xs text-muted-foreground underline-offset-2 transition-colors hover:text-foreground hover:underline"
-                                >
-                                  {todosDelNivel ? "Ninguno" : "Todos"}
-                                </button>
-                              </div>
-                              {nivel.renglones.map((renglon) => (
-                                <Opcion
-                                  key={renglon.llave}
-                                  marcado={!renglonesFuera.has(renglon.llave)}
-                                  onCambio={() =>
-                                    setRenglonesFuera((prev) => alternar(prev, renglon.llave))
-                                  }
-                                >
-                                  {renglon.nombre}
-                                </Opcion>
-                              ))}
+                              {/* Cada nivel es un renglón con su tilde, que saca
+                                  o deja la planta entera de una vez, y su flecha,
+                                  que muestra las C1, C2… para elegir de a una.
+                                  Arranca cerrado: con treinta columnas por planta,
+                                  todo abierto es una lista que no se recorre. */}
+                              <span className="flex min-w-0 items-center gap-1">
+                                {conNombre.length === 0 ? (
+                                  <span className="w-5 shrink-0" aria-hidden />
+                                ) : (
+                                  <Tooltip
+                                    content={nivelAbierto ? "Ocultar renglones" : "Elegir renglones"}
+                                  >
+                                    <button
+                                      type="button"
+                                      aria-expanded={nivelAbierto}
+                                      aria-label={
+                                        nivelAbierto
+                                          ? `Ocultar renglones de ${nivel.nombre}`
+                                          : `Elegir renglones de ${nivel.nombre}`
+                                      }
+                                      onClick={() =>
+                                        setNivelesExpandidos((prev) => alternar(prev, llaveNivel))
+                                      }
+                                      className="shrink-0 rounded-sm p-0.5 text-muted-foreground transition-colors hover:text-foreground"
+                                    >
+                                      <ChevronDown
+                                        className={cn(
+                                          "h-3.5 w-3.5 transition-transform duration-200",
+                                          !nivelAbierto && "-rotate-90"
+                                        )}
+                                      />
+                                    </button>
+                                  </Tooltip>
+                                )}
+                                <span className="min-w-0 flex-1">
+                                  <Opcion
+                                    // Tildado sólo si van todos: con algunos
+                                    // afuera, un click lo vuelve a completar.
+                                    marcado={todosDelNivel}
+                                    detalle={
+                                      conNombre.length > 0
+                                        ? `${elegidosDelNivel}/${conNombre.length}`
+                                        : undefined
+                                    }
+                                    onCambio={() =>
+                                      marcarRenglones(nivel.renglones, !todosDelNivel)
+                                    }
+                                  >
+                                    <span className="font-medium">{nivel.nombre}</span>
+                                  </Opcion>
+                                </span>
+                              </span>
+                              {nivelAbierto && (
+                                <div className="ml-5 flex flex-col border-l pl-2">
+                                  {conNombre.map((renglon) => (
+                                    <Opcion
+                                      key={renglon.llave}
+                                      marcado={!renglonesFuera.has(renglon.llave)}
+                                      onCambio={() =>
+                                        setRenglonesFuera((prev) =>
+                                          alternar(prev, renglon.llave)
+                                        )
+                                      }
+                                    >
+                                      {renglon.nombre}
+                                    </Opcion>
+                                  ))}
+                                </div>
+                              )}
                             </div>
                           );
                         })}
