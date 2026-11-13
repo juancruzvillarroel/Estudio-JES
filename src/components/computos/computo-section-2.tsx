@@ -10,8 +10,11 @@ import { mapNivel } from "@/lib/niveles";
 import { prisma } from "@/lib/db";
 
 /**
- * "Cómputos 2": una grilla en paralelo a la de "Cómputo", para volver a
- * cargar un rubro de cero sin tocar lo que ya está armado del otro lado.
+ * El cómputo de la obra, que en la portada se llama "Cómputo". Nació como
+ * "Cómputos 2", una grilla en paralelo para volver a cargar los rubros de cero;
+ * en noviembre de 2026 se borró el cómputo viejo (las secciones con
+ * `esComputos2: false`) y éste quedó como el único. El nombre del archivo y la
+ * columna `esComputos2` quedaron así para no tocar el esquema.
  *
  * Es el mismo tablero (`ComputoBoard`), los mismos rubros de siempre y los
  * mismos niveles y fechas de la obra —son de la obra entera, no de un área—,
