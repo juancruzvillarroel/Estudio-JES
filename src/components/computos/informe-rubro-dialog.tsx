@@ -53,7 +53,7 @@ import { cn } from "@/lib/utils";
 type FilaOpcion = { clave: ClaveFila; nombre: string; deSeccion?: string };
 
 /** Marca y desmarca un id dentro de un conjunto. */
-function alternar(conjunto: Set<string>, id: string) {
+function alternar<T>(conjunto: Set<T>, id: T) {
   const next = new Set(conjunto);
   if (next.has(id)) next.delete(id);
   else next.add(id);
@@ -68,6 +68,23 @@ function alternar(conjunto: Set<string>, id: string) {
  */
 function claveRenglon(descripcion: string) {
   return descripcion.trim().replace(/\s+/g, " ").toUpperCase();
+}
+
+/**
+ * Cómo se llama cada planta de un nivel que se repite, para elegirlas de a
+ * una al exportar: "1°", "2°", "3°".
+ *
+ * No hay un campo con el piso donde arranca la planta tipo, así que se lee del
+ * nombre ("PLANTA TIPO 2°-4°" son el 2°, el 3° y el 4°). Si el nombre no lo
+ * dice, o lo que dice no cuadra con las repeticiones cargadas, se numeran
+ * desde el 1°: lo que importa para la cuenta es cuántas van, no cuáles.
+ */
+function pisosDeNivel(nivel: { nombre: string; repeticiones: number }): string[] {
+  const rango = nivel.nombre.match(/(\d+)\s*°?\s*(?:-|–|al?\b)\s*(\d+)/i);
+  const desde = rango ? Number(rango[1]) : NaN;
+  const hasta = rango ? Number(rango[2]) : NaN;
+  const primero = hasta - desde + 1 === nivel.repeticiones ? desde : 1;
+  return Array.from({ length: nivel.repeticiones }, (_, i) => `${primero + i}°`);
 }
 
 /** Un renglón de una celda, tal como se ofrece en el diálogo. */
@@ -160,13 +177,98 @@ function Grupo({
 }
 
 /**
+ * Lo que se eligió la última vez que se bajó el PDF de un rubro, para que la
+ * próxima arranque igual.
+ *
+ * Se guarda lo que quedó AFUERA y no lo que entró: una sección, un ítem o un
+ * nivel que se agregó a la obra después tiene que aparecer marcado, como
+ * aparecería sin nada guardado, en vez de quedar destildado sin que nadie lo
+ * haya decidido.
+ *
+ * Vive en el navegador (localStorage) y no en la base: es una preferencia de
+ * quien exporta, no un dato de la obra, y que dos personas del estudio bajen
+ * el mismo rubro de distinta forma no tiene que pisarse.
+ */
+type ConfigInforme = {
+  lados: TipoComputo[];
+  seccionesFuera: string[];
+  itemsFuera: string[];
+  subItemsFuera: string[];
+  filasFuera: string[];
+  renglonesFuera: string[];
+  /** Por nivel repetido, qué plantas iban (ver `plantasElegidas`). */
+  plantas: [string, number[]][];
+  conDesperdicio: boolean;
+  conDetalle: boolean;
+  conVacias: boolean;
+  unidadesHierro: UnidadHierro[];
+};
+
+const listaDeTextos = (v: unknown): string[] =>
+  Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+
+/**
+ * Lee la configuración guardada, o null si no hay o no se puede leer. Todo
+ * campo se revisa por separado: lo guardado por una versión anterior del
+ * diálogo, o tocado a mano, no puede romper la descarga, como mucho vuelve a
+ * su valor de siempre.
+ */
+function leerConfig(llave: string): ConfigInforme | null {
+  try {
+    const texto = window.localStorage.getItem(llave);
+    if (!texto) return null;
+    const c = JSON.parse(texto) as Record<string, unknown>;
+    if (!c || typeof c !== "object") return null;
+    const plantas = Array.isArray(c.plantas)
+      ? c.plantas.filter(
+          (p): p is [string, number[]] =>
+            Array.isArray(p) &&
+            typeof p[0] === "string" &&
+            Array.isArray(p[1]) &&
+            p[1].every((n: unknown) => typeof n === "number")
+        )
+      : [];
+    return {
+      lados: listaDeTextos(c.lados).filter((l): l is TipoComputo =>
+        (TIPOS_COMPUTO as string[]).includes(l)
+      ),
+      seccionesFuera: listaDeTextos(c.seccionesFuera),
+      itemsFuera: listaDeTextos(c.itemsFuera),
+      subItemsFuera: listaDeTextos(c.subItemsFuera),
+      filasFuera: listaDeTextos(c.filasFuera),
+      renglonesFuera: listaDeTextos(c.renglonesFuera),
+      plantas,
+      conDesperdicio: typeof c.conDesperdicio === "boolean" ? c.conDesperdicio : true,
+      conDetalle: typeof c.conDetalle === "boolean" ? c.conDetalle : true,
+      conVacias: typeof c.conVacias === "boolean" ? c.conVacias : false,
+      unidadesHierro: listaDeTextos(c.unidadesHierro).filter((u): u is UnidadHierro =>
+        (UNIDADES_HIERRO as string[]).includes(u)
+      ),
+    };
+  } catch {
+    // Sin permiso para el almacenamiento (ventana privada, sitio bloqueado) o
+    // un texto que no es JSON: se arranca como si no hubiera nada guardado.
+    return null;
+  }
+}
+
+function guardarConfig(llave: string, config: ConfigInforme) {
+  try {
+    window.localStorage.setItem(llave, JSON.stringify(config));
+  } catch {
+    // Si no se puede guardar, la próxima vez arranca con todo marcado: es
+    // lo de siempre, no vale la pena avisarle a nadie.
+  }
+}
+
+/**
  * Elegir qué parte del cómputo de un rubro se baja en PDF.
  *
- * Arranca todo marcado: el pedido normal es "el rubro entero", y hacer que el
- * botón sirva de una sola vez para ese caso es más importante que dejar la
- * elección a medio hacer. Lo que se destilda es la excepción —mandarle al
- * contratista sólo las dos secciones que va a hacer él, o sólo las plantas que
- * faltan—, y para eso están las listas.
+ * Arranca como se bajó la última vez (ver `ConfigInforme`): el mismo rubro
+ * se exporta muchas veces igual —sólo la planta baja para el contratista, sólo
+ * los hierros para el corralón— y volver a destildar todo en cada descarga es
+ * lo que se pidió evitar. La primera vez, sin nada guardado, arranca todo
+ * marcado: el pedido normal es "el rubro entero".
  *
  * Las filas vacías no se ofrecen: si en toda esta grilla no hay nada cargado en
  * la azotea, imprimirla es una fila de rayas. Se puede volver a incluir marcando
@@ -216,6 +318,25 @@ export function InformeRubroDialog({
     new Set(UNIDADES_HIERRO)
   );
 
+  /**
+   * Dónde se guarda la última configuración: por obra, por rubro y por área
+   * (Cómputos y Cómputos 2 son grillas distintas del mismo rubro).
+   */
+  const llaveConfig = `informe-rubro:${secciones[0]?.proyectoId ?? ""}:${rubroId}:${
+    secciones[0]?.esComputos2 ? "2" : "1"
+  }`;
+
+  /**
+   * Los ítems, sub ítems y filas que la configuración guardada deja afuera.
+   * Las listas de abajo se vuelven a armar cada vez que cambian las secciones
+   * marcadas; cuando lo hacen, arrancan con todo menos esto.
+   */
+  const [excluidos, setExcluidos] = useState({
+    items: new Set<string>(),
+    subItems: new Set<string>(),
+    filas: new Set<string>(),
+  });
+
   /** Las secciones que se pueden elegir: las del lado o lados marcados. */
   const delLado = secciones
     .filter((s) => lados.has(s.tipo))
@@ -250,7 +371,9 @@ export function InformeRubroDialog({
 
   if (huellaItems !== prevItems) {
     setPrevItems(huellaItems);
-    setItemsElegidos(new Set(itemsDisponibles.map((i) => i.id)));
+    setItemsElegidos(
+      new Set(itemsDisponibles.map((i) => i.id).filter((id) => !excluidos.items.has(id)))
+    );
   }
 
   /**
@@ -270,7 +393,11 @@ export function InformeRubroDialog({
 
   if (huellaSubItems !== prevSubItems) {
     setPrevSubItems(huellaSubItems);
-    setSubItemsElegidos(new Set(subItemsDisponibles.map((si) => si.id)));
+    setSubItemsElegidos(
+      new Set(
+        subItemsDisponibles.map((si) => si.id).filter((id) => !excluidos.subItems.has(id))
+      )
+    );
   }
 
   /** Qué ítems tienen la lista de sus sub ítems desplegada, en el diálogo. */
@@ -371,26 +498,31 @@ export function InformeRubroDialog({
     });
 
   /**
-   * Los niveles que se repiten (planta tipo ×4) que van a salir como UNA
-   * planta en vez del total. Por nivel y no para todo el informe: una obra
-   * puede tener dos plantas tipo distintas y querer una de cada forma.
+   * De cada nivel que se repite (planta tipo ×3), cuáles de sus plantas van
+   * al papel, por posición (0 = la primera). Un nivel que no está en el mapa
+   * va con todas: es lo de siempre y no hace falta anotarlo.
+   *
+   * Por nivel y no para todo el informe: una obra puede tener dos plantas
+   * tipo distintas y querer exportar una entera y de la otra sólo dos pisos.
+   * Nunca queda vacío: sacar la planta tipo entera es destildar el nivel.
    */
-  const [unaPlanta, setUnaPlanta] = useState<Set<string>>(new Set());
+  const [plantasElegidas, setPlantasElegidas] = useState<Map<string, Set<number>>>(new Map());
 
   /**
-   * Una medición leída como de una sola planta, si su nivel está en
-   * `unaPlanta`.
+   * Una medición leída con sólo las plantas elegidas de su nivel.
    *
-   * Alcanza con bajar `repeticiones` a 1: es lo único que multiplica (ver
-   * `parcialMedicion`), así que la celda, el total del ítem, los kg, las
-   * barras y la fila de totales salen solos de una planta y el papel cierra.
-   * Las derivadas no tienen nivel y no se tocan: su total de origen ya viene
-   * recalculado desde la vista.
+   * Alcanza con cambiar `repeticiones`: es lo único que multiplica (ver
+   * `parcialMedicion`), y las plantas de un mismo nivel son iguales, así que
+   * da lo mismo cuáles se eligieron: sólo importa cuántas. La celda, el total
+   * del ítem, los kg, las barras y la fila de totales salen solos de esas
+   * plantas y el papel cierra. Las derivadas no tienen nivel y no se tocan: su
+   * total de origen ya viene recalculado desde la vista.
    */
-  const aUnaPlanta = <M extends { nivelId: string | null; repeticiones: number }>(m: M): M =>
-    m.nivelId !== null && m.repeticiones > 1 && unaPlanta.has(m.nivelId)
-      ? { ...m, repeticiones: 1 }
-      : m;
+  const aPlantasElegidas = <M extends { nivelId: string | null; repeticiones: number }>(m: M): M => {
+    if (m.nivelId === null || m.repeticiones <= 1) return m;
+    const elegidas = plantasElegidas.get(m.nivelId);
+    return elegidas ? { ...m, repeticiones: elegidas.size } : m;
+  };
 
   /**
    * Cómo se titula un nivel en el papel: con las repeticiones a la vista,
@@ -399,8 +531,19 @@ export function InformeRubroDialog({
    */
   const nombreEnInforme = (n: NivelOpcion) => {
     if (n.repeticiones <= 1) return n.nombre;
-    // "x planta" se lee "por planta", como se dice en obra.
-    if (unaPlanta.has(n.id)) return `${n.nombre} (x planta)`;
+    const elegidas = plantasElegidas.get(n.id);
+    if (elegidas && elegidas.size < n.repeticiones) {
+      // "x planta" se lee "por planta", como se dice en obra.
+      if (elegidas.size === 1) return `${n.nombre} (x planta)`;
+      // Con algunas sí y otras no, se nombran: "1° y 2°" dice más que "×2".
+      // Van después de una raya y con la palabra "pisos", no entre
+      // paréntesis: el nombre del nivel suele traer ya su rango entre
+      // paréntesis ("PLANTA TIPO (1°-3°)") y dos seguidos se leían como lo
+      // mismo.
+      const pisos = pisosDeNivel(n);
+      const nombres = [...elegidas].sort((a, b) => a - b).map((i) => pisos[i]);
+      return `${n.nombre} — pisos ${nombres.slice(0, -1).join(", ")} y ${nombres[nombres.length - 1]}`;
+    }
     return /[x×]\s*\d/i.test(n.nombre) ? n.nombre : `${n.nombre} ×${n.repeticiones}`;
   };
 
@@ -419,10 +562,10 @@ export function InformeRubroDialog({
       : item.mediciones;
     return {
       ...item,
-      mediciones: mediciones.map(aUnaPlanta),
+      mediciones: mediciones.map(aPlantasElegidas),
       subItems: item.subItems
         .filter((si) => subItemsElegidos.has(si.id))
-        .map((si) => ({ ...si, mediciones: si.mediciones.map(aUnaPlanta) })),
+        .map((si) => ({ ...si, mediciones: si.mediciones.map(aPlantasElegidas) })),
     };
   };
 
@@ -471,9 +614,10 @@ export function InformeRubroDialog({
 
   /**
    * La lista de filas depende de qué secciones estén marcadas, así que cambia
-   * mientras el diálogo está abierto. Cuando cambia se vuelve a "todas": una
-   * selección de filas hecha sobre otra lista no significa nada, y arrastrarla
-   * dejaría afuera las filas de la sección recién sumada sin que se vea.
+   * mientras el diálogo está abierto. Cuando cambia se vuelve a "todas" menos
+   * las que dejó afuera la última descarga (`excluidos`): una selección de
+   * filas hecha sobre otra lista no significa nada, y arrastrarla dejaría
+   * afuera las filas de la sección recién sumada sin que se vea.
    *
    * La huella es la lista misma. Comparar el contenido y no la identidad del
    * array es lo que hace que un re-render cualquiera no pise lo que se destildó.
@@ -487,32 +631,60 @@ export function InformeRubroDialog({
 
   if (huella !== prevHuella) {
     setPrevHuella(huella);
-    setFilasElegidas(new Set(clavesDisponibles));
+    setFilasElegidas(new Set(clavesDisponibles.filter((c) => !excluidos.filas.has(c))));
   }
 
   const abrir = (abierto: boolean) => {
     setOpen(abierto);
     if (!abierto) return;
-    // Al reabrir se vuelve a "todo", que es el pedido normal. Un diálogo que
-    // recuerda lo que se destildó la vez pasada hace imprimir de menos sin que
-    // se note.
-    const lados0 = new Set(TIPOS_COMPUTO);
+    // Al abrir se vuelve a lo de la última descarga de este rubro, o a
+    // "todo" si nunca se bajó (ver `ConfigInforme`).
+    const config = leerConfig(llaveConfig);
+    const lados0 = new Set(config && config.lados.length > 0 ? config.lados : TIPOS_COMPUTO);
+    const seccionesFuera = new Set(config?.seccionesFuera ?? []);
     setLados(lados0);
     setSeccionesElegidas(
-      new Set(secciones.filter((s) => lados0.has(s.tipo)).map((s) => s.id))
+      new Set(
+        secciones
+          .filter((s) => lados0.has(s.tipo) && !seccionesFuera.has(s.id))
+          .map((s) => s.id)
+      )
     );
-    setConDesperdicio(true);
-    setConDetalle(true);
-    setConVacias(false);
-    setUnidadesHierro(new Set(UNIDADES_HIERRO));
+    setConDesperdicio(config?.conDesperdicio ?? true);
+    setConDetalle(config?.conDetalle ?? true);
+    setConVacias(config?.conVacias ?? false);
+    setUnidadesHierro(
+      new Set(
+        config && config.unidadesHierro.length > 0 ? config.unidadesHierro : UNIDADES_HIERRO
+      )
+    );
+    setExcluidos({
+      items: new Set(config?.itemsFuera ?? []),
+      subItems: new Set(config?.subItemsFuera ?? []),
+      filas: new Set(config?.filasFuera ?? []),
+    });
     // Fuerza el resincronizado de los ítems y las filas en el render siguiente,
     // que es cuando ya se sabe qué secciones quedaron marcadas.
     setPrevItems("");
     setPrevSubItems("");
     setPrevHuella("");
     setItemsExpandidos(new Set());
-    setRenglonesFuera(new Set());
-    setUnaPlanta(new Set());
+    setRenglonesFuera(new Set(config?.renglonesFuera ?? []));
+    // Sólo las plantas que todavía existen: si el nivel cambió de
+    // repeticiones o se borró, ese nivel vuelve a ir con todas.
+    setPlantasElegidas(
+      new Map(
+        (config?.plantas ?? []).flatMap(([nivelId, plantas]): [string, Set<number>][] => {
+          const nivel = niveles.find((n) => n.id === nivelId);
+          if (!nivel) return [];
+          const validas = plantas.filter(
+            (i) => Number.isInteger(i) && i >= 0 && i < nivel.repeticiones
+          );
+          if (validas.length === 0 || validas.length >= nivel.repeticiones) return [];
+          return [[nivelId, new Set(validas)]];
+        })
+      )
+    );
     setNivelesExpandidos(new Set());
   };
 
@@ -628,6 +800,21 @@ export function InformeRubroDialog({
         barras: unidadesHierro.has("barras"),
         kg: unidadesHierro.has("kg"),
       },
+    });
+    guardarConfig(llaveConfig, {
+      lados: [...lados],
+      seccionesFuera: secciones.filter((s) => !seccionesElegidas.has(s.id)).map((s) => s.id),
+      itemsFuera: itemsDisponibles.filter((i) => !itemsElegidos.has(i.id)).map((i) => i.id),
+      subItemsFuera: subItemsDisponibles
+        .filter((si) => !subItemsElegidos.has(si.id))
+        .map((si) => si.id),
+      filasFuera: clavesDisponibles.filter((c) => !filasElegidas.has(c)),
+      renglonesFuera: [...renglonesFuera],
+      plantas: [...plantasElegidas].map(([nivelId, plantas]) => [nivelId, [...plantas]]),
+      conDesperdicio,
+      conDetalle,
+      conVacias,
+      unidadesHierro: [...unidadesHierro],
     });
     setOpen(false);
   };
@@ -996,47 +1183,55 @@ export function InformeRubroDialog({
                     </span>
                   </Opcion>
                 );
-                // Sólo los niveles que se repiten ofrecen elegir: en uno común
-                // "total" y "una planta" son el mismo número.
+                // Sólo los niveles que se repiten ofrecen elegir plantas: en
+                // uno común hay una sola.
                 if (!nivel || nivel.repeticiones <= 1) return opcionFila;
-                const soloUna = unaPlanta.has(nivel.id);
-                const elegir = (una: boolean) =>
-                  setUnaPlanta((prev) => {
-                    const next = new Set(prev);
-                    if (una) next.add(nivel.id);
-                    else next.delete(nivel.id);
+                const pisos = pisosDeNivel(nivel);
+                const todas = () => new Set(pisos.map((_, i) => i));
+                const elegidas = plantasElegidas.get(nivel.id) ?? todas();
+                const alternarPlanta = (i: number) =>
+                  setPlantasElegidas((prev) => {
+                    const actual = prev.get(nivel.id) ?? todas();
+                    // La última que queda no se saca: un nivel con cero plantas
+                    // es un nivel destildado, y para eso está su tilde.
+                    if (actual.has(i) && actual.size === 1) return prev;
+                    const next = new Map(prev);
+                    const plantas = alternar(actual, i);
+                    if (plantas.size === pisos.length) next.delete(nivel.id);
+                    else next.set(nivel.id, plantas);
                     return next;
                   });
                 return (
                   <div key={clave} className="flex items-center gap-2">
                     <span className="min-w-0 flex-1">{opcionFila}</span>
-                    {/* Fuera del renglón clickeable: tocar el selector no
+                    {/* Fuera del renglón clickeable: tocar una planta no
                         tiene que tildar ni destildar el nivel. */}
                     <div
-                      role="radiogroup"
-                      aria-label={`Cómo sale ${nivel.nombre}`}
-                      className="mr-1 flex shrink-0 rounded-md border p-0.5 text-xs"
+                      role="group"
+                      aria-label={`Qué plantas de ${nivel.nombre} salen`}
+                      className="mr-1 flex shrink-0 items-center gap-1.5 text-xs"
                     >
-                      {[
-                        { una: false, texto: `Total ×${nivel.repeticiones}` },
-                        { una: true, texto: "x planta" },
-                      ].map((op) => (
-                        <button
-                          key={op.texto}
-                          type="button"
-                          role="radio"
-                          aria-checked={soloUna === op.una}
-                          onClick={() => elegir(op.una)}
-                          className={cn(
-                            "rounded-sm px-2 py-0.5 transition-colors",
-                            soloUna === op.una
-                              ? "bg-primary text-primary-foreground"
-                              : "text-muted-foreground hover:text-foreground"
-                          )}
-                        >
-                          {op.texto}
-                        </button>
-                      ))}
+                      <span className="text-muted-foreground tabular-nums">
+                        {elegidas.size}/{pisos.length}
+                      </span>
+                      <div className="flex rounded-md border p-0.5">
+                        {pisos.map((piso, i) => (
+                          <button
+                            key={i}
+                            type="button"
+                            aria-pressed={elegidas.has(i)}
+                            onClick={() => alternarPlanta(i)}
+                            className={cn(
+                              "min-w-7 rounded-sm px-1.5 py-0.5 tabular-nums transition-colors",
+                              elegidas.has(i)
+                                ? "bg-primary text-primary-foreground"
+                                : "text-muted-foreground hover:text-foreground"
+                            )}
+                          >
+                            {piso}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 );
