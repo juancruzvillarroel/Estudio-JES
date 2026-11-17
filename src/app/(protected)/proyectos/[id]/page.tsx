@@ -12,7 +12,6 @@ import {
 } from "@/components/proyectos/proyecto-secciones";
 import { TipoMovimientoBadge } from "@/components/movimientos/tipo-movimiento-badge";
 import { MunicipalSection } from "@/components/municipal/municipal-section";
-import { ComputoSection } from "@/components/computos/computo-section";
 import { ComputoSection2 } from "@/components/computos/computo-section-2";
 import { DocumentacionSection } from "@/components/documentacion/documentacion-section";
 import { TareasSection } from "@/components/tareas/tareas-section";
@@ -138,8 +137,6 @@ export default async function ProyectoDetallePage({
     documentosTotal,
     itemsComputo,
     itemsComputados,
-    itemsComputo2,
-    itemsComputados2,
   ] = await Promise.all([
       prisma.proyecto.findUnique({ where: { id } }),
       prisma.pedido.findMany({
@@ -227,27 +224,16 @@ export default async function ProyectoDetallePage({
           NOT: { reemplazadoPor: { some: { proyectoId: id } } },
         },
       }),
-      // "Cómputos 2" tiene su propia tarjeta y su propio conteo (ver abajo):
-      // acá se cuenta aparte para que no infle el avance del Cómputo de
-      // siempre.
+      // Sólo las secciones de "Cómputos 2", que es el único cómputo que queda:
+      // el viejo se borró en noviembre de 2026 y el filtro evita que, si algún
+      // día vuelve a aparecer una sección suelta del otro lado, infle el avance.
       prisma.computoItem.count({
-        where: { proyectoId: id, OR: [{ seccion: null }, { seccion: { esComputos2: false } }] },
+        where: { proyectoId: id, seccion: { esComputos2: true } },
       }),
       // Los que ya tienen al menos una fila cargada. No se suma ninguna
       // cantidad: un cómputo mezcla m², m³, kg y unidades, y sumarlos daría un
       // número que no significa nada. Lo que sí mide el avance es cuántas
       // ítems están computados sobre cuántos hay.
-      prisma.computoItem.count({
-        where: {
-          proyectoId: id,
-          OR: [{ seccion: null }, { seccion: { esComputos2: false } }],
-          mediciones: { some: {} },
-        },
-      }),
-      // Los mismos dos conteos, pero sólo de las secciones "Cómputos 2".
-      prisma.computoItem.count({
-        where: { proyectoId: id, seccion: { esComputos2: true } },
-      }),
       prisma.computoItem.count({
         where: { proyectoId: id, seccion: { esComputos2: true }, mediciones: { some: {} } },
       }),
@@ -450,16 +436,6 @@ export default async function ProyectoDetallePage({
           ? [{ etiqueta: "Faltan computar", valor: String(itemsComputo - itemsComputados) }]
           : [],
     },
-    computo2: {
-      valor: itemsComputo2 === 0 ? "—" : `${itemsComputados2}/${itemsComputo2}`,
-      detalle: itemsComputo2 === 0 ? "sin ítems cargados" : "ítems computados",
-      progreso: itemsComputo2 > 0 ? { hechos: itemsComputados2, total: itemsComputo2 } : null,
-      tono: itemsComputo2 > 0 && itemsComputados2 === itemsComputo2 ? "ok" : "neutral",
-      chips:
-        itemsComputo2 > 0
-          ? [{ etiqueta: "Faltan computar", valor: String(itemsComputo2 - itemsComputados2) }]
-          : [],
-    },
     flujoFondos: tieneFlujoFondos
       ? {
           valor: formatUSD(saldoUSD),
@@ -613,9 +589,6 @@ export default async function ProyectoDetallePage({
         municipal={<MunicipalSection proyectoId={proyecto.id} />}
         documentacion={<DocumentacionSection proyectoId={proyecto.id} />}
         computo={
-          <ComputoSection proyectoId={proyecto.id} proyectoNombre={proyecto.nombre} />
-        }
-        computo2={
           <ComputoSection2 proyectoId={proyecto.id} proyectoNombre={proyecto.nombre} />
         }
         flujoFondos={

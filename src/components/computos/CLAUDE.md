@@ -41,9 +41,11 @@ proyecto, en la tarjeta "Cómputo".
 - Desperdicio: `null` significa "sin cargar" y `0` significa "no lleva". No son lo mismo.
 - Los niveles con repeticiones (planta tipo ×4) multiplican sus filas: ver `parcialMedicion`.
 - Ningún total se guarda: todo sale de `calcularTotales` / `totalItem`.
-- **Cómputos 2** (`ComputoSeccion.esComputos2`): es una grilla paralela a la de siempre
-  para volver a cargar un rubro de cero sin tocar lo ya armado. Su pantalla está en
-  `computo-section-2.tsx`. La misma sección puede existir en las dos áreas con el mismo nombre.
+- **Cómputos 2** (`ComputoSeccion.esComputos2`): nació como una grilla paralela a la de
+  siempre. En noviembre de 2026 se borró el cómputo viejo (todas las secciones con
+  `esComputos2: false`, y su `computo-section.tsx`), así que hoy es el único cómputo y en la
+  portada se llama "Cómputo". Su pantalla está en `computo-section-2.tsx`. Las secciones
+  nuevas se tienen que crear con `esComputos2: true` (el tablero ya lo pasa).
 - **Sub ítems** (`ComputoSubItem`, `ComputoSubItemMedicion`): por ahora solo existen en la
   sección PUERTAS (ver `esSeccionPuertas`). Ahí el ítem no tiene cantidad propia y su total
   es la suma de sus sub ítems, que tienen nombre libre. Reemplazan a las columnas fijas

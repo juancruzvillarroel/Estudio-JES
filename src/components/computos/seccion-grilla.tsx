@@ -1294,6 +1294,7 @@ function lineasDeItem({
     const lineas: LineaItem[] = [
       {
         key: "ml",
+        conChevron: true,
         etiqueta: (
           <span title="Lo que se mide en obra, en metros lineales. Se puede completar en ml, en barras o en kg: lo que no se toque sale solo de lo que sí.">
             ml
@@ -1329,19 +1330,41 @@ function lineasDeItem({
           // Las fórmulas van sólo en los metros, que es lo que se mide: barras
           // y kilos son conversiones de ese número.
           return (
-            <Celda
-              proyectoId={proyectoId}
-              item={item}
-              fila={fila.clave}
-              filaNombre={fila.nombre}
-              valor={tiene ? medido : null}
-              formula={(() => {
-                const renglon = medicionesDeFila(item, fila.clave)[0];
-                return renglon ? formulaDeMedicion(renglon) : null;
-              })()}
-              conFormulas={conFormulas}
-              onSaved={onItemSaved}
-            />
+            <span className="group/celda relative block">
+              <Celda
+                proyectoId={proyectoId}
+                item={item}
+                fila={fila.clave}
+                filaNombre={fila.nombre}
+                valor={tiene ? medido : null}
+                formula={(() => {
+                  const renglon = medicionesDeFila(item, fila.clave)[0];
+                  return renglon ? formulaDeMedicion(renglon) : null;
+                })()}
+                conFormulas={conFormulas}
+                onSaved={onItemSaved}
+              />
+              {/* La flechita para abrir el detalle vive en la línea de los
+                  metros, al borde derecho de la celda: el desglose se carga
+                  en metros (lo que se mide en obra), así que se abre desde
+                  donde se escribe y no desde una conversión. */}
+              <Tooltip content={`Detalle de ${item.nombre} en ${fila.nombre}`}>
+                <button
+                  type="button"
+                  aria-expanded={abierto}
+                  aria-label={`Detalle de ${item.nombre} en ${fila.nombre}`}
+                  onClick={alternar}
+                  className={cn(
+                    "absolute top-1/2 right-0 -translate-y-1/2 rounded-sm p-0.5 text-muted-foreground transition-all duration-150 hover:bg-muted hover:text-foreground focus:opacity-100",
+                    abierto ? "opacity-100" : "opacity-0 group-hover/celda:opacity-100"
+                  )}
+                >
+                  <ChevronDown
+                    className={cn("h-3 w-3 transition-transform duration-200", abierto && "rotate-180")}
+                  />
+                </button>
+              </Tooltip>
+            </span>
           );
         },
         total: () => (
@@ -1413,7 +1436,6 @@ function lineasDeItem({
       {
         key: "kg",
         etiqueta: <span title="Peso total del hierro, en kilos.">kg</span>,
-        conChevron: true,
         celda: (fila) => {
           const { tiene, medido, derivada, desglosada, abierto, alternar } = estado(fila);
           if (derivada) {
@@ -1442,37 +1464,17 @@ function lineasDeItem({
             );
           }
           return (
-            <span className="group/celda relative block">
-              <CeldaHierroConvertida
-                proyectoId={proyectoId}
-                item={item}
-                fila={fila.clave}
-                filaNombre={fila.nombre}
-                valor={tiene ? medido : null}
-                unidad="kilos"
-                aTexto={(m) => formatCantidad(kgDeMetros(item, m))}
-                aMetros={(kg) => metrosDeKg(item, kg)}
-                onSaved={onItemSaved}
-              />
-              {/* La flechita para abrir el detalle vive en esta línea, al
-                  borde derecho de la celda. */}
-              <Tooltip content={`Detalle de ${item.nombre} en ${fila.nombre}`}>
-                <button
-                  type="button"
-                  aria-expanded={abierto}
-                  aria-label={`Detalle de ${item.nombre} en ${fila.nombre}`}
-                  onClick={alternar}
-                  className={cn(
-                    "absolute top-1/2 right-0 -translate-y-1/2 rounded-sm p-0.5 text-muted-foreground transition-all duration-150 hover:bg-muted hover:text-foreground focus:opacity-100",
-                    abierto ? "opacity-100" : "opacity-0 group-hover/celda:opacity-100"
-                  )}
-                >
-                  <ChevronDown
-                    className={cn("h-3 w-3 transition-transform duration-200", abierto && "rotate-180")}
-                  />
-                </button>
-              </Tooltip>
-            </span>
+            <CeldaHierroConvertida
+              proyectoId={proyectoId}
+              item={item}
+              fila={fila.clave}
+              filaNombre={fila.nombre}
+              valor={tiene ? medido : null}
+              unidad="kilos"
+              aTexto={(m) => formatCantidad(kgDeMetros(item, m))}
+              aMetros={(kg) => metrosDeKg(item, kg)}
+              onSaved={onItemSaved}
+            />
           );
         },
         total: () => (

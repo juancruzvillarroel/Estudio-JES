@@ -33,6 +33,36 @@ function alternar(conjunto: Set<string>, id: string) {
   return next;
 }
 
+/**
+ * Los ítems que se dejaron afuera la última vez que se pidió presupuesto de
+ * este cómputo, para que el próximo pedido arranque igual.
+ *
+ * Se guarda lo que quedó AFUERA, igual que en el informe del rubro (ver
+ * `ConfigInforme` en informe-rubro-dialog.tsx): un ítem agregado después
+ * tiene que aparecer marcado, no destildado sin que nadie lo haya decidido.
+ * Vive en el navegador porque es una preferencia de quien exporta, no un dato
+ * de la obra.
+ */
+function leerItemsFuera(llave: string): Set<string> {
+  try {
+    const guardado = JSON.parse(window.localStorage.getItem(llave) ?? "[]") as unknown;
+    return new Set(
+      Array.isArray(guardado) ? guardado.filter((x): x is string => typeof x === "string") : []
+    );
+  } catch {
+    // Sin almacenamiento o con algo ilegible: como si nunca se hubiera pedido.
+    return new Set();
+  }
+}
+
+function guardarItemsFuera(llave: string, fuera: string[]) {
+  try {
+    window.localStorage.setItem(llave, JSON.stringify(fuera));
+  } catch {
+    // Si no se puede guardar, la próxima vez arranca con todo marcado.
+  }
+}
+
 /** Un renglón de checkbox con su etiqueta, clickeable entero. */
 function Opcion({
   marcado,
@@ -61,9 +91,11 @@ function Opcion({
  * que se le manda al corralón de materiales no tiene nada que ver con el que
  * se le manda al gremio de mano de obra, aunque sean del mismo rubro.
  *
- * Arranca todo marcado, por la misma razón que el informe del rubro: el
- * pedido normal es "todo lo que hay cargado", y lo que se destilda es la
- * excepción —ya se cotizó una parte, o esta vez sólo hace falta una.
+ * Arranca como se pidió la última vez, por la misma razón que el informe del
+ * rubro: el mismo pedido se repite —a otro proveedor, o de nuevo cuando se
+ * actualizan cantidades— y volver a destildar todo cada vez es lo que se
+ * pidió evitar. La primera vez arranca todo marcado: el pedido normal es
+ * "todo lo que hay cargado".
  */
 export function PresupuestarDialog({
   proyectoNombre,
@@ -96,12 +128,21 @@ export function PresupuestarDialog({
     new Set(items.map((i) => i.id))
   );
 
+  /**
+   * Dónde se guarda la última selección: por obra, rubro, lado y área
+   * (Cómputos y Cómputos 2 son grillas distintas del mismo rubro).
+   */
+  const llaveConfig = `presupuestar:${secciones[0]?.proyectoId ?? ""}:${
+    secciones[0]?.rubroId ?? ""
+  }:${tipo}:${secciones[0]?.esComputos2 ? "2" : "1"}`;
+
   const abrir = (abierto: boolean) => {
     setOpen(abierto);
-    // Al reabrir se vuelve a "todo", que es el pedido normal: un diálogo que
-    // recuerda lo que se destildó la vez pasada manda un pedido de menos sin
-    // que se note.
-    if (abierto) setItemsElegidos(new Set(items.map((i) => i.id)));
+    // Al abrir se vuelve a lo del último pedido de este cómputo, o a "todo"
+    // si nunca se pidió.
+    if (!abierto) return;
+    const fuera = leerItemsFuera(llaveConfig);
+    setItemsElegidos(new Set(items.map((i) => i.id).filter((id) => !fuera.has(id))));
   };
 
   const armarSecciones = (): SeccionPresupuesto[] =>
@@ -123,6 +164,10 @@ export function PresupuestarDialog({
       secciones: imprimibles,
       totales,
     });
+    guardarItemsFuera(
+      llaveConfig,
+      items.filter((i) => !itemsElegidos.has(i.id)).map((i) => i.id)
+    );
     setOpen(false);
   };
 

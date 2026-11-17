@@ -8,11 +8,12 @@
  * sale cada número—, y éste es el que se lleva a la obra o a una reunión, donde
  * lo que se busca es leer de un vistazo cuánto va en cada planta.
  *
- * Va apaisado. Un cómputo es ancho por naturaleza cuando los niveles son
- * columnas: seis niveles con sus subtotales son columnas de sobra para A4
- * vertical. Apaisado entran cómodos hasta ocho o nueve niveles por sección;
- * pasando eso, la fila de cada ítem crece hacia abajo con sub-líneas en vez de
- * la tabla crecer para el costado, que es justo lo que esta forma evita.
+ * Va en A4 vertical, como el resto de los papeles del estudio: se pidió así
+ * para que se archive y se imprima junto con ellos. La grilla es ancha por
+ * naturaleza cuando los niveles son columnas, así que con muchos niveles las
+ * columnas quedan angostas y un nombre largo se corta con "…"; para eso está
+ * elegir en el diálogo sólo los niveles que hacen falta. La fila de cada ítem
+ * crece hacia abajo con sub-líneas en vez de la tabla crecer para el costado.
  *
  * Cada ítem con más de un valor —el hierro mide en metros, barras y kilos a
  * la vez; cualquier ítem puede tener además uno por cada sub ítem que
@@ -130,6 +131,15 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
   const { items, filas } = seccion;
 
   /**
+   * Con un solo nivel exportado, la columna del nivel y la del TOTAL dirían
+   * lo mismo dos veces. Queda una sola, con el nombre del nivel arriba, pero
+   * con lo que muestra el TOTAL: las barras y los bultos ya redondeados para
+   * arriba, que es lo que se compra. Los totales ya llegan recortados a lo
+   * exportado (ver el diálogo), así que el número es el de ese nivel.
+   */
+  const unNivel = filas.length === 1;
+
+  /**
    * PUERTAS no tiene línea de cantidad propia —en vez de eso, una línea por
    * cada sub ítem que tenga cada puerta— la misma excepción que tiene la
    * grilla en pantalla (ver `esSeccionPuertas`).
@@ -178,19 +188,6 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
     return { ml: medido, barras: bultos?.enteros ?? 0, kg };
   };
 
-  /** Los ítems de hierro de esta sección: son los que alimentan la fila del total en kg. */
-  const hierroItems = items.filter((i) => esHierro(i));
-  const conTotalKg = hierroItems.length > 0;
-
-  /** Cuántos kg suman, entre todos los diámetros, lo cargado en esta columna (un piso). */
-  const totalKgFila = (fila: ClaveFila): number | null => {
-    const algo = hierroItems.some((i) => tieneMedidoEnFila(i, fila));
-    if (!algo) return null;
-    return hierroItems.reduce((acc, i) => {
-      if (!tieneMedidoEnFila(i, fila)) return acc;
-      return acc + kgDeMetros(i, medidoEnFila(i, fila, datos.totales));
-    }, 0);
-  };
 
   /**
    * Una línea de valor cualquiera, en su propia celda: ya no apila nada, es
@@ -403,7 +400,7 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
           )}</th>
           <td class="unidad-col"></td>
           ${celdas}
-          <td class="total-col"></td>
+          ${unNivel ? "" : `<td class="total-col"></td>`}
         </tr>`;
         });
       })
@@ -413,9 +410,26 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
     <tr>
       <th class="item-col">Ítem</th>
       <th class="unidad-col">Unidad</th>
-      ${filas.map((fila) => `<th class="nivel">${esc(fila.nombre)}</th>`).join("")}
-      <th class="total-col">TOTAL</th>
+      ${
+        unNivel
+          ? `<th class="total-col">${esc(filas[0].nombre)}</th>`
+          : `${filas.map((fila) => `<th class="nivel">${esc(fila.nombre)}</th>`).join("")}
+      <th class="total-col">TOTAL</th>`
+      }
     </tr>`;
+
+  /**
+   * Las celdas de valores de una línea: una por nivel más la del TOTAL, o,
+   * con un solo nivel, sólo la del TOTAL (ver `unNivel`). Si el TOTAL de esa
+   * línea va en blanco a propósito (la mampostería de Cómputos 2), cae en la
+   * celda del nivel para que la fila no quede sin su número.
+   */
+  const celdasDeLinea = (linea: LineaInforme) => {
+    if (unNivel) {
+      return `<td class="total-col">${linea.total() || linea.celda(filas[0].clave)}</td>`;
+    }
+    return `${filas.map((fila) => `<td>${linea.celda(fila.clave)}</td>`).join("")}<td class="total-col">${linea.total()}</td>`;
+  };
 
   /**
    * La fila (o filas) de un ítem: la línea "medido" —si tiene— se fusiona
@@ -429,8 +443,8 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
     const resto = principal ? lineas.filter((l) => l !== principal) : lineas;
 
     const celdasTitulo = principal
-      ? `${filas.map((fila) => `<td>${principal.celda(fila.clave)}</td>`).join("")}<td class="total-col">${principal.total()}</td>`
-      : `<td colspan="${filas.length + 1}"></td>`;
+      ? celdasDeLinea(principal)
+      : `<td colspan="${unNivel ? 1 : filas.length + 1}"></td>`;
 
     const filaTitulo = `
       <tr class="fila-item">
@@ -448,8 +462,7 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
       <tr class="linea-extra${linea.esSubItem ? "" : " linea-calculada"}">
         <th class="item-col linea-nombre" scope="row">${esc(linea.etiqueta ?? "")}</th>
         <td class="unidad-col"></td>
-        ${filas.map((fila) => `<td>${linea.celda(fila.clave)}</td>`).join("")}
-        <td class="total-col">${linea.total()}</td>
+        ${celdasDeLinea(linea)}
       </tr>`
       )
       .join("");
@@ -459,37 +472,69 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
 
   const cuerpo = items.map((item) => filaDeItem(item)).join("");
 
-  /** Cuántos kg suman, entre todos los diámetros, los totales de toda la sección. */
-  const algunHierroCargado = hierroItems.some((i) => i.mediciones.length > 0);
-  const totalKgGeneral = !algunHierroCargado
-    ? null
-    : hierroItems.reduce((acc, item) => {
-        if (item.mediciones.length === 0) return acc;
-        return acc + kgDeMetros(item, datos.totales.get(item.id) ?? 0);
-      }, 0);
-
   /**
-   * El total en kg de todos los diámetros juntos, por nivel: es una suma
-   * cruzada entre los ítems de hierro de cada columna, así que no tiene
-   * lugar en la celda de Total de ningún ítem en particular. Por eso es la
-   * única fila del pie.
+   * El pie de la tabla: cuánto suman todos los ítems de la sección en cada
+   * nivel y en todo lo exportado. Por ejemplo, los m³ de hormigón de toda la
+   * planta baja (columnas, vigas, losas, tabiques...). Es el mismo pie que
+   * tiene la grilla en pantalla (ver `TotalesPorFila` en seccion-grilla.tsx).
+   *
+   * Suma lo medido, lo de la primera línea de cada ítem (con las plantas de
+   * la planta tipo ya multiplicadas), sin desperdicio. Sumar m² con ml no da
+   * nada que signifique algo, así que va una fila por cada unidad que haya en
+   * la sección. En el hierro se suman también los kg: los metros de un Ø6 y de
+   * un Ø25 pesan muy distinto, y el peso es lo que se pide.
+   *
+   * El total de cada renglón es la suma de sus niveles: los totales ya llegan
+   * recortados a lo exportado, así que da lo mismo que sumar la columna TOTAL.
+   * Con un solo nivel (ver `unNivel`) va sólo esa celda.
    */
-  const pie = !conTotalKg
-    ? ""
-    : `
-    <tr class="total-kg-fila">
-      <th class="item-col" scope="row">Total kg</th>
-      <td class="unidad-col"></td>
-      ${filas
-        .map((fila) => {
-          const valor = totalKgFila(fila.clave);
-          return `<td class="num">${esc(valor === null ? "—" : formatCantidad(valor))}</td>`;
-        })
-        .join("")}
-      <td class="total-col">${esc(
-        totalKgGeneral === null ? "—" : formatCantidad(totalKgGeneral)
-      )}</td>
+  const enFila = (item: ItemOpcion, fila: ClaveFila) =>
+    medidoEnFila(item, fila, datos.totales) +
+    item.subItems.reduce((acc, si) => acc + subItemEnFila(si, fila), 0);
+  const cargadoEnFila = (item: ItemOpcion, fila: ClaveFila) =>
+    tieneMedidoEnFila(item, fila) ||
+    item.subItems.some((si) => subItemMedicionesDeFila(si, fila).length > 0);
+
+  type RenglonPie = { clave: string; unidad: string; porFila: (number | null)[] };
+  const renglonesPie: RenglonPie[] = [];
+  /** Suma de a un ítem, dejando null ("—") la columna donde ninguno cargó nada. */
+  const sumarEn = (renglon: RenglonPie, item: ItemOpcion, valor: (fila: ClaveFila) => number) =>
+    filas.forEach((fila, i) => {
+      if (!cargadoEnFila(item, fila.clave)) return;
+      renglon.porFila[i] = (renglon.porFila[i] ?? 0) + valor(fila.clave);
+    });
+
+  for (const item of items) {
+    let renglon = renglonesPie.find((r) => r.clave === item.unidad);
+    if (!renglon) {
+      renglon = { clave: item.unidad, unidad: simboloUnidad(item.unidad), porFila: filas.map(() => null) };
+      renglonesPie.push(renglon);
+    }
+    sumarEn(renglon, item, (fila) => enFila(item, fila));
+  }
+
+  const hierroItems = items.filter((i) => esHierro(i));
+  if (hierroItems.length > 0) {
+    const kg: RenglonPie = { clave: "kg", unidad: "kg", porFila: filas.map(() => null) };
+    for (const item of hierroItems) sumarEn(kg, item, (fila) => kgDeMetros(item, enFila(item, fila)));
+    renglonesPie.push(kg);
+  }
+
+  const cantidadPie = (valor: number | null) => esc(valor === null ? "—" : formatCantidad(valor));
+
+  const pie = renglonesPie
+    .map((renglon, indice) => {
+      const conAlgo = renglon.porFila.filter((v): v is number => v !== null);
+      const total = conAlgo.length === 0 ? null : conAlgo.reduce((a, b) => a + b, 0);
+      return `
+    <tr class="total-fila${indice === 0 ? " primera" : ""}">
+      <th class="item-col" scope="row">${indice === 0 ? "Total" : ""}</th>
+      <td class="unidad-col">${esc(renglon.unidad)}</td>
+      ${unNivel ? "" : renglon.porFila.map((v) => `<td class="num">${cantidadPie(v)}</td>`).join("")}
+      <td class="total-col">${cantidadPie(total)}</td>
     </tr>`;
+    })
+    .join("");
 
   return `
     <section class="bloque">
@@ -512,9 +557,144 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
     </section>`;
 }
 
+/**
+ * El resumen del pie: hormigón, barras y kilos de todo lo que se exporta, en
+ * dos cuadros: uno por sección (cuánto hormigón y cuánto hierro lleva cada
+ * parte de la estructura) y otro por diámetro (lo que se le pide al
+ * corralón). Cada uno cierra con su total, así que el número general está en
+ * los dos y tiene que dar igual.
+ *
+ * Sale de los mismos totales que las tablas, que ya llegan recortados a lo
+ * que se eligió (niveles, renglones, planta tipo "x planta"), así que el
+ * resumen no repite ninguna cuenta y no puede contradecirlas.
+ *
+ * - Hormigón es todo ítem que mide en m³, sin la merma: el mismo número que la
+ *   columna TOTAL.
+ * - Las barras se redondean para arriba por ítem y recién después se suman,
+ *   igual que en el TOTAL de cada tabla; redondear la suma daría menos barras
+ *   de las que en verdad hay que comprar.
+ * - El diámetro sale del nombre del ítem ("Ø8"): no hay un campo para eso, y
+ *   es el nombre con el que la plantilla arma cada hierro. Dos secciones con
+ *   un "Ø8" cada una suman en la misma fila.
+ *
+ * Si van los dos lados del rubro, cuenta sólo Materiales: la mano de obra
+ * suele medir lo mismo (los m³ que se hormigonan, los kg que se atan) y
+ * sumarla duplicaría todo. Si sólo va mano de obra, cuenta ésa.
+ *
+ * Devuelve "" cuando lo exportado no tiene ni hierro ni m³: en los rubros que
+ * no son estructura el resumen no tiene nada que decir.
+ */
+function resumenExportado(conItems: SeccionInforme[], datos: DatosInformeRubro) {
+  const hayMateriales = conItems.some((s) => s.seccion.tipo === "MATERIALES");
+  const secciones = conItems.filter((s) => !hayMateriales || s.seccion.tipo === "MATERIALES");
+
+  const total = (i: ItemOpcion) => datos.totales.get(i.id) ?? 0;
+  const esHormigon = (i: ItemOpcion) => i.unidad === "M3" && !esHierro(i);
+  const kgDe = (i: ItemOpcion) => kgDeMetros(i, total(i));
+  const barrasDe = (i: ItemOpcion) => bultosDe(i, kgDe(i))?.enteros ?? 0;
+
+  type Suma = { m3: number; barras: number; kg: number; conHormigon: boolean; conHierro: boolean };
+  const sumar = (items: ItemOpcion[]): Suma => {
+    const hormigon = items.filter(esHormigon);
+    const hierros = items.filter((i) => esHierro(i));
+    return {
+      m3: hormigon.reduce((acc, i) => acc + total(i), 0),
+      barras: hierros.reduce((acc, i) => acc + barrasDe(i), 0),
+      kg: hierros.reduce((acc, i) => acc + kgDe(i), 0),
+      conHormigon: hormigon.length > 0,
+      conHierro: hierros.length > 0,
+    };
+  };
+
+  const porSeccion = secciones
+    .map((s) => ({ nombre: s.seccion.nombre, suma: sumar(s.items) }))
+    .filter((f) => f.suma.conHormigon || f.suma.conHierro);
+  if (porSeccion.length === 0) return "";
+  const general = sumar(secciones.flatMap((s) => s.items));
+
+  /** Los hierros agrupados por diámetro, del más fino al más grueso. */
+  const diametros = new Map<string, { nombre: string; kgPorMetro: number; barras: number; kg: number }>();
+  for (const item of secciones.flatMap((s) => s.items).filter((i) => esHierro(i))) {
+    const nombre = item.nombre.trim().replace(/\s+/g, " ");
+    const clave = nombre.toUpperCase();
+    const fila = diametros.get(clave) ?? { nombre, kgPorMetro: item.rinde ?? 0, barras: 0, kg: 0 };
+    fila.barras += barrasDe(item);
+    fila.kg += kgDe(item);
+    diametros.set(clave, fila);
+  }
+  const porDiametro = [...diametros.values()].sort((a, b) => a.kgPorMetro - b.kgPorMetro);
+
+  const num = (valor: number, hay: boolean) =>
+    `<td class="num">${esc(hay ? formatCantidad(valor) : "—")}</td>`;
+
+  const tablaSecciones = `
+    <table class="grilla resumen-tabla">
+      <thead>
+        <tr>
+          <th class="item-col">Sección</th>
+          ${general.conHormigon ? `<th>Hormigón m³</th>` : ""}
+          ${general.conHierro ? `<th>Barras</th><th>Hierro kg</th>` : ""}
+        </tr>
+      </thead>
+      <tbody>
+        ${porSeccion
+          .map(
+            ({ nombre, suma }) => `
+        <tr>
+          <th class="item-col" scope="row">${esc(nombre)}</th>
+          ${general.conHormigon ? num(suma.m3, suma.conHormigon) : ""}
+          ${general.conHierro ? `${num(suma.barras, suma.conHierro)}${num(suma.kg, suma.conHierro)}` : ""}
+        </tr>`
+          )
+          .join("")}
+      </tbody>
+      <tfoot>
+        <tr class="total-fila primera">
+          <th class="item-col" scope="row">Total</th>
+          ${general.conHormigon ? num(general.m3, true) : ""}
+          ${general.conHierro ? `${num(general.barras, true)}${num(general.kg, true)}` : ""}
+        </tr>
+      </tfoot>
+    </table>`;
+
+  const tablaDiametros =
+    porDiametro.length === 0
+      ? ""
+      : `
+    <table class="grilla resumen-tabla">
+      <thead>
+        <tr><th class="item-col">Diámetro</th><th>Barras</th><th>Hierro kg</th></tr>
+      </thead>
+      <tbody>
+        ${porDiametro
+          .map(
+            (d) => `
+        <tr>
+          <th class="item-col" scope="row">${esc(d.nombre)}</th>
+          ${num(d.barras, true)}${num(d.kg, true)}
+        </tr>`
+          )
+          .join("")}
+      </tbody>
+      <tfoot>
+        <tr class="total-fila primera">
+          <th class="item-col" scope="row">Total</th>
+          ${num(general.barras, true)}${num(general.kg, true)}
+        </tr>
+      </tfoot>
+    </table>`;
+
+  return `
+  <section class="resumen">
+    <h2>Resumen de lo exportado</h2>
+    <div class="resumen-cuadros">${tablaSecciones}${tablaDiametros}</div>
+  </section>`;
+}
+
 function construirHtml(datos: DatosInformeRubro) {
   const conItems = datos.secciones.filter((s) => s.items.length > 0 && s.filas.length > 0);
   const cuerpo = conItems.map((s) => tablaSeccion(s, datos)).join("");
+  const resumen = resumenExportado(conItems, datos);
   const cuantosItems = conItems.reduce((acc, s) => acc + s.items.length, 0);
 
   return `<!doctype html>
@@ -540,11 +720,11 @@ function construirHtml(datos: DatosInformeRubro) {
       print-color-adjust: exact;
     }
 
-    /* Apaisado: la grilla es ancha por definición. El margen lo pone @page para
-       que lo respeten todas las hojas y no sólo la primera. */
-    @page { size: A4 landscape; margin: 12mm; }
+    /* A4 vertical (ver el comentario del principio). El margen lo pone @page
+       para que lo respeten todas las hojas y no sólo la primera. */
+    @page { size: A4 portrait; margin: 12mm; }
     @media screen {
-      body { padding: 12mm; max-width: 297mm; margin: 0 auto; }
+      body { padding: 12mm; max-width: 210mm; margin: 0 auto; }
     }
 
     header.doc {
@@ -751,13 +931,15 @@ function construirHtml(datos: DatosInformeRubro) {
       padding-left: 12px;
     }
 
-    /* La fila del total en kg de todos los diámetros juntos: la única fila
-       del pie, porque es una suma cruzada entre los ítems de hierro de cada
-       columna y no tiene lugar en la celda de Total de ningún ítem en
-       particular. */
-    tfoot tr.total-kg-fila th, tfoot tr.total-kg-fila td {
+    /* El pie de cada tabla: lo que suman todos los ítems en cada nivel, una
+       fila por unidad. Es una suma cruzada entre ítems, así que no tiene
+       lugar en la celda de Total de ninguno en particular. La raya gruesa va
+       sólo arriba de la primera: las demás son parte del mismo pie. */
+    tfoot tr.total-fila th, tfoot tr.total-fila td {
       background: #e2e2e2;
       font-weight: 700;
+    }
+    tfoot tr.total-fila.primera th, tfoot tr.total-fila.primera td {
       border-top: 2px solid var(--oscuro);
     }
 
@@ -781,6 +963,30 @@ function construirHtml(datos: DatosInformeRubro) {
     }
 
     .vacio { font-size: 10px; color: var(--gris); margin: 14px 0 0; }
+
+    /* El resumen del pie: los dos cuadros uno al lado del otro, angostos, con
+       la misma tinta que las grillas para que se lean como parte del cómputo. */
+    section.resumen {
+      margin-top: 18px;
+      border-top: 3px solid var(--oscuro);
+      padding-top: 8px;
+      break-inside: avoid;
+    }
+    section.resumen h2 {
+      font-size: 11px;
+      margin: 0 0 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    section.resumen .resumen-cuadros {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+    }
+    /* Sin el ancho fijo de la grilla: estos cuadros son de pocas columnas y
+       se ajustan a lo que dicen, en vez de estirarse a toda la hoja. */
+    section.resumen table.resumen-tabla { width: auto; table-layout: auto; }
+    section.resumen table.resumen-tabla td.num { min-width: 22mm; text-align: right; }
   </style>
 </head>
 <body>
@@ -793,7 +999,7 @@ function construirHtml(datos: DatosInformeRubro) {
     </div>
   </header>
 
-  ${cuerpo || `<p class="vacio">No quedó nada para imprimir con lo que elegiste.</p>`}
+  ${cuerpo ? `${cuerpo}${resumen}` : `<p class="vacio">No quedó nada para imprimir con lo que elegiste.</p>`}
 
   <script>
     (function () {

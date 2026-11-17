@@ -7,7 +7,6 @@ import {
   ClipboardList,
   FileText,
   Landmark,
-  Layers,
   ListChecks,
   Ruler,
   Wallet,
@@ -39,9 +38,8 @@ export type ResumenProyecto = {
   tareas: ResumenSeccion;
   municipal: ResumenSeccion;
   documentacion: ResumenSeccion;
+  /** El cómputo de la obra: las grillas de "Cómputos 2" (ver ComputoSection2). */
   computo: ResumenSeccion;
-  /** La grilla en paralelo, para volver a cargar un rubro de cero. Ver ComputoSection2. */
-  computo2: ResumenSeccion;
   /** Null cuando el usuario no tiene permiso de Flujo de fondos. */
   flujoFondos: ResumenSeccion | null;
 };
@@ -52,7 +50,6 @@ type ClaveSeccion =
   | "municipal"
   | "documentacion"
   | "computo"
-  | "computo2"
   | "flujo-fondos";
 
 const TONO_TEXTO = {
@@ -226,7 +223,6 @@ export function ProyectoSecciones({
   municipal,
   documentacion,
   computo,
-  computo2,
   flujoFondos,
 }: {
   resumen: ResumenProyecto;
@@ -235,7 +231,6 @@ export function ProyectoSecciones({
   municipal: React.ReactNode;
   documentacion: React.ReactNode;
   computo: React.ReactNode;
-  computo2: React.ReactNode;
   /** Null cuando el usuario no tiene permiso de Flujo de fondos. */
   flujoFondos: React.ReactNode | null;
 }) {
@@ -247,7 +242,6 @@ export function ProyectoSecciones({
     municipal: { titulo: "Municipal", nodo: municipal },
     documentacion: { titulo: "Documentación", nodo: documentacion },
     computo: { titulo: "Cómputo", nodo: computo },
-    computo2: { titulo: "Cómputos 2", nodo: computo2 },
     "flujo-fondos": { titulo: "Flujo de fondos", nodo: flujoFondos },
   };
 
@@ -307,13 +301,6 @@ export function ProyectoSecciones({
       descripcion: "Partidas y mediciones de la obra",
       icono: Ruler,
       resumen: resumen.computo,
-    },
-    {
-      clave: "computo2",
-      titulo: "Cómputos 2",
-      descripcion: "Grilla en paralelo, de cero",
-      icono: Layers,
-      resumen: resumen.computo2,
     },
     {
       clave: "movimientos",
