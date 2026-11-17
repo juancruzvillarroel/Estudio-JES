@@ -229,6 +229,7 @@ export function FlujoFondosSection({
       <TabsContent value="gastos" className={PANEL}>
         <MovimientoFondoTabla
           proyectoId={proyectoId}
+          proyectoNombre={proyectoNombre}
           tipo="GASTO"
           rubros={rubros}
           proveedores={proveedores}
@@ -258,6 +259,7 @@ export function FlujoFondosSection({
       <TabsContent value="aportes" className={PANEL}>
         <MovimientoFondoTabla
           proyectoId={proyectoId}
+          proyectoNombre={proyectoNombre}
           tipo="APORTE"
           rubros={rubros}
           proveedores={proveedores}

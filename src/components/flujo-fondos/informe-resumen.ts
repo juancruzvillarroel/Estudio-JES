@@ -104,7 +104,7 @@ export type DatosInforme = {
 };
 
 /** Escapa el texto que se inyecta en el HTML del informe. */
-function esc(texto: string) {
+export function esc(texto: string) {
   return texto.replace(
     /[&<>"]/g,
     (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] as string
@@ -404,7 +404,7 @@ function seccionVentas(ventas: DatosInforme["ventas"]) {
  * contra la cual resolver rutas relativas. Por eso el logo se pide con la URL
  * absoluta del origen de la app.
  */
-function urlLogo() {
+export function urlLogo() {
   const origen = typeof window !== "undefined" ? window.location.origin : "";
   return `${origen}/logo-jes.png`;
 }

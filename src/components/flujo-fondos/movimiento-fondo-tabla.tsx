@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { ArrowRightLeft, Calendar, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowRightLeft, Calendar, Download, Pencil, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
@@ -17,6 +17,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { MovimientoFondoDialog } from "@/components/flujo-fondos/movimiento-fondo-dialog";
 import { CambioMonedaDialog } from "@/components/flujo-fondos/cambio-moneda-dialog";
 import { montoEntrante, otraMoneda } from "@/lib/cambios-moneda";
+import { abrirInformeMovimientos } from "@/components/flujo-fondos/informe-movimientos";
 import { RubroFiltroMultiple } from "@/components/rubros/rubro-filtro-multiple";
 import { cn } from "@/lib/utils";
 import { MONEDA_LABELS, type MedioPagoOpcion, type MovimientoFondoOpcion } from "@/lib/flujo-fondos";
@@ -146,6 +147,7 @@ function MontoCambio({ cambio }: { cambio: MovimientoFondoOpcion }) {
 
 export function MovimientoFondoTabla({
   proyectoId,
+  proyectoNombre,
   tipo,
   rubros,
   proveedores,
@@ -158,6 +160,8 @@ export function MovimientoFondoTabla({
   onDeleted,
 }: {
   proyectoId: string;
+  /** Encabeza el PDF del listado. */
+  proyectoNombre: string;
   tipo: "GASTO" | "APORTE";
   rubros: RubroOpcion[];
   proveedores: ProveedorOpcion[];
@@ -215,6 +219,33 @@ export function MovimientoFondoTabla({
     if (a.fecha !== b.fecha) return b.fecha.localeCompare(a.fecha);
     return enElDia(a, b);
   });
+
+  // El PDF lleva exactamente lo que se está viendo: el rango de fechas elegido
+  // y cualquier otro filtro activo, que se anotan arriba para que el papel diga
+  // qué recorte es.
+  const descargarPdf = () => {
+    const nombres = <T extends { id: string }>(lista: T[], ids: string[], campo: (x: T) => string) =>
+      lista.filter((x) => ids.includes(x.id)).map(campo).join(", ");
+    const filtros = [
+      rubroIds.length > 0 ? `Rubro: ${nombres(rubros, rubroIds, (r) => r.nombre)}` : "",
+      proveedorId ? `Proveedor: ${nombres(proveedores, [proveedorId], (p) => p.nombre)}` : "",
+      moneda ? `Moneda: ${MONEDA_LABELS[moneda as "ARS" | "USD"]}` : "",
+      medioPagoId ? `Medio de pago: ${nombres(mediosPago, [medioPagoId], (mp) => mp.nombre)}` : "",
+    ].filter(Boolean);
+
+    abrirInformeMovimientos({
+      proyectoNombre,
+      tipo,
+      leyendaRango:
+        fechaDesde || fechaHasta
+          ? `Período: ${fechaDesde ? formatFechaISOCorta(fechaDesde) : "inicio"} a ${
+              fechaHasta ? formatFechaISOCorta(fechaHasta) : "hoy"
+            }`
+          : "Período: todas las fechas",
+      filtros,
+      movimientos: filtrados,
+    });
+  };
 
   // Los totales son de aportes (o gastos), sin los cambios de moneda: un cambio
   // no es plata nueva, y así coinciden con el "Aportado" del Resumen.
@@ -369,6 +400,10 @@ export function MovimientoFondoTabla({
           </Tooltip>
         )}
         <div className="ml-auto flex shrink-0 flex-wrap items-center gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={descargarPdf}>
+            <Download className="h-3.5 w-3.5" />
+            Descargar PDF
+          </Button>
           {tipo === "APORTE" && (
             <CambioMonedaDialog
               proyectoId={proyectoId}
