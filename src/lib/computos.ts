@@ -393,6 +393,30 @@ export function medicionesDeFila(item: ItemOpcion, fila: ClaveFila) {
   return item.mediciones.filter((m) => esDeLaFila(m, fila));
 }
 
+// "Numeric" para que V2 vaya antes que V10, como se lee en el plano, y no
+// después como en un orden de diccionario puro.
+const ordenDescripcion = new Intl.Collator("es", { numeric: true, sensitivity: "base" });
+
+/**
+ * Los renglones del desglose de una celda, por orden alfabético de la
+ * descripción (V101, V102… V115), para encontrar una viga sin recorrer la
+ * lista entera.
+ *
+ * Se ordena al mostrar y no al guardar: así cada renglón nuevo cae en su lugar
+ * apenas se carga, y no hace falta renumerar `orden` en la base cada vez. Los
+ * que no tienen descripción van al final, en el orden en que se cargaron.
+ */
+export function renglonesOrdenados<M extends { descripcion: string | null; orden: number }>(
+  renglones: M[]
+): M[] {
+  return [...renglones].sort((a, b) => {
+    const da = a.descripcion?.trim() ?? "";
+    const db = b.descripcion?.trim() ?? "";
+    if (!da !== !db) return da ? -1 : 1;
+    return ordenDescripcion.compare(da, db) || a.orden - b.orden;
+  });
+}
+
 /**
  * ¿La celda sale de una cuenta sobre otro ítem?
  *

@@ -69,6 +69,7 @@ import {
   kgDeMetros,
   materialDe,
   medicionesDeFila,
+  renglonesOrdenados,
   medidaATexto,
   medidoEnFila,
   metrosDeBarras,
@@ -2644,7 +2645,7 @@ function DetalleCelda({
   onSaved: (item: ItemOpcion) => void;
   onCerrar: () => void;
 }) {
-  const renglones = medicionesDeFila(item, fila);
+  const renglones = renglonesOrdenados(medicionesDeFila(item, fila));
   const hierro = esHierro(item);
 
   return (

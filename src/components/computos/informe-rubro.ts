@@ -41,6 +41,7 @@ import {
   kgDeMetros,
   materialDe,
   medicionesDeFila,
+  renglonesOrdenados,
   medidoEnFila,
   parcialMedicion,
   simboloUnidad,
@@ -375,7 +376,7 @@ function tablaSeccion(seccion: SeccionInforme, datos: DatosInformeRubro) {
   const renglonesDeItem = (item: ItemOpcion) =>
     filas
       .flatMap((fila) => {
-        const renglones = medicionesDeFila(item, fila.clave).filter(
+        const renglones = renglonesOrdenados(medicionesDeFila(item, fila.clave)).filter(
           (m) => m.origenId === null
         );
         // La fórmula de una celda no se imprime (vive aparte, en `formula`):

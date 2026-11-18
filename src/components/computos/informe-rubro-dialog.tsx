@@ -27,6 +27,7 @@ import {
   esHierro,
   fechaDeComputo,
   medicionesDeFila,
+  renglonesOrdenados,
   ordenarFilas,
   simboloUnidad,
   tieneMedidoEnFila,
@@ -462,7 +463,7 @@ export function InformeRubroDialog({
     (item.seccionId ? filasDeSeccion(item.seccionId) : []).flatMap((fila) => {
       const filaKey = claveFilaKey(fila.clave);
       const grupos = new Map<string, RenglonOpcion>();
-      for (const m of medicionesDeFila(item, fila.clave)) {
+      for (const m of renglonesOrdenados(medicionesDeFila(item, fila.clave))) {
         // Las derivadas no se eligen acá: salen de otro ítem, y sacarlas
         // escondería un número que depende de lo que se haga allá.
         if (m.origenId !== null) continue;
